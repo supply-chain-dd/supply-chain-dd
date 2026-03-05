@@ -1,43 +1,39 @@
-.PHONY: help setup clean setup-kind setup-tekton verify
+.PHONY: help setup setup-kind setup-gitea verify status clean
 
 CLUSTER_NAME ?= ctf-cluster
-TEKTON_PIPELINE_VERSION ?= v0.53.0
+GITEA_VERSION ?= 10.6.1
 
 help: ## Display this help message
-	@echo "CTF Environment Setup"
+	@echo "Supply Chain CTF Environment - Available Commands:"
 	@echo ""
-	@echo "Available targets:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-setup: setup-kind setup-tekton verify ## Complete CTF environment setup
-	@echo ""
-	@echo "✓ CTF environment setup complete!"
-	@echo ""
-	@echo "Next steps:"
-	@echo "  - Run 'kubectl get pods -A' to verify all components"
-	@echo "  - Run 'make verify' to check the environment"
+setup: setup-kind setup-gitea verify ## Complete setup (KinD cluster + Gitea + verification)
 
 setup-kind: ## Create KinD cluster
-	@./scripts/setup-kind.sh
+	@cd setup && ./scripts/setup-kind.sh
 
-setup-tekton: ## Install Tekton pipelines
-	@./scripts/setup-tekton.sh
+setup-gitea: ## Install Gitea via Helm
+	@cd setup && ./scripts/setup-gitea.sh
 
-verify: ## Verify the CTF environment is working
+verify: ## Verify environment is working correctly
 	@echo "Verifying CTF environment..."
-	@echo -n "Checking cluster access... "
-	@kubectl cluster-info > /dev/null 2>&1 && echo "✓" || (echo "✗" && exit 1)
-	@echo -n "Checking Tekton installation... "
-	@kubectl get pods -n tekton-pipelines > /dev/null 2>&1 && echo "✓" || (echo "✗" && exit 1)
 	@echo ""
-	@echo "Environment verification complete!"
+	@echo "Cluster Info:"
+	@kubectl cluster-info
+	@echo ""
+	@echo "Gitea Pods:"
+	@kubectl get pods -n gitea
+	@echo ""
+	@echo "Gitea Service:"
+	@kubectl get svc -n gitea
+	@echo ""
+	@echo "Helm Releases:"
+	@helm list -n gitea
+	@echo ""
+	@echo "✓ Environment verification complete"
 
-clean: ## Delete the KinD cluster and cleanup
-	@echo "Cleaning up CTF environment..."
-	@kind delete cluster --name $(CLUSTER_NAME) || true
-	@echo "✓ Cleanup complete"
-
-status: ## Show status of the environment
+status: ## Show environment status
 	@echo "CTF Environment Status"
 	@echo "======================"
 	@echo ""
@@ -47,5 +43,16 @@ status: ## Show status of the environment
 	@echo "Kubernetes Context:"
 	@kubectl config current-context || echo "  No context set"
 	@echo ""
-	@echo "Tekton Pipelines (if cluster exists):"
-	@kubectl get pods -n tekton-pipelines 2>/dev/null || echo "  Not installed or cluster not running"
+	@echo "Cluster Nodes:"
+	@kubectl get nodes 2>/dev/null || echo "  Cluster not running"
+	@echo ""
+	@echo "Gitea Pods:"
+	@kubectl get pods -n gitea 2>/dev/null || echo "  Gitea not installed"
+	@echo ""
+	@echo "Gitea Service:"
+	@kubectl get svc -n gitea 2>/dev/null || echo "  Gitea not installed"
+	@echo ""
+	@echo "Access Gitea at: http://localhost:30002"
+
+clean: ## Cleanup environment (delete cluster and resources)
+	@cd setup && ./scripts/cleanup.sh
