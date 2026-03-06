@@ -10,6 +10,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - name: Install Node.js
+        run: |
+          apk update && apk add --no-cache nodejs npm
       - name: Check runner environment
         run: |
           echo "Running on Gitea Actions with Kubernetes executor"
@@ -24,8 +27,6 @@ jobs:
           echo "=== Environment ==="
           env | sort
           echo ""
-          echo "=== Available commands ==="
-          which git curl wget
 
       - name: Checkout code
         uses: actions/checkout@v4

@@ -167,7 +167,7 @@ data:
       enabled: true
     # Use Kubernetes executor instead of Docker
     container:
-      network_mode: bridge
+      network: host
       privileged: false
       force_pull: false
 ---
