@@ -1,0 +1,39 @@
+name: Test Runner
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check runner environment
+        run: |
+          echo "Running on Gitea Actions with Kubernetes executor"
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+
+      - name: Basic commands
+        run: |
+          echo "=== System Info ==="
+          uname -a
+          echo ""
+          echo "=== Environment ==="
+          env | sort
+          echo ""
+          echo "=== Available commands ==="
+          which git curl wget
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: List files
+        run: |
+          echo "Files in repository:"
+          ls -la
+
+      - name: Success
+        run: echo "✓ Workflow completed successfully!"

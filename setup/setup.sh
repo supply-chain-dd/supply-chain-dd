@@ -41,6 +41,9 @@ echo ""
 ./scripts/setup-gitea.sh
 echo ""
 
+./scripts/setup-act-runner.sh
+echo ""
+
 echo "=========================================="
 echo "Setup Complete!"
 echo "=========================================="

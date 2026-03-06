@@ -42,6 +42,8 @@ helm upgrade --install gitea gitea-charts/gitea \
   --set postgresql-ha.enabled=false \
   --set postgresql.enabled=false \
   --set gitea.config.database.DB_TYPE=sqlite3 \
+  --set gitea.config.actions.ENABLED=true \
+  --set gitea.config.actions.DEFAULT_ACTIONS_URL=https://github.com \
   --set persistence.enabled=true \
   --set persistence.size=10Gi \
   --wait \
