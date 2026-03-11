@@ -44,6 +44,10 @@ helm upgrade --install gitea gitea-charts/gitea \
   --set gitea.config.database.DB_TYPE=sqlite3 \
   --set gitea.config.actions.ENABLED=true \
   --set gitea.config.actions.DEFAULT_ACTIONS_URL=https://github.com \
+  --set gitea.config.webhook.ALLOWED_HOST_LIST=*.svc.cluster.local \
+  --set gitea.config.server.ROOT_URL=http://gitea-http.gitea.svc.cluster.local:3000 \
+  --set gitea.config.server.DOMAIN=gitea-http.gitea.svc.cluster.local \
+  --set gitea.config.server.HTTP_PORT=3000 \
   --set persistence.enabled=true \
   --set persistence.size=10Gi \
   --wait \

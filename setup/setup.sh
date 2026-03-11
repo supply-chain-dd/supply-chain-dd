@@ -31,6 +31,10 @@ if ! command -v helm &> /dev/null; then
     exit 1
 fi
 
+# TODO
+# sudo sysctl fs.inotify.max_user_watches=524288
+# sudo sysctl fs.inotify.max_user_instances=512
+# 
 echo "✓ All prerequisites met"
 echo ""
 
@@ -41,7 +45,10 @@ echo ""
 ./scripts/setup-gitea.sh
 echo ""
 
-./scripts/setup-act-runner.sh
+# ./scripts/setup-act-runner.sh
+# echo ""
+
+./scripts/setup-tekton.sh
 echo ""
 
 echo "=========================================="

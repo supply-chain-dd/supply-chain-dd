@@ -1,0 +1,69 @@
+---
+# VULNERABLE Pipeline - DO NOT USE IN PRODUCTION
+# This pipeline demonstrates the token theft vulnerability
+# It clones untrusted code and executes it with cluster permissions
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: pr-quality-check-pipeline
+  namespace: ctf-challenge
+spec:
+  description: |
+    Quality check pipeline that runs on pull requests.
+    VULNERABLE: Executes untrusted code from PR forks!
+  params:
+    - name: pr-repo-url
+      type: string
+      description: The git repository URL (from PR head - attacker's fork!)
+    - name: pr-sha
+      type: string
+      description: The git commit SHA (from PR head - attacker's code!)
+    - name: pr-number
+      type: string
+      description: Pull request number
+  workspaces:
+    - name: source
+      description: Workspace for source code
+  tasks:
+    - name: clone-pr-code
+      taskRef:
+        name: git-clone
+      params:
+        - name: url
+          value: $(params.pr-repo-url)  # VULNERABLE: Attacker's fork
+        - name: revision
+          value: $(params.pr-sha)       # VULNERABLE: Attacker's code
+        - name: deleteExisting
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: source
+
+    - name: show-repo-info
+      runAfter: ["clone-pr-code"]
+      taskRef:
+        name: print-info
+      params:
+        - name: pr-number
+          value: $(params.pr-number)
+        - name: pr-sha
+          value: $(params.pr-sha)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: run-quality-checks
+      runAfter: ["show-repo-info"]
+      taskRef:
+        name: quality-check-task  # VULNERABLE TASK
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: post-results
+      runAfter: ["run-quality-checks"]
+      taskRef:
+        name: print-results
+      workspaces:
+        - name: source
+          workspace: source
