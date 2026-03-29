@@ -1,0 +1,75 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-external-git-repositories
+  annotations:
+    policies.kyverno.io/title: Restrict External Git Repository Cloning
+    policies.kyverno.io/category: Tekton Security, Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: PipelineRun
+    policies.kyverno.io/description: >-
+      Only allows cloning from internal Gitea repositories, blocking external
+      repositories that could contain malicious code. This prevents attackers
+      from pointing pipelines to attacker-controlled repositories.
+spec:
+  validationFailureAction: Audit  # Set to 'enforce' to block, 'audit' to warn
+  background: true
+  rules:
+  - name: allow-only-internal-gitea-repos
+    match:
+      any:
+      - resources:
+          kinds:
+          - PipelineRun
+          namespaces:
+          - ctf-challenge
+    validate:
+      message: >-
+        Only internal Gitea repositories are allowed for PR pipelines.
+        External repositories (github.com, gitlab.com, etc.) are blocked
+        to prevent supply chain attacks via malicious code injection.
+        Allowed patterns: git@gitea.gitea.svc*, http://gitea*, https://gitea*
+      deny:
+        conditions:
+          any:
+          # Block if git-url contains github.com
+          - key: "{{ request.object.spec.params[?name=='git-url'].value | [0] || '' }}"
+            operator: Equals
+            value: "*github.com*"
+          # Block if git-url contains gitlab.com
+          - key: "{{ request.object.spec.params[?name=='git-url'].value | [0] || '' }}"
+            operator: Equals
+            value: "*gitlab.com*"
+          # Block if pr-repo-url contains github.com
+          - key: "{{ request.object.spec.params[?name=='pr-repo-url'].value | [0] || '' }}"
+            operator: Equals
+            value: "*github.com*"
+          # Block if pr-repo-url contains gitlab.com
+          - key: "{{ request.object.spec.params[?name=='pr-repo-url'].value | [0] || '' }}"
+            operator: Equals
+            value: "*gitlab.com*"
+          # Block if repo-url contains github.com
+          - key: "{{ request.object.spec.params[?name=='repo-url'].value | [0] || '' }}"
+            operator: Equals
+            value: "*github.com*"
+
+  - name: warn-on-suspicious-git-urls
+    match:
+      any:
+      - resources:
+          kinds:
+          - PipelineRun
+    validate:
+      message: >-
+        Warning: This PipelineRun uses a Git URL that doesn't match internal patterns.
+        Verify this is intentional and from a trusted source.
+      deny:
+        conditions:
+          all:
+          # Get the git URL from various possible parameter names
+          - key: "{{ request.object.spec.params[?name=='git-url' || name=='pr-repo-url' || name=='repo-url'].value | [0] || 'gitea' }}"
+            operator: NotEquals
+            value: "gitea*"
+          - key: "{{ request.object.spec.params[?name=='git-url' || name=='pr-repo-url' || name=='repo-url'].value | [0] || 'http://gitea' }}"
+            operator: NotEquals
+            value: "http://gitea*"
