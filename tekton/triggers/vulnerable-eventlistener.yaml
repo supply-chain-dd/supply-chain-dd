@@ -94,21 +94,28 @@ metadata:
   name: tekton-triggers-sa
   namespace: ctf-challenge
 ---
-# Role with dangerous permissions (for CTF demonstration)
+# Role with minimal permissions (following principle of least privilege)
+# Previously had dangerous permissions for CTF demonstration
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: tekton-triggers-role
   namespace: ctf-challenge
 rules:
+# Read Tekton Triggers resources (needed to process webhooks)
 - apiGroups: ["triggers.tekton.dev"]
-  resources: ["eventlisteners", "triggerbindings", "triggertemplates", "triggers", "interceptors"]
-  verbs: ["get", "list", "watch"]
+  resources: ["triggerbindings", "triggertemplates", "eventlisteners"]
+  verbs: ["get"]  # Only "get", not "list" or "watch"
+
+# Read ONLY the specific webhook secret (not all secrets)
 - apiGroups: [""]
-  resources: ["configmaps", "secrets", "serviceaccounts"]
-  verbs: ["get", "list", "watch"]
+  resources: ["secrets"]
+  verbs: ["get"]
+  resourceNames: ["github-webhook-secret"]  # Restricted to specific secret
+
+# Create PipelineRuns (core functionality)
 - apiGroups: ["tekton.dev"]
-  resources: ["pipelineruns", "pipelineresources", "taskruns"]
+  resources: ["pipelineruns"]
   verbs: ["create"]
 ---
 # ClusterRole for cluster-scoped Tekton Triggers resources
@@ -146,6 +153,35 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: tekton-triggers-sa
+    namespace: ctf-challenge
+---
+# Role for default ServiceAccount (used by TaskRuns)
+# VULNERABLE: Allows reading secrets including the CTF flag
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: taskrun-role
+  namespace: ctf-challenge
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: default-taskrun-rolebinding
+  namespace: ctf-challenge
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: taskrun-role
+subjects:
+  - kind: ServiceAccount
+    name: default
     namespace: ctf-challenge
 ---
 # GitHub webhook secret (placeholder)
