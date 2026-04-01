@@ -1,5 +1,5 @@
 .PHONY: help setup setup-kind setup-gitea setup-tekton setup-registry setup-ctf-challenge setup-ctf-challenge-secure verify verify-ctf status clean
-.PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security
+.PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security create-security-policies
 .PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls
 
 CLUSTER_NAME ?= ctf-cluster
@@ -105,16 +105,16 @@ help: ## Display this help message
 	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-registry|configure-registry-tls|setup-ctf-challenge|setup-ctf-challenge-secure):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Tools:"
-	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Operations:"
-	@grep -E '^(create-security-policies|apply-prevention-policies|security-scan|verify-security):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(create-security-policies|apply-prevention-policies|security-scan|verify-security):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Verification:"
 	@grep -E '^(verify|verify-ctf|verify-registry|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Cleanup:"
-	@grep -E '^(clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Quick Start:"
 	@echo "  1. make check-cli-tools          # Check for required CLI tools"
@@ -165,6 +165,7 @@ configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 	@cd setup && ./scripts/configure-registry-tls.sh
 
 setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE version)
+	@echo "Installing Tekton CTF Challenge (VULNERABLE version)..."
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
 	@kubectl apply -f tekton/triggers/vulnerable-eventlistener.yaml
 	@kubectl apply -f tekton/tasks/supporting-tasks.yaml
@@ -179,12 +180,56 @@ setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE versi
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
 		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
 	@echo ""
-	@echo "✓ CTF Challenge installed successfully"
+	@echo "✓ CTF Challenge installed successfully (VULNERABLE version)"
+	@echo ""
+	@echo "⚠️  WARNING: This uses the VULNERABLE configuration!"
+	@echo "   - Uses default ServiceAccount (has secret access)"
+	@echo "   - No security controls enabled"
+	@echo "   - Attack will succeed"
 	@echo ""
 	@echo "Next steps:"
 	@echo "  1. Review the challenge guide: tekton/challenges/CTF-CHALLENGE-GUIDE.md"
 	@echo "  2. Setup victim repository: tekton/challenges/victim-repo-sample/"
-	@echo "  3. Test the challenge: make verify-ctf"
+	@echo "  3. Test the attack: make verify-ctf"
+	@echo ""
+	@echo "To deploy SECURE version instead:"
+	@echo "  make setup-ctf-challenge-secure"
+
+setup-ctf-challenge-secure: ## Install Tekton CTF challenge with SECURE configuration
+	@echo "Installing Tekton CTF Challenge (SECURE version)..."
+	@kubectl create namespace ctf-challenge 2>/dev/null || true
+	@echo ""
+	@echo "Step 1: Deploying security RBAC (minimal ServiceAccounts)..."
+	@kubectl apply -f security/rbac/minimal-serviceaccounts.yaml
+	@echo ""
+	@echo "Step 2: Deploying secure Tekton resources..."
+	@kubectl apply -f tekton-patched/tasks/
+	@kubectl apply -f tekton-patched/pipelines/
+	@kubectl apply -f tekton-patched/triggers/
+	@echo ""
+	@echo "Step 3: Creating CTF flag secret with registry credentials..."
+	@kubectl create secret generic ctf-flag \
+		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
+		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
+		--from-literal=registry-user='$(REGISTRY_USER)' \
+		--from-literal=registry-password='$(REGISTRY_PASS)' \
+		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
+	@echo ""
+	@echo "✓ CTF Challenge installed successfully (SECURE version)"
+	@echo ""
+	@echo "✅ Security controls enabled:"
+	@echo "   - Uses pr-pipeline-readonly ServiceAccount (NO secret access)"
+	@echo "   - Minimal RBAC permissions"
+	@echo "   - Default SA has zero permissions"
+	@echo "   - Attack will be BLOCKED by RBAC"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Apply Network Policies: make apply-prevention-policies"
+	@echo "  2. Verify security: make verify-security"
+	@echo "  3. Test that attack is blocked: see tekton-patched/README.md"
+	@echo ""
+	@echo "To compare with vulnerable version:"
+	@echo "  diff -u tekton/ tekton-patched/"
 
 verify: ## Verify environment is working correctly
 	@echo "Verifying CTF environment..."

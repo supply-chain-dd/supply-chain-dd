@@ -12,7 +12,7 @@ metadata:
       direct execution of scripts from checked-out repos, and other risky patterns
       that could lead to arbitrary code execution.
 spec:
-  validationFailureAction: audit  # Set to 'enforce' to block
+  validationFailureAction: Audit  # Set to 'enforce' to block
   background: true
   rules:
   - name: warn-on-go-run-execution

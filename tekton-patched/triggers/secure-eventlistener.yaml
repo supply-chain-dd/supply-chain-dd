@@ -1,7 +1,9 @@
 ---
-# VULNERABLE EventListener - DO NOT USE IN PRODUCTION
-# This EventListener demonstrates the "Pwn Request" vulnerability in Tekton
-# Similar to GitHub Actions pull_request_target vulnerability
+# SECURE EventListener - Uses minimal service accounts
+# This EventListener demonstrates proper security controls for Tekton pipelines
+# Key changes from vulnerable version:
+#   - PipelineRuns use pr-pipeline-readonly ServiceAccount
+#   - Removed dangerous RBAC from default ServiceAccount
 apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
@@ -48,6 +50,7 @@ spec:
       value: $(body.pull_request.title)
 ---
 # TriggerTemplate - Creates PipelineRun from webhook
+# ✅ SECURE: Uses pr-pipeline-readonly ServiceAccount
 apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
@@ -66,7 +69,12 @@ spec:
       metadata:
         generateName: pr-quality-check-
         namespace: ctf-challenge
+        labels:
+          tekton.dev/pipeline: pr-quality-check-pipeline
+          security/trust-level: untrusted-pr
       spec:
+        # ✅ KEY SECURITY FIX: Use read-only ServiceAccount for PR pipelines
+        serviceAccountName: pr-pipeline-readonly
         pipelineRef:
           name: pr-quality-check-pipeline
         params:
@@ -104,7 +112,7 @@ rules:
 # Read Tekton Triggers resources (needed to process webhooks)
 - apiGroups: ["triggers.tekton.dev"]
   resources: ["triggerbindings", "triggertemplates", "eventlisteners"]
-  verbs: ["get","list","watch"]  # Only "get", not "list" or "watch"
+  verbs: ["get"]  # Only "get", not "list" or "watch"
 
 # Read ONLY the specific webhook secret (not all secrets)
 - apiGroups: [""]
@@ -117,7 +125,7 @@ rules:
   resources: ["pipelineruns"]
   verbs: ["create"]
 
-# Read ConfigMaps
+# Read ConfigMaps (for trigger configuration)
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "list"]
@@ -159,34 +167,17 @@ subjects:
     name: tekton-triggers-sa
     namespace: ctf-challenge
 ---
-# Role for default ServiceAccount (used by TaskRuns)
-# VULNERABLE: Allows reading secrets including the CTF flag
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: taskrun-role
-  namespace: ctf-challenge
-rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get", "list"]
-- apiGroups: [""]
-  resources: ["pods", "pods/log"]
-  verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: default-taskrun-rolebinding
-  namespace: ctf-challenge
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: taskrun-role
-subjects:
-  - kind: ServiceAccount
-    name: default
-    namespace: ctf-challenge
+# ✅ REMOVED: Dangerous RBAC for default ServiceAccount
+# The vulnerable version granted the default SA permissions to read all secrets.
+# With the secure configuration:
+#   1. PipelineRuns use pr-pipeline-readonly ServiceAccount (defined in security/rbac/)
+#   2. The default ServiceAccount has NO permissions
+#   3. Even if malicious code runs, it cannot access secrets
+#
+# This prevents the attack demonstrated in ATTACK-ANALYSIS.md where:
+#   - Attacker's code reads: /var/run/secrets/kubernetes.io/serviceaccount/token
+#   - Calls K8s API: GET /api/v1/namespaces/ctf-challenge/secrets/ctf-flag
+#   - With pr-pipeline-readonly: API returns 403 Forbidden ✅
 ---
 # GitHub webhook secret (placeholder)
 apiVersion: v1
