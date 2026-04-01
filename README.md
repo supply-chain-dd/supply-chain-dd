@@ -50,6 +50,8 @@ This will:
 1. Create a KinD cluster named `ctf-cluster`
 2. Install Gitea via Helm
 3. Configure Gitea with default CTF credentials
+4. Install Tekton via Helm
+5. Deploy a simple registry
 
 ## Individual Setup Steps
 
@@ -63,6 +65,14 @@ make setup-kind
 # 2. Install Gitea
 make setup-gitea
 # or: cd setup && ./scripts/setup-gitea.sh
+
+# 3. Install Tekton
+make setup-tekton
+# or: cd setup && ./scripts/setup-tekton.sh
+
+# 4. Deploy registry
+make setup-registry
+# or: cd setup && ./scripts/setup-registry.sh
 ```
 
 ## Verify Installation
@@ -84,6 +94,9 @@ kubectl get pods -n gitea
 
 # Check Gitea service
 kubectl get svc -n gitea
+
+# Check Registry service
+kubectl get pods,svc -n registry
 
 # List all resources
 kubectl get all -A
@@ -112,8 +125,11 @@ make clean
 - **Gitea Version**: 10.6.1 (configurable)
 - **Gitea Web UI**: http://localhost:30002
 - **Gitea SSH**: ssh://git@localhost:30003
-- **Admin Username**: ctf-admin
-- **Admin Password**: CTFSecurePass123!
+- **Gitea Admin Username**: ctf-admin
+- **Gitea Admin Password**: CTFSecurePass123!
+- **Registry API**: https://localhost:30000
+- **Registry Username**: ctf-admin
+- **Registry Password**:CTFRegistryPass123!
 
 ## Customization
 
@@ -201,23 +217,96 @@ GITEA_HTTP_PORT=30010 GITEA_SSH_PORT=30011 make setup-gitea
 
 ```
 .
-├── Makefile              # Main automation commands
-├── setup/                # Setup scripts and configurations
-│   ├── setup.sh          # Main setup script
-│   └── scripts/          # Setup and utility scripts
-│       ├── setup-kind.sh # KinD cluster setup
-│       ├── setup-gitea.sh# Gitea installation
-│       └── cleanup.sh    # Environment cleanup
-├── gitea/                # Gitea configurations
-│   ├── repos/            # Pre-configured repository definitions
-│   └── configs/          # Custom Gitea configuration files
-└── k8s/                  # Kubernetes manifests
-    └── base/             # Base configurations
+├── Makefile                    # Main automation commands
+├── setup/                      # Setup scripts and configurations
+│   ├── setup.sh                # Main setup script
+│   └── scripts/                # Setup and utility scripts
+│       ├── setup-kind.sh       # KinD cluster setup
+│       ├── setup-gitea.sh      # Gitea installation
+│       ├── setup-tekton.sh     # Tekton Pipelines installation
+│       ├── setup-registry.sh   # Docker registry setup
+│       └── cleanup.sh          # Environment cleanup
+├── tekton/                     # Tekton configurations
+│   ├── tasks/                  # Vulnerable Tekton tasks
+│   ├── pipelines/              # Vulnerable Tekton pipelines
+│   ├── triggers/               # Vulnerable event listeners
+│   └── challenges/             # CTF challenges
+│       ├── challenge1/         # Attack #1: Tekton Token Theft
+│       ├── challenge2/         # Attack #2: Container Layer Leak
+│       └── victim-repo-sample/ # Shared victim application
+├── gitea/                      # Gitea configurations
+├── security/                   # Security policies (Kyverno, NetworkPolicy, RBAC)
+├── REGISTRY.md                 # Registry setup documentation
+└── SECURITY-GUIDE.md           # Security tools guide
 ```
 
 ## CTF Challenges
 
-*(Challenge details and objectives will be added here)*
+This repository contains multiple supply chain security challenges:
+
+### Challenge 1: Tekton Token Theft (PWN Request Attack)
+**Difficulty**: Medium  
+**Type**: CI/CD Pipeline Security, RBAC Bypass  
+**Location**: `tekton/challenges/challenge1/`
+
+Attack a vulnerable Tekton pipeline to steal secrets via ServiceAccount token theft.
+
+**Setup**:
+```bash
+make setup-ctf-challenge      # Deploy vulnerable version
+# OR
+make setup-ctf-challenge-secure  # Deploy secure version
+```
+
+**Documentation**:
+- [CTF Challenge Guide](tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md) - Participant walkthrough
+- [Attack Analysis](tekton/challenges/challenge1/ATTACK-ANALYSIS.md) - Technical deep-dive
+- [Security Guide](tekton/challenges/challenge1/security/README.md) - Prevention & detection
+
+**Flag**: `FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}`
+
+---
+
+### Challenge 2: Container Image Layer Leak
+**Difficulty**: Medium  
+**Type**: Container Security, Git History Exposure  
+**Location**: `tekton/challenges/challenge2/`
+
+Exploit leaked git history in container image layers to extract secrets.
+
+**Setup**:
+```bash
+make setup-challenge2          # Build and push vulnerable image
+make verify-challenge2         # Run automated tests
+```
+
+**Documentation**:
+- [Challenge README](tekton/challenges/challenge2/ATTACK2-README.md) - Overview and objectives
+- [Exploitation Guide](tekton/challenges/challenge2/ATTACK2-EXPLOITATION-GUIDE.md) - Step-by-step walkthrough
+- [Setup Summary](tekton/challenges/challenge2/ATTACK2-SUMMARY.md) - Technical details
+
+**Flag**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}`
+
+### Challenge 3: Base image poisoning
+
+### Challenge 4: Deployment pipeline contamination
+
+### Challenge 5: To come
+---
+
+### Challenge Progression
+
+The challenges are designed to be completed in sequence:
+
+```
+Challenge 1 (Tekton PWN)
+    ↓ (steal registry credentials)
+Challenge 2 (Layer Leak)
+    ↓ (hint: webhook_c0nf1g_1nj3ct10n)
+Challenge 3 (Base image poisoning)
+```
+
+Each challenge provides credentials or hints for the next one.
 
 ## Support
 

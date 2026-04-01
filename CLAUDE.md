@@ -43,18 +43,37 @@ This is a Capture The Flag (CTF) environment setup project focused on supply cha
 │   └── scripts/                    # Shell scripts for environment setup
 │       ├── setup-kind.sh           # KinD cluster provisioning
 │       ├── setup-gitea.sh          # Gitea installation via Helm
+│       ├── setup-tekton.sh         # Tekton Pipelines installation
 │       ├── setup-registry.sh       # Registry deployment with TLS
 │       ├── configure-registry-tls.sh # TLS trust configuration helper
 │       └── cleanup.sh              # Environment teardown
-├── gitea/                  # Gitea configurations
-│   ├── repos/              # Pre-configured repository definitions
-│   └── configs/            # Custom Gitea configuration files
-├── k8s/                            # Kubernetes manifests
-│   └── base/                       # Base configurations
+├── tekton/                         # Tekton configurations and challenges
+│   ├── tasks/                      # Vulnerable Tekton tasks
+│   ├── pipelines/                  # Vulnerable Tekton pipelines
+│   ├── triggers/                   # Vulnerable Tekton triggers
+│   └── challenges/                 # CTF Challenges
+│       ├── challenge1/             # Attack #1: Tekton Token Theft
+│       │   ├── CTF-CHALLENGE-GUIDE.md
+│       │   ├── ATTACK-ANALYSIS.md
+│       │   ├── security/           # Prevention & detection
+│       │   │   ├── rbac/
+│       │   │   ├── kyverno-policies/
+│       │   │   └── network-policies/
+│       │   └── tekton-patched/     # Secured configurations
+│       ├── challenge2/             # Attack #2: Container Layer Leak
+│       │   ├── ATTACK2-README.md
+│       │   ├── ATTACK2-EXPLOITATION-GUIDE.md
+│       │   ├── ATTACK2-SUMMARY.md
+│       │   └── test-attack2.sh
+│       └── victim-repo-sample/     # Shared victim application
+├── gitea/                          # Gitea configurations
+│   ├── repos/                      # Pre-configured repository definitions
+│   └── configs/                    # Custom Gitea configuration files
 ├── certs/                          # Registry TLS certificates (generated)
 │   └── registry.crt                # CA certificate for client trust
 ├── Makefile                        # Primary automation interface
-└── REGISTRY.md                     # Registry setup and usage documentation
+├── REGISTRY.md                     # Registry setup and usage documentation
+└── SECURITY-GUIDE.md               # Security tools and prevention guide
 ```
 
 ## Development Commands

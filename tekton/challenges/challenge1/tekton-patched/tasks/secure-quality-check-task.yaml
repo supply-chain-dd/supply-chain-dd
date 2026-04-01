@@ -1,0 +1,93 @@
+---
+# Quality Check Task - Still executes untrusted code BUT with security controls
+# This task demonstrates defense-in-depth approach:
+#   - Code execution is still risky (go run on untrusted code)
+#   - BUT: Running with pr-pipeline-readonly ServiceAccount (no secret access)
+#   - AND: Network policies block data exfiltration
+#   - AND: Kyverno policies validate configuration
+#
+# Result: Even if malicious code runs, the attack is blocked at multiple layers
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: quality-check-task
+  namespace: ctf-challenge
+  annotations:
+    security/trust-level: "untrusted-execution"
+    security/required-serviceaccount: "pr-pipeline-readonly"
+    kyverno.io/audit: "warn"
+    description: |
+      Executes quality check scripts from untrusted PR code.
+      Still risky, but protected by:
+      - RBAC: pr-pipeline-readonly SA cannot access secrets
+      - Network: Cannot exfiltrate to external IPs
+      - Kyverno: Validates SA usage and warns on 'go run'
+spec:
+  description: |
+    Runs quality checks on the codebase.
+    VULNERABLE: Executes arbitrary Go code from untrusted PR!
+  workspaces:
+    - name: source
+      description: The workspace containing the source code
+  steps:
+    - name: check-scripts-exist
+      image: alpine:3.18
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        echo "Checking for quality check scripts..."
+        if [ -d "scripts/quality-check" ]; then
+          echo "✓ Quality check scripts found"
+          ls -la scripts/quality-check/
+        else
+          echo "⚠ No quality check scripts found, creating default..."
+          mkdir -p scripts/quality-check
+          cat > scripts/quality-check/main.go <<'EOF'
+        package main
+
+        import "fmt"
+
+        func main() {
+            fmt.Println("Running default quality checks...")
+            fmt.Println("✓ Code formatting: PASS")
+            fmt.Println("✓ Basic linting: PASS")
+            fmt.Println("Quality check completed!")
+        }
+        EOF
+        fi
+
+    - name: run-quality-script
+      image: golang:1.25
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: PR_TASK_RUN
+          value: "true"
+        - name: TEKTON_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      script: |
+        #!/bin/bash
+        set -e
+
+        echo "============================================"
+        echo "Running Quality Checks"
+        echo "============================================"
+        echo "Working directory: $(pwd)"
+        echo "Namespace: ${TEKTON_NAMESPACE}"
+        echo ""
+
+        # VULNERABILITY: Executing untrusted code from PR!
+        # The attacker can inject malicious code in scripts/quality-check/main.go
+        # The Go init() function will execute before main(), allowing stealth attacks
+        cd scripts/quality-check
+
+        echo "Executing quality check script..."
+        go mod tidy
+        go run .  # THIS IS THE VULNERABILITY!
+
+        echo ""
+        echo "============================================"
+        echo "Quality checks completed"
+        echo "============================================"
+---

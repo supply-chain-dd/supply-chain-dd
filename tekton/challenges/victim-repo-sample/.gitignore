@@ -1,0 +1,11 @@
+# Don't ignore _git - we need it in version control!
+# The _git directory is intentionally committed as it contains
+# the git history needed for Challenge #2
+
+# Ignore build artifacts
+main
+recipe-api
+supply-chain-dd
+
+# Ignore actual .git if someone restores it during testing
+.git

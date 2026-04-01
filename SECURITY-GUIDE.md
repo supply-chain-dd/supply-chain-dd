@@ -65,7 +65,7 @@ make verify-security
 **1. Review the attack:**
 ```bash
 cat ATTACK-ANALYSIS.md
-cat tekton/challenges/CTF-CHALLENGE-GUIDE.md
+cat tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md
 ```
 
 **2. Examine the vulnerable pipeline:**
@@ -90,7 +90,7 @@ steps:
 make setup-ctf-challenge
 
 # Review malicious payload
-cat tekton/challenges/malicious-payload-example.go
+cat tekton/challenges/challenge1/malicious-payload-example.go
 
 # The payload steals secrets via:
 # 1. Read K8s ServiceAccount token
@@ -209,7 +209,7 @@ make create-security-policies
 
 **What this creates:**
 
-1. **Kyverno Policies** (`security/kyverno-policies/`)
+1. **Kyverno Policies** (`tekton/challenges/challenge1/security/kyverno-policies/`)
    - Block dangerous ServiceAccounts
    - Warn on risky commands (`go run`, `curl|bash`)
    - Restrict external Git repositories
@@ -218,7 +218,7 @@ make create-security-policies
    - Block egress to external IPs
    - Allow only: DNS, K8s API, internal Gitea
 
-3. **RBAC Configs** (`security/rbac/`)
+3. **RBAC Configs** (`tekton/challenges/challenge1/security/rbac/`)
    - `pr-pipeline-readonly`: NO secret access
    - `main-pipeline`: Limited secret access
    - `security-auditor`: Monitoring access
@@ -445,7 +445,7 @@ kubectl edit clusterpolicy restrict-external-git-repositories
 ### Allow Specific External Repositories
 
 ```yaml
-# Edit security/kyverno-policies/restrict-external-git-repos.yaml
+# Edit tekton/challenges/challenge1/security/kyverno-policies/restrict-external-git-repos.yaml
 # Add exception rule:
 rules:
 - name: allow-trusted-repo

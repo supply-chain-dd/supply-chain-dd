@@ -1,79 +1,119 @@
-# Awesome Project
+# Victim Repository Sample - Recipe API
 
-A sample open-source project demonstrating Tekton Pipelines for CI/CD.
+This is a sample repository used for **CTF Challenge #2** (Container Image Layer Leak).
 
-## Project Structure
+## About This Repository
 
-```
-.
-├── README.md
-├── scripts/
-│   └── quality-check/
-│       └── main.go          # Quality check script
-└── .tekton/
-    └── README.md            # CI/CD documentation
-```
+This directory contains:
+- A simple Go REST API for managing recipes
+- A **vulnerable Dockerfile** that leaks git history
+- A **_git directory** (renamed from `.git` to allow version control)
 
-## Contributing
+## Git History (_git)
 
-We welcome contributions! Please follow these guidelines:
+The `_git` directory contains git history with:
+- **Commit 1 (b4acebb)**: Includes `.env.production` with secrets:
+  - Database credentials
+  - API keys (Stripe, SendGrid)
+  - Registry credentials
+  - **FLAG**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}`
+- **Commit 2 (6f94c1f)**: Attempts to delete `.env.production` (but it remains in history!)
 
-1. Fork this repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+During the build process, the Dockerfile copies this git history into the container image layers.
 
-### Automated Quality Checks
+## Why _git Instead of .git?
 
-All pull requests automatically trigger our quality check pipeline. The pipeline will:
-- Clone your PR code
-- Run formatting checks
-- Run linting
-- Verify code quality
-- Post results as a comment on your PR
+Git repositories cannot contain nested `.git` directories. To version control the victim repository's git history (which contains the secrets needed for the CTF), we rename it to `_git`. 
 
-The pipeline typically completes in under 2 minutes.
+The Makefile automatically restores it to `.git` during the build process in a temporary location.
 
-## CI/CD Pipeline
+## Setup for Challenge 2
 
-This project uses **Tekton Pipelines** for continuous integration. Our CI system:
+The Makefile handles everything automatically:
 
-- Automatically runs on every pull request
-- Checks code quality and formatting
-- Runs security scans
-- Provides feedback directly on your PR
-
-### How It Works
-
-When you open a PR, our Tekton EventListener receives a webhook from Git and:
-1. Clones your fork at the PR commit SHA
-2. Runs `scripts/quality-check/main.go` to validate code quality
-3. Reports results back to the PR
-
-**Note:** The quality check script runs automatically - you don't need to do anything special!
-
-## Quality Check Script
-
-Our quality checks are defined in `scripts/quality-check/main.go`. This script:
-- Validates Go code formatting
-- Checks for common issues
-- Ensures README exists
-- Verifies project structure
-
-You can run the quality checks locally:
 ```bash
-cd scripts/quality-check
-go run .
+# Complete setup: builds image with _git restored to .git
+make setup-challenge2
+
+# Or step by step:
+make build-recipe-api    # Copies to /tmp, restores _git → .git, builds
+make push-recipe-api     # Pushes to registry
+make verify-challenge2   # Runs automated tests
 ```
 
-## License
+## The Vulnerability
 
-MIT License - see LICENSE file for details
+The Dockerfile contains this common mistake:
 
-## Security
+```dockerfile
+COPY . .              # Copies everything INCLUDING .git
+RUN rm -rf .git       # Attempts to delete .git
+```
 
-If you discover any security issues, please email security@awesome-project.example (this is a CTF demo - not a real address).
+**Problem**: Docker layers are immutable. The `rm -rf .git` command only adds a deletion marker in a **new layer**. The actual `.git` content remains accessible in the **previous layer**!
 
----
+Attackers can:
+1. Pull the image
+2. Extract the layer tar files
+3. Find the layer containing `.git`
+4. Extract the git history
+5. Retrieve deleted secrets from git commits
 
-Built with ❤️ by the Awesome Project team
+## Manual Build (for testing)
+
+If you want to build manually:
+
+```bash
+# 1. Create a temporary build directory
+mkdir -p /tmp/recipe-api-build
+cp -r /home/skhoury/go/src/github.com/sherine-k/supply-chain-dd/tekton/challenges/victim-repo-sample /tmp/recipe-api-build/src
+cd /tmp/recipe-api-build/src
+
+# 2. Restore git history
+mv _git .git
+
+# 3. Verify git history
+git log --oneline
+
+# 4. Build the image
+podman build -t localhost:30000/recipe-api:v1.0 .
+
+# 5. Push to registry
+podman login localhost:30000 --tls-verify=false -u ctf-admin -p CTFRegistryPass123!
+podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
+```
+
+## Files
+
+- `main.go` - Recipe API server (REST endpoints)
+- `internal/recipe/recipe.go` - Recipe business logic
+- `Dockerfile` - **VULNERABLE** - Leaks git history in image layers
+- `_git/` - Git repository with secret history (**committed to version control!**)
+- `go.mod` - Go module definition
+- `.gitignore` - Ignores `.git` but **allows** `_git`
+
+## Flag Location
+
+The flag is hidden in the first git commit in `.env.production`:
+
+```bash
+# After extracting image layers:
+cd /path/to/extracted/layer/with/.git
+git show b4acebb:.env.production
+# Look for: FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}
+```
+
+## API Endpoints
+
+See [README-API.md](./README-API.md) for API documentation.
+
+## For CTF Participants
+
+1. Complete Challenge #1 to get registry credentials
+2. Use those credentials to access `https://localhost:30000`
+3. Pull `recipe-api:v1.0`
+4. Extract image layers
+5. Find `.git` directory in one of the layers
+6. Explore git history for the flag
+
+**Detailed walkthrough**: See `../challenge2/ATTACK2-EXPLOITATION-GUIDE.md`

@@ -1,6 +1,7 @@
 .PHONY: help setup setup-kind setup-gitea setup-tekton setup-registry setup-ctf-challenge setup-ctf-challenge-secure verify verify-ctf status clean
 .PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security create-security-policies
 .PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls
+.PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2
 
 CLUSTER_NAME ?= ctf-cluster
 GITEA_VERSION ?= 10.6.1
@@ -126,11 +127,12 @@ help: ## Display this help message
 	@echo ""
 	@echo "Documentation:"
 	@echo "  • SECURITY-GUIDE.md - Comprehensive security tools guide"
-	@echo "  • ATTACK-ANALYSIS.md - Attack comparison (GitHub vs Tekton)"
-	@echo "  • security/README.md - Policy details and testing"
+	@echo "  • tekton/challenges/challenge1/ATTACK-ANALYSIS.md - Attack comparison"
+	@echo "  • tekton/challenges/challenge1/security/README.md - Policy details"
+	@echo "  • tekton/challenges/challenge2/ATTACK2-README.md - Container layer attack"
 	@echo ""
 
-setup: check-cli-tools setup-kind setup-gitea setup-tekton verify ## Complete setup (KinD cluster + Gitea + act_runner + verification)
+setup: check-cli-tools setup-kind setup-gitea setup-tekton setup-registry verify ## Complete setup (KinD cluster + Gitea + tekton + registry + verification)
 	@echo ""
 	@echo "✓ Setup complete! Next steps:"
 	@echo "  • Run 'make setup-ctf-challenge' to install CTF resources"
@@ -188,7 +190,7 @@ setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE versi
 	@echo "   - Attack will succeed"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  1. Review the challenge guide: tekton/challenges/CTF-CHALLENGE-GUIDE.md"
+	@echo "  1. Review the challenge guide: tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
 	@echo "  2. Setup victim repository: tekton/challenges/victim-repo-sample/"
 	@echo "  3. Test the attack: make verify-ctf"
 	@echo ""
@@ -200,12 +202,12 @@ setup-ctf-challenge-secure: ## Install Tekton CTF challenge with SECURE configur
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
 	@echo ""
 	@echo "Step 1: Deploying security RBAC (minimal ServiceAccounts)..."
-	@kubectl apply -f security/rbac/minimal-serviceaccounts.yaml
+	@kubectl apply -f tekton/challenges/challenge1/security/rbac/minimal-serviceaccounts.yaml
 	@echo ""
 	@echo "Step 2: Deploying secure Tekton resources..."
-	@kubectl apply -f tekton-patched/tasks/
-	@kubectl apply -f tekton-patched/pipelines/
-	@kubectl apply -f tekton-patched/triggers/
+	@kubectl apply -f tekton/challenges/challenge1/tekton-patched/tasks/
+	@kubectl apply -f tekton/challenges/challenge1/tekton-patched/pipelines/
+	@kubectl apply -f tekton/challenges/challenge1/tekton-patched/triggers/
 	@echo ""
 	@echo "Step 3: Creating CTF flag secret with registry credentials..."
 	@kubectl create secret generic ctf-flag \
@@ -226,12 +228,13 @@ setup-ctf-challenge-secure: ## Install Tekton CTF challenge with SECURE configur
 	@echo "Next steps:"
 	@echo "  1. Apply Network Policies: make apply-prevention-policies"
 	@echo "  2. Verify security: make verify-security"
-	@echo "  3. Test that attack is blocked: see tekton-patched/README.md"
+	@echo "  3. Test that attack is blocked: see tekton/challenges/challenge1/tekton-patched/README.md"
 	@echo ""
 	@echo "To compare with vulnerable version:"
-	@echo "  diff -u tekton/ tekton-patched/"
+	@echo "  diff -u tekton/ tekton/challenges/challenge1/tekton-patched/"
 
-verify: ## Verify environment is working correctly
+verify: verify-registry
+ ## Verify environment is working correctly
 	@echo "Verifying CTF environment..."
 	@echo ""
 	@echo "Cluster Info:"
@@ -529,3 +532,51 @@ verify-security: ## Verify security tools and policies are working
 	@kubectl get sa -n ctf-challenge 2>/dev/null || echo "  CTF challenge not set up"
 	@echo ""
 	@echo "✓ Security verification complete"
+# ============================================================
+# Challenge 2: Container Image Layer Leak
+# ============================================================
+
+setup-challenge2: setup-registry build-recipe-api push-recipe-api ## Setup Challenge 2 (container layer leak)
+	@echo ""
+	@echo "========================================"
+	@echo "Challenge 2: Container Image Layer Leak"
+	@echo "========================================"
+	@echo ""
+	@echo "✓ Registry deployed and configured"
+	@echo "✓ recipe-api:v1.0 image built and pushed"
+	@echo ""
+	@echo "Attack #1 flag updated with registry credentials"
+	@echo "  FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Complete Attack #1 to obtain registry credentials"
+	@echo "  2. Review guide: tekton/challenges/challenge2/ATTACK2-README.md"
+	@echo "  3. Verify setup: make verify-challenge2"
+	@echo ""
+
+build-recipe-api: ## Build the recipe-api container image
+	@echo "Building recipe-api:v1.0 image..."
+	@echo "  Preparing build context (restoring git history)..."
+	@rm -rf /tmp/recipe-api-build
+	@cp -r tekton/challenges/victim-repo-sample /tmp/recipe-api-build
+	@if [ -d /tmp/recipe-api-build/_git ]; then \
+		mv /tmp/recipe-api-build/_git /tmp/recipe-api-build/.git; \
+		echo "  ✓ Git history restored from _git"; \
+	fi
+	@echo "  Building image with leaked git history..."
+	@cd /tmp/recipe-api-build && \
+		podman build -t localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
+	@echo "✓ Image built successfully with .git in layers"
+	@echo "  Note: /tmp/recipe-api-build contains the build context (you can inspect it)"
+
+push-recipe-api: ## Push recipe-api image to registry
+	@echo "Pushing recipe-api:v1.0 to registry..."
+	@podman login localhost:$(REGISTRY_NODE_PORT) --tls-verify=false \
+		-u $(REGISTRY_USER) -p $(REGISTRY_PASS) 2>/dev/null || true
+	@podman push localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 --tls-verify=false
+	@echo "✓ Image pushed to registry"
+
+verify-challenge2: ## Verify Challenge 2 setup
+	@echo "Verifying Challenge 2 setup..."
+	@cd tekton/challenges/challenge2 && ./test-attack2.sh
+

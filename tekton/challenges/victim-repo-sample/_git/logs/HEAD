@@ -1,0 +1,2 @@
+0000000000000000000000000000000000000000 b4acebb712a01047dd9b76caed4934ae2b988a2a Recipe Developer <developer@recipeco.com> 1775033784 +0200	commit (initial): Initial commit: Recipe API v1.0 with production config
+b4acebb712a01047dd9b76caed4934ae2b988a2a 6f94c1f31385ee96a7aaa66ba8aac1c4cea45e8f Recipe Developer <developer@recipeco.com> 1775033792 +0200	commit: Security fix: Remove accidentally committed production secrets

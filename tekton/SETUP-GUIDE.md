@@ -242,7 +242,7 @@ tkn pipeline start pr-quality-check-pipeline \
 Provide participants with:
 
 1. **Victim Repository URL**: The Git repo with benign quality checks
-2. **Challenge Description**: See `tekton/challenges/CTF-CHALLENGE-GUIDE.md`
+2. **Challenge Description**: See `tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md`
 3. **Access to Cluster**: kubectl config or dashboard access (read-only except for their namespace)
 4. **Goal**: Retrieve the flag from the `ctf-flag` secret
 
@@ -404,10 +404,12 @@ make clean
 
 ## Resources
 
-- Challenge Guide: `tekton/challenges/CTF-CHALLENGE-GUIDE.md`
-- Malicious Payload Example: `tekton/challenges/malicious-payload-example.go`
-- Attack Analysis: `ATTACK-ANALYSIS.md`
+- Challenge Guide: `tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md`
+- Malicious Payload Example: `tekton/challenges/challenge1/malicious-payload-example.go`
+- Attack Analysis: `tekton/challenges/challenge1/ATTACK-ANALYSIS.md`
+- Security Hardening: `tekton/challenges/challenge1/tekton-patched/`
 - Victim Repo Sample: `tekton/challenges/victim-repo-sample/`
+- Challenge 2 (Layer Leak): `tekton/challenges/challenge2/ATTACK2-README.md`
 
 ## Support
 
