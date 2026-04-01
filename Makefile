@@ -1,6 +1,6 @@
-.PHONY: help setup setup-kind setup-gitea setup-tekton setup-ctf-challenge verify verify-ctf status clean
+.PHONY: help setup setup-kind setup-gitea setup-tekton setup-registry setup-ctf-challenge setup-ctf-challenge-secure verify verify-ctf status clean
 .PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security
-.PHONY: check-cli-tools install-tkn install-kubescape
+.PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls
 
 CLUSTER_NAME ?= ctf-cluster
 GITEA_VERSION ?= 10.6.1
@@ -9,6 +9,10 @@ KYVERNO_VERSION ?= v3.7.1
 KUBESCAPE_VERSION ?= latest
 TKN_VERSION ?= v0.35.1
 KUBESCAPE_CLI_VERSION ?= v3.0.3
+REGISTRY_PORT ?= 5000
+REGISTRY_NODE_PORT ?= 30000
+REGISTRY_USER ?= ctf-admin
+REGISTRY_PASS ?= CTFRegistryPass123!
 
 # ============================================================
 # CLI Tools Installation
@@ -98,7 +102,7 @@ help: ## Display this help message
 	@grep -E '^(check-cli-tools|install-tkn|install-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Environment Setup:"
-	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-ctf-challenge):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-registry|configure-registry-tls|setup-ctf-challenge|setup-ctf-challenge-secure):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Tools:"
 	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
@@ -107,7 +111,7 @@ help: ## Display this help message
 	@grep -E '^(create-security-policies|apply-prevention-policies|security-scan|verify-security):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Verification:"
-	@grep -E '^(verify|verify-ctf|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(verify|verify-ctf|verify-registry|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Cleanup:"
 	@grep -E '^(clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
@@ -115,9 +119,10 @@ help: ## Display this help message
 	@echo "Quick Start:"
 	@echo "  1. make check-cli-tools          # Check for required CLI tools"
 	@echo "  2. make setup                    # Setup complete CTF environment"
-	@echo "  3. make setup-security-tools     # Deploy Kyverno + Kubescape"
-	@echo "  4. make apply-prevention-policies # Apply security policies"
-	@echo "  5. make security-scan            # Run security scans"
+	@echo "  3. make setup-registry           # Setup local Docker registry"
+	@echo "  4. make setup-security-tools     # Deploy Kyverno + Kubescape"
+	@echo "  5. make apply-prevention-policies # Apply security policies"
+	@echo "  6. make security-scan            # Run security scans"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  • SECURITY-GUIDE.md - Comprehensive security tools guide"
@@ -153,17 +158,25 @@ setup-tekton: ## Install Tekton Pipelines and Triggers
 		echo ""; \
 	fi
 
-setup-ctf-challenge: ## Install Tekton CTF challenge resources
-	@echo "Installing Tekton CTF Challenge..."
+setup-registry: ## Setup local Docker registry with authentication
+	@cd setup && ./scripts/setup-registry.sh
+
+configure-registry-tls: ## Configure TLS trust for the registry (interactive)
+	@cd setup && ./scripts/configure-registry-tls.sh
+
+setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE version)
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
 	@kubectl apply -f tekton/triggers/vulnerable-eventlistener.yaml
 	@kubectl apply -f tekton/tasks/supporting-tasks.yaml
 	@kubectl apply -f tekton/tasks/vulnerable-quality-check-task.yaml
 	@kubectl apply -f tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
 	@echo ""
-	@echo "Creating CTF flag secret..."
+	@echo "Creating CTF flag secret with registry credentials..."
 	@kubectl create secret generic ctf-flag \
 		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
+		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
+		--from-literal=registry-user='$(REGISTRY_USER)' \
+		--from-literal=registry-password='$(REGISTRY_PASS)' \
 		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
 	@echo ""
 	@echo "✓ CTF Challenge installed successfully"
@@ -187,6 +200,9 @@ verify: ## Verify environment is working correctly
 # 	@echo ""
 # 	@echo "Act Runner:"
 # 	@kubectl get pods -n gitea -l app=act-runner 2>/dev/null || echo "  Act runner not installed"
+	@echo ""
+	@echo "Registry:"
+	@kubectl get pods -n registry 2>/dev/null || echo "  Registry not running (run: make setup-registry)"
 	@echo ""
 	@echo "Helm Releases:"
 	@helm list -n gitea
@@ -215,7 +231,12 @@ status: ## Show environment status
 # 	@echo "Act Runner:"
 # 	@kubectl get pods -n gitea -l app=act-runner 2>/dev/null || echo "  Act runner not installed"
 	@echo ""
-	@echo "Access Gitea at: http://localhost:30002"
+	@echo "Registry:"
+	@kubectl get pods,svc -n registry 2>/dev/null || echo "  Registry not running (run: make setup-registry)"
+	@echo ""
+	@echo "Access URLs:"
+	@echo "  Gitea:    http://localhost:30002"
+	@echo "  Registry: https://localhost:$(REGISTRY_NODE_PORT)"
 
 verify-ctf: ## Verify Tekton CTF challenge installation
 	@echo "Verifying Tekton CTF Challenge..."
@@ -254,6 +275,42 @@ verify-ctf: ## Verify Tekton CTF challenge installation
 	@echo "    --param pr-number=1 \\"
 	@echo "    --workspace name=source,emptyDir=\"\" \\"
 	@echo "    --showlog"
+
+verify-registry: ## Verify registry is working correctly
+	@echo "Verifying Docker Registry..."
+	@echo ""
+	@echo "Registry Deployment:"
+	@kubectl get deployment registry -n registry 2>/dev/null || { echo "  ❌ Registry deployment not found (run: make setup-registry)"; exit 1; }
+	@echo ""
+	@echo "Registry Pods:"
+	@kubectl get pods -n registry -l app=registry 2>/dev/null || echo "  ❌ Registry pods not found"
+	@echo ""
+	@echo "Registry Service:"
+	@kubectl get svc registry -n registry 2>/dev/null || echo "  ❌ Registry service not found"
+	@echo ""
+	@echo "Registry PVC:"
+	@kubectl get pvc registry-storage -n registry 2>/dev/null || echo "  ❌ Registry storage not found"
+	@echo ""
+	@echo "Registry Secret:"
+	@kubectl get secret registry-auth -n registry 2>/dev/null && echo "  ✓ Registry auth secret exists" || echo "  ❌ Registry auth secret not found"
+	@echo ""
+	@echo "Testing registry connectivity..."
+	@echo "  External (from host):"
+	@curl -k -sf -u $(REGISTRY_USER):$(REGISTRY_PASS) https://localhost:$(REGISTRY_NODE_PORT)/v2/_catalog 2>/dev/null && \
+		echo "    ✓ Registry accessible from host" || \
+		echo "    ❌ Registry not accessible from host"
+	@echo ""
+	@echo "  Internal (from cluster):"
+	@kubectl run test-registry-verify --image=curlimages/curl:latest --rm -i --restart=Never --timeout=30s -- \
+		sh -c 'curl -k -sf -u $(REGISTRY_USER):$(REGISTRY_PASS) https://registry.registry.svc.cluster.local:5000/v2/_catalog' 2>/dev/null && \
+		echo "    ✓ Registry accessible from cluster" || \
+		echo "    ❌ Registry not accessible from cluster"
+	@echo ""
+	@echo "✓ Registry verification complete"
+	@echo ""
+	@echo "Registry credentials:"
+	@echo "  Username: $(REGISTRY_USER)"
+	@echo "  Password: $(REGISTRY_PASS)"
 
 clean: ## Cleanup environment (delete cluster and resources)
 	@cd setup && ./scripts/cleanup.sh

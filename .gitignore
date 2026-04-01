@@ -19,6 +19,9 @@ Thumbs.db
 # Kubernetes
 kubeconfig
 
+# Registry certificates
+certs/
+
 # Environment specific
 .env
 .env.local
