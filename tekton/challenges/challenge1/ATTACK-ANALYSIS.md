@@ -1,7 +1,14 @@
-# Attack Analysis: Token Theft via Poisoned Scripts
-## GitHub Actions vs Tekton Pipelines
+# Tekton "Pwn Request" CTF Challenge
 
-This document analyzes the attack described in the StepSecurity article and demonstrates how it can be replicated (and potentially made more dangerous) using Tekton Pipelines.
+This directory contains a complete CTF challenge demonstrating the "Pwn Request" vulnerability in Tekton Pipelines - the Tekton equivalent of the GitHub Actions `pull_request_target` vulnerability.
+
+## Overview
+
+**Attack Type:** Token Theft via Poisoned Go Script
+**Inspired by:** [StepSecurity's HackerBot CLAW GitHub Actions Exploitation](https://www.stepsecurity.io/blog/hackerbot-claw-github-actions-exploitation#attack-1-avelinoawesome-go---token-theft-via-poisoned-go-script)
+
+**Key Difference:** While GitHub Actions exposes a scoped `GITHUB_TOKEN`, Tekton exposes a Kubernetes ServiceAccount token with potentially cluster-wide access, making this attack MORE dangerous.
+
 
 ## Original GitHub Actions Attack (avelino/awesome-go)
 
@@ -301,32 +308,6 @@ curl -H "Authorization: Bearer $KUBE_TOKEN" \
 
 ---
 
-## CTF Challenge Design
-
-For a CTF environment, this creates an excellent learning opportunity:
-
-### Challenge 1: Basic Token Theft
-- Participant discovers vulnerable EventListener
-- Crafts malicious PR with Go `init()` function
-- Exfiltrates service account token
-- **Flag:** Hidden in a Kubernetes secret accessible with stolen token
-
-### Challenge 2: Privilege Escalation
-- Stolen token has limited permissions
-- Participant must find and exploit misconfigured RBAC
-- **Flag:** Accessible only with cluster-admin permissions
-
-### Challenge 3: Persistence
-- Participant must maintain access after pipeline completes
-- Create persistent backdoor using stolen credentials
-- **Flag:** Obtained after maintaining access for X minutes
-
-### Challenge 4: Detection Evasion
-- All previous attacks are logged
-- Participant must exfiltrate secrets without triggering alerts
-- **Flag:** Retrieved while staying under detection threshold
-
----
 
 ## Mitigation Strategies
 
