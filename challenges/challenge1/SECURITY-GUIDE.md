@@ -15,13 +15,13 @@ After completing this guide, you will understand how to:
 
 ### Detection Tools
 
-| Tool | Purpose | What It Detects |
-|------|---------|-----------------|
-| **Zizmor** | GitHub Actions scanner | `pull_request_target` misuse, script injection |
-| **Scorecard** | OSSF project evaluator | Dangerous workflows, excessive permissions |
-| **Kubescape** | K8s security scanner | RBAC misconfigurations, NSA/MITRE compliance |
-| **Kyverno** | Policy engine (audit mode) | Dangerous ServiceAccounts, risky commands |
-| **Audicia.io** | RBAC analyzer | Anomalous secret access, over-privileged SAs |
+| Tool | Purpose | What It Detects |GitHub compliant | Gitea compliant |
+|------|---------|-----------------|-----------------|-----------------|
+| **Zizmor** | GitHub Actions scanner | `pull_request_target` misuse, script injection |✅|❌|
+| **Scorecard** | OSSF project evaluator | Dangerous workflows, excessive permissions |✅|❌|
+| **Kubescape** | K8s security scanner | RBAC misconfigurations, NSA/MITRE compliance |✅|✅|
+| **Kyverno** | Policy engine (audit mode) | Dangerous ServiceAccounts, risky commands |✅|✅|
+| **Audicia.io** | RBAC analyzer | Anomalous secret access, over-privileged SAs |✅|✅|
 
 ### Prevention Tools
 

@@ -492,18 +492,18 @@ apply-prevention-policies: ## Apply Kyverno policies and network policies
 	@echo ""
 	@echo "[1/3] Applying Kyverno policies..."
 	@echo "------------------------------------------------"
-	@if [ -d "security/kyverno-policies" ]; then \
-		kubectl apply -f security/kyverno-policies/; \
+	@if [ -d "challenges/challenge1/security/kyverno-policies" ]; then \
+		kubectl apply -f challenges/challenge1/security/kyverno-policies/; \
 		echo "✓ Kyverno policies applied"; \
 	else \
 		echo "  ❌ No Kyverno policies found in security/kyverno-policies/"; \
-		echo "  Run: make create-security-policies"; \
+		echo "  Run: make challenges/challenge1/create-security-policies"; \
 	fi
 	@echo ""
 	@echo "[2/3] Applying Network Policies..."
 	@echo "------------------------------------------------"
-	@if [ -d "security/network-policies" ]; then \
-		kubectl apply -f security/network-policies/; \
+	@if [ -d "challenges/challenge1/security/network-policies" ]; then \
+		kubectl apply -f challenges/challenge1/security/network-policies/; \
 		echo "✓ Network policies applied"; \
 	else \
 		echo "  ❌ No Network policies found in security/network-policies/"; \
@@ -512,8 +512,8 @@ apply-prevention-policies: ## Apply Kyverno policies and network policies
 	@echo ""
 	@echo "[3/3] Applying RBAC hardening..."
 	@echo "------------------------------------------------"
-	@if [ -f "security/rbac/minimal-serviceaccounts.yaml" ]; then \
-		kubectl apply -f security/rbac/; \
+	@if [ -f "challenges/challenge1/security/rbac/minimal-serviceaccounts.yaml" ]; then \
+		kubectl apply -f challenges/challenge1/security/rbac/; \
 		echo "✓ RBAC policies applied"; \
 	else \
 		echo "  ❌ No RBAC policies found in security/rbac/"; \

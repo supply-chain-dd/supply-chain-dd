@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Get the project root (two levels up from scripts/)
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-SECURITY_DIR="${PROJECT_ROOT}/security"
+SECURITY_DIR="${PROJECT_ROOT}/challenges/challenge1/security"
 
 echo -e "${GREEN}✓${NC} Project root: ${PROJECT_ROOT}"
 echo -e "${GREEN}✓${NC} Security policies directory: ${SECURITY_DIR}"
