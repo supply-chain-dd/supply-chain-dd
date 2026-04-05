@@ -2,11 +2,11 @@
 
 This directory contains **secured versions** of the Tekton pipeline resources that use minimal service accounts and defense-in-depth security controls.
 
-## 🔄 What Changed from `tekton/` (Vulnerable Version)
+## 🔄 What Changed from `challenges/challenge1/tekton/` (Vulnerable Version)
 
 ### Key Security Improvements
 
-| Aspect | Vulnerable (`tekton/`) | Secure (`tekton-patched/`) |
+| Aspect | Vulnerable (`challenges/challenge1/tekton/`) | Secure (`tekton-patched/`) |
 |--------|------------------------|---------------------------|
 | **ServiceAccount** | Uses `default` SA (has secret access) | Uses `pr-pipeline-readonly` SA (NO secret access) |
 | **RBAC** | Default SA can read all secrets | pr-pipeline-readonly cannot access secrets |
@@ -21,7 +21,7 @@ This directory contains **secured versions** of the Tekton pipeline resources th
 **CRITICAL CHANGE**: PipelineRun template now specifies ServiceAccount
 
 ```yaml
-# Before (tekton/triggers/vulnerable-eventlistener.yaml):
+# Before (challenges/challenge1/tekton/triggers/vulnerable-eventlistener.yaml):
 kind: PipelineRun
 spec:
   pipelineRef:
@@ -84,7 +84,7 @@ kubectl get sa -n ctf-challenge
 
 ```bash
 # Deploy vulnerable version (for attack demonstration)
-kubectl apply -f tekton/
+kubectl apply -f challenges/challenge1/tekton/
 
 # Test the attack (follows CTF challenge guide)
 # Flag gets stolen successfully
@@ -93,7 +93,7 @@ kubectl apply -f tekton/
 make apply-prevention-policies
 
 # Replace with secure version
-kubectl delete -f tekton/
+kubectl delete -f challenges/challenge1/tekton/
 kubectl apply -f tekton-patched/
 
 # Test the attack again
@@ -208,7 +208,7 @@ tkn pipeline start pr-quality-check-pipeline \
 
 ### For CTF Participants
 
-1. **Experience the vulnerability** (use `tekton/`)
+1. **Experience the vulnerability** (use `challenges/challenge1/tekton/`)
    - Deploy vulnerable version
    - Run the attack
    - Steal the flag
@@ -248,7 +248,7 @@ tkn pipeline start pr-quality-check-pipeline \
 
 ```bash
 # See what changed
-diff -u tekton/triggers/vulnerable-eventlistener.yaml \
+diff -u challenges/challenge1/tekton/triggers/vulnerable-eventlistener.yaml \
         tekton-patched/triggers/secure-eventlistener.yaml
 
 # Key differences:
@@ -260,10 +260,10 @@ diff -u tekton/triggers/vulnerable-eventlistener.yaml \
 
 | Vulnerable Version | Secure Version | Main Change |
 |-------------------|----------------|-------------|
-| `tekton/triggers/vulnerable-eventlistener.yaml` | `tekton-patched/triggers/secure-eventlistener.yaml` | ✅ Added `serviceAccountName: pr-pipeline-readonly` to PipelineRun<br>❌ Removed dangerous default SA RBAC |
-| `tekton/pipelines/vulnerable-pr-quality-pipeline.yaml` | `tekton-patched/pipelines/secure-pr-quality-pipeline.yaml` | Added security annotations and comments |
-| `tekton/tasks/vulnerable-quality-check-task.yaml` | `tekton-patched/tasks/secure-quality-check-task.yaml` | Added security context logging and defense explanations |
-| `tekton/tasks/supporting-tasks.yaml` | `tekton-patched/tasks/supporting-tasks.yaml` | Added security annotations |
+| `challenges/challenge1/tekton/triggers/vulnerable-eventlistener.yaml` | `tekton-patched/triggers/secure-eventlistener.yaml` | ✅ Added `serviceAccountName: pr-pipeline-readonly` to PipelineRun<br>❌ Removed dangerous default SA RBAC |
+| `challenges/challenge1/tekton/pipelines/vulnerable-pr-quality-pipeline.yaml` | `tekton-patched/pipelines/secure-pr-quality-pipeline.yaml` | Added security annotations and comments |
+| `challenges/challenge1/tekton/tasks/vulnerable-quality-check-task.yaml` | `tekton-patched/tasks/secure-quality-check-task.yaml` | Added security context logging and defense explanations |
+| `challenges/challenge1/tekton/tasks/supporting-tasks.yaml` | `tekton-patched/tasks/supporting-tasks.yaml` | Added security annotations |
 
 ---
 

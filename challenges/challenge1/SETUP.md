@@ -281,7 +281,7 @@ Now that everything is set up, here's what participants will exploit:
 
 The Tekton pipeline is configured with the **"Pwn Request"** vulnerability:
 
-1. **Vulnerable TriggerBinding** ([vulnerable-eventlistener.yaml:38-39](../../../triggers/vulnerable-eventlistener.yaml#L38-L39)):
+1. **Vulnerable TriggerBinding** ([vulnerable-eventlistener.yaml:38-39](tekton/triggers/vulnerable-eventlistener.yaml#L38-L39)):
    ```yaml
    - name: pr-repo-url
      value: $(body.pull_request.head.repo.clone_url)  # Attacker's fork!
@@ -289,7 +289,7 @@ The Tekton pipeline is configured with the **"Pwn Request"** vulnerability:
      value: $(body.pull_request.head.sha)             # Attacker's code!
    ```
 
-2. **Overprivileged ServiceAccount** ([vulnerable-eventlistener.yaml:164-189](../../../triggers/vulnerable-eventlistener.yaml#L164-L189)):
+2. **Overprivileged ServiceAccount** ([vulnerable-eventlistener.yaml:164-189](tekton/triggers/vulnerable-eventlistener.yaml#L164-L189)):
    - The `default` ServiceAccount (used by TaskRuns) has `get` and `list` permissions on **all secrets**
    - This allows malicious code to read the `ctf-flag` secret
 
@@ -396,7 +396,7 @@ This is a **deliberately vulnerable** configuration for educational purposes:
 **Do NOT use this in production!**
 
 To see the **secure** version, check:
-- [tekton-patched/](security/../tekton-patched/) - Hardened configuration
+- [tekton-patched/](tekton-patched/) - Hardened configuration
 - [security/](security/) - Prevention and detection mechanisms
 
 ## Additional Resources

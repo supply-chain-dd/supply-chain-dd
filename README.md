@@ -47,7 +47,7 @@ Once the environment is set up and the registry is configured, proceed to set up
 make setup-ctf-challenge
 ```
 
-Then follow the detailed instructions in **[tekton/challenges/challenge1/SETUP.md](tekton/challenges/challenge1/SETUP.md)** to complete the victim repository setup and webhook configuration.
+Then follow the detailed instructions in **[challenges/challenge1/SETUP.md](challenges/challenge1/SETUP.md)** to complete the victim repository setup and webhook configuration.
 
 ## Environment Details
 
@@ -107,7 +107,7 @@ This environment contains multiple supply chain security challenges:
 
 Attack a vulnerable Tekton pipeline to steal secrets via ServiceAccount token theft.
 
-**Setup**: See [tekton/challenges/challenge1/SETUP.md](tekton/challenges/challenge1/SETUP.md)
+**Setup**: See [challenges/challenge1/SETUP.md](challenges/challenge1/SETUP.md)
 
 **Flag**: `FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}`
 
@@ -125,7 +125,7 @@ make setup-challenge2
 make verify-challenge2
 ```
 
-**Documentation**: [tekton/challenges/challenge2/ATTACK2-README.md](tekton/challenges/challenge2/ATTACK2-README.md)
+**Documentation**: [challenges/challenge2/ATTACK2-README.md](challenges/challenge2/ATTACK2-README.md)
 
 **Flag**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}`
 

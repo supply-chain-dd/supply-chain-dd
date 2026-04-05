@@ -7,7 +7,7 @@ All components for Attack #2 are now in place and tested.
 ### What Was Created
 
 #### 1. Vulnerable Docker Image
-- **Location**: `tekton/challenges/victim-repo-sample/Dockerfile`
+- **Location**: `challenges/victim-repo-sample/Dockerfile`
 - **Image**: `localhost:30000/recipe-api:v1.0`
 - **Vulnerability**: Single-stage build with `.git` copied and then "deleted"
 - **Key Layers**:
@@ -72,7 +72,7 @@ Attack #1 (Tekton PWN)
 
 Run the automated test:
 ```bash
-cd tekton/challenges/victim-repo-sample
+cd challenges/victim-repo-sample
 ./test-attack2.sh
 ```
 
@@ -108,7 +108,7 @@ git show b4acebb:.env.production | grep FLAG
 ### Files Modified/Created
 
 ```
-tekton/challenges/victim-repo-sample/
+challenges/victim-repo-sample/
 ├── .git/                              # NEW - Git repository with secret history
 │   ├── objects/                       # Contains deleted .env.production
 │   ├── logs/                          # Git reflog
@@ -174,7 +174,7 @@ The flag hints at: `webhook_c0nf1g_1nj3ct10n`
 
 **Image not in registry?**
 ```bash
-cd tekton/challenges/victim-repo-sample
+cd challenges/victim-repo-sample
 podman build -t localhost:30000/recipe-api:v1.0 .
 podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
 ```
@@ -191,7 +191,7 @@ podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
 
 **Can't find flag in git history?**
 ```bash
-cd tekton/challenges/victim-repo-sample
+cd challenges/victim-repo-sample
 git log --all --oneline
 git show b4acebb:.env.production
 ```

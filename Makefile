@@ -127,9 +127,9 @@ help: ## Display this help message
 	@echo ""
 	@echo "Documentation:"
 	@echo "  • SECURITY-GUIDE.md - Comprehensive security tools guide"
-	@echo "  • tekton/challenges/challenge1/ATTACK-ANALYSIS.md - Attack comparison"
-	@echo "  • tekton/challenges/challenge1/security/README.md - Policy details"
-	@echo "  • tekton/challenges/challenge2/ATTACK2-README.md - Container layer attack"
+	@echo "  • challenges/challenge1/ATTACK-ANALYSIS.md - Attack comparison"
+	@echo "  • challenges/challenge1/security/README.md - Policy details"
+	@echo "  • challenges/challenge2/ATTACK2-README.md - Container layer attack"
 	@echo ""
 
 setup: check-cli-tools setup-kind setup-gitea setup-tekton setup-registry verify ## Complete setup (KinD cluster + Gitea + tekton + registry + verification)
@@ -169,10 +169,10 @@ configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE version)
 	@echo "Installing Tekton CTF Challenge (VULNERABLE version)..."
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
-	@kubectl apply -f tekton/triggers/vulnerable-eventlistener.yaml
-	@kubectl apply -f tekton/tasks/supporting-tasks.yaml
-	@kubectl apply -f tekton/tasks/vulnerable-quality-check-task.yaml
-	@kubectl apply -f tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
+	@kubectl apply -f challenges/challenge1/tekton/triggers/vulnerable-eventlistener.yaml
+	@kubectl apply -f challenges/challenge1/tekton/tasks/supporting-tasks.yaml
+	@kubectl apply -f challenges/challenge1/tekton/tasks/vulnerable-quality-check-task.yaml
+	@kubectl apply -f challenges/challenge1/tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
 	@echo ""
 	@echo "Creating CTF flag secret with registry credentials..."
 	@kubectl create secret generic ctf-flag \
@@ -185,7 +185,7 @@ setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE versi
 	@echo "Preparing victim repository for Gitea..."
 	@rm -rf /tmp/gitea/victim-repo
 	@mkdir -p /tmp/gitea
-	@cp -r tekton/challenges/victim-repo-sample /tmp/gitea/victim-repo
+	@cp -r challenges/victim-repo-sample /tmp/gitea/victim-repo
 	@if [ -d /tmp/gitea/victim-repo/_git ]; then \
 		mv /tmp/gitea/victim-repo/_git /tmp/gitea/victim-repo/.git; \
 		echo "  ✓ Git history restored from _git"; \
@@ -210,8 +210,8 @@ setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE versi
 	@echo "   - Attack will succeed"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  1. Complete victim repository setup: tekton/challenges/challenge1/SETUP.md"
-	@echo "  2. Review the challenge guide: tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
+	@echo "  1. Complete victim repository setup: challenges/challenge1/SETUP.md"
+	@echo "  2. Review the challenge guide: challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
 	@echo "  3. Test the attack: make verify-ctf"
 	@echo ""
 	@echo "To deploy SECURE version instead:"
@@ -222,12 +222,12 @@ setup-ctf-challenge-secure: ## Install Tekton CTF challenge with SECURE configur
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
 	@echo ""
 	@echo "Step 1: Deploying security RBAC (minimal ServiceAccounts)..."
-	@kubectl apply -f tekton/challenges/challenge1/security/rbac/minimal-serviceaccounts.yaml
+	@kubectl apply -f challenges/challenge1/security/rbac/minimal-serviceaccounts.yaml
 	@echo ""
 	@echo "Step 2: Deploying secure Tekton resources..."
-	@kubectl apply -f tekton/challenges/challenge1/tekton-patched/tasks/
-	@kubectl apply -f tekton/challenges/challenge1/tekton-patched/pipelines/
-	@kubectl apply -f tekton/challenges/challenge1/tekton-patched/triggers/
+	@kubectl apply -f challenges/challenge1/tekton-patched/tasks/
+	@kubectl apply -f challenges/challenge1/tekton-patched/pipelines/
+	@kubectl apply -f challenges/challenge1/tekton-patched/triggers/
 	@echo ""
 	@echo "Step 3: Creating CTF flag secret with registry credentials..."
 	@kubectl create secret generic ctf-flag \
@@ -248,10 +248,10 @@ setup-ctf-challenge-secure: ## Install Tekton CTF challenge with SECURE configur
 	@echo "Next steps:"
 	@echo "  1. Apply Network Policies: make apply-prevention-policies"
 	@echo "  2. Verify security: make verify-security"
-	@echo "  3. Test that attack is blocked: see tekton/challenges/challenge1/tekton-patched/README.md"
+	@echo "  3. Test that attack is blocked: see challenges/challenge1/tekton-patched/README.md"
 	@echo ""
 	@echo "To compare with vulnerable version:"
-	@echo "  diff -u tekton/ tekton/challenges/challenge1/tekton-patched/"
+	@echo "  diff -u challenges/challenge1/tekton/ challenges/challenge1/tekton-patched/"
 
 verify: verify-registry
  ## Verify environment is working correctly
@@ -447,9 +447,9 @@ security-scan: ## Run all security scans (static analysis + runtime checks)
 	@echo "[1/3] Scanning Tekton resources with Kubescape..."
 	@echo "------------------------------------------------"
 	@if command -v kubectl-kubescape >/dev/null 2>&1; then \
-		kubectl kubescape scan framework nsa,mitre tekton/ --format pretty-printer --output kubescape-report.txt || true; \
+		kubectl kubescape scan framework nsa,mitre challenges/challenge1/tekton/ --format pretty-printer --output kubescape-report.txt || true; \
 	elif command -v kubescape >/dev/null 2>&1; then \
-		kubescape scan framework nsa,mitre tekton/ --format pretty-printer --output kubescape-report.txt || true; \
+		kubescape scan framework nsa,mitre challenges/challenge1/tekton/ --format pretty-printer --output kubescape-report.txt || true; \
 	else \
 		echo "  ❌ Kubescape CLI not available. Run 'make install-kubescape'"; \
 	fi
@@ -457,7 +457,7 @@ security-scan: ## Run all security scans (static analysis + runtime checks)
 	@echo "[2/3] Validating Tekton resources against Kyverno policies..."
 	@echo "------------------------------------------------"
 	@if [ -d "security/kyverno-policies" ]; then \
-		kubectl kyverno apply security/kyverno-policies/ --resource tekton/ || true; \
+		kubectl kyverno apply security/kyverno-policies/ --resource challenges/challenge1/tekton/ || true; \
 	else \
 		echo "  No Kyverno policies found in security/kyverno-policies/"; \
 	fi
@@ -570,7 +570,7 @@ setup-challenge2: setup-registry build-recipe-api push-recipe-api ## Setup Chall
 	@echo ""
 	@echo "Next steps:"
 	@echo "  1. Complete Attack #1 to obtain registry credentials"
-	@echo "  2. Review guide: tekton/challenges/challenge2/ATTACK2-README.md"
+	@echo "  2. Review guide: challenges/challenge2/ATTACK2-README.md"
 	@echo "  3. Verify setup: make verify-challenge2"
 	@echo ""
 
@@ -578,7 +578,7 @@ build-recipe-api: ## Build the recipe-api container image
 	@echo "Building recipe-api:v1.0 image..."
 	@echo "  Preparing build context (restoring git history)..."
 	@rm -rf /tmp/recipe-api-build
-	@cp -r tekton/challenges/victim-repo-sample /tmp/recipe-api-build
+	@cp -r challenges/victim-repo-sample /tmp/recipe-api-build
 	@if [ -d /tmp/recipe-api-build/_git ]; then \
 		mv /tmp/recipe-api-build/_git /tmp/recipe-api-build/.git; \
 		echo "  ✓ Git history restored from _git"; \
@@ -598,5 +598,5 @@ push-recipe-api: ## Push recipe-api image to registry
 
 verify-challenge2: ## Verify Challenge 2 setup
 	@echo "Verifying Challenge 2 setup..."
-	@cd tekton/challenges/challenge2 && ./test-attack2.sh
+	@cd challenges/challenge2 && ./test-attack2.sh
 

@@ -65,13 +65,13 @@ make verify-security
 **1. Review the attack:**
 ```bash
 cat ATTACK-ANALYSIS.md
-cat tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md
+cat challenges/challenge1/CTF-CHALLENGE-GUIDE.md
 ```
 
 **2. Examine the vulnerable pipeline:**
 ```bash
-cat tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
-cat tekton/tasks/vulnerable-quality-check-task.yaml
+cat challenges/challenge1/tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
+cat challenges/challenge1/tekton/tasks/vulnerable-quality-check-task.yaml
 ```
 
 **Key vulnerability:**
@@ -90,7 +90,7 @@ steps:
 make setup-ctf-challenge
 
 # Review malicious payload
-cat tekton/challenges/challenge1/malicious-payload-example.go
+cat challenges/challenge1/malicious-payload-example.go
 
 # The payload steals secrets via:
 # 1. Read K8s ServiceAccount token
@@ -145,7 +145,7 @@ kubectl get pods -n kubescape
 
 ```bash
 # Scan Tekton resources for security issues
-kubectl kubescape scan framework nsa,mitre tekton/ --format pretty-printer
+kubectl kubescape scan framework nsa,mitre challenges/challenge1/tekton/ --format pretty-printer
 
 # Scan entire cluster
 kubectl kubescape scan --format pretty-printer --output cluster-scan.txt
@@ -209,7 +209,7 @@ make create-security-policies
 
 **What this creates:**
 
-1. **Kyverno Policies** (`tekton/challenges/challenge1/security/kyverno-policies/`)
+1. **Kyverno Policies** (`challenges/challenge1/security/kyverno-policies/`)
    - Block dangerous ServiceAccounts
    - Warn on risky commands (`go run`, `curl|bash`)
    - Restrict external Git repositories
@@ -218,7 +218,7 @@ make create-security-policies
    - Block egress to external IPs
    - Allow only: DNS, K8s API, internal Gitea
 
-3. **RBAC Configs** (`tekton/challenges/challenge1/security/rbac/`)
+3. **RBAC Configs** (`challenges/challenge1/security/rbac/`)
    - `pr-pipeline-readonly`: NO secret access
    - `main-pipeline`: Limited secret access
    - `security-auditor`: Monitoring access
@@ -445,7 +445,7 @@ kubectl edit clusterpolicy restrict-external-git-repositories
 ### Allow Specific External Repositories
 
 ```yaml
-# Edit tekton/challenges/challenge1/security/kyverno-policies/restrict-external-git-repos.yaml
+# Edit challenges/challenge1/security/kyverno-policies/restrict-external-git-repos.yaml
 # Add exception rule:
 rules:
 - name: allow-trusted-repo
@@ -539,7 +539,7 @@ Once you've mastered the basics, try these:
 4. **Privilege Escalation**: Chain multiple small permissions
 5. **Supply Chain Persistence**: Deploy backdoors that survive restarts
 
-See [`tekton/challenges/ADVANCED-CHALLENGES.md`](tekton/challenges/ADVANCED-CHALLENGES.md) for details.
+See [`challenges/ADVANCED-CHALLENGES.md`](challenges/ADVANCED-CHALLENGES.md) for details.
 
 ---
 

@@ -47,28 +47,27 @@ This is a Capture The Flag (CTF) environment setup project focused on supply cha
 │       ├── setup-registry.sh       # Registry deployment with TLS
 │       ├── configure-registry-tls.sh # TLS trust configuration helper
 │       └── cleanup.sh              # Environment teardown
-├── tekton/                         # Tekton configurations and challenges
-│   ├── tasks/                      # Vulnerable Tekton tasks
-│   ├── pipelines/                  # Vulnerable Tekton pipelines
-│   ├── triggers/                   # Vulnerable Tekton triggers
-│   └── challenges/                 # CTF Challenges
-│       ├── challenge1/             # Attack #1: Tekton Token Theft
-│       │   ├── CTF-CHALLENGE-GUIDE.md
-│       │   ├── ATTACK-ANALYSIS.md
-│       │   ├── security/           # Prevention & detection
-│       │   │   ├── rbac/
-│       │   │   ├── kyverno-policies/
-│       │   │   └── network-policies/
-│       │   └── tekton-patched/     # Secured configurations
-│       ├── challenge2/             # Attack #2: Container Layer Leak
-│       │   ├── ATTACK2-README.md
-│       │   ├── ATTACK2-EXPLOITATION-GUIDE.md
-│       │   ├── ATTACK2-SUMMARY.md
-│       │   └── test-attack2.sh
-│       └── victim-repo-sample/     # Shared victim application
+├── challenges/                     # CTF Challenges
+│   ├── challenge1/                 # Attack #1: Tekton Token Theft
+│   │   ├── SETUP.md                # Challenge setup instructions
+│   │   ├── CTF-CHALLENGE-GUIDE.md  # Participant walkthrough
+│   │   ├── ATTACK-ANALYSIS.md      # Technical analysis
+│   │   ├── tekton/                 # Vulnerable Tekton resources
+│   │   │   ├── tasks/              # Vulnerable tasks
+│   │   │   ├── pipelines/          # Vulnerable pipelines
+│   │   │   └── triggers/           # Vulnerable event listeners
+│   │   ├── security/               # Prevention & detection
+│   │   │   ├── rbac/
+│   │   │   ├── kyverno-policies/
+│   │   │   └── network-policies/
+│   │   └── tekton-patched/         # Secured configurations
+│   ├── challenge2/                 # Attack #2: Container Layer Leak
+│   │   ├── ATTACK2-README.md
+│   │   ├── ATTACK2-EXPLOITATION-GUIDE.md
+│   │   ├── ATTACK2-SUMMARY.md
+│   │   └── test-attack2.sh
+│   └── victim-repo-sample/         # Shared victim application
 ├── gitea/                          # Gitea configurations
-│   ├── repos/                      # Pre-configured repository definitions
-│   └── configs/                    # Custom Gitea configuration files
 ├── certs/                          # Registry TLS certificates (generated)
 │   └── registry.crt                # CA certificate for client trust
 ├── Makefile                        # Primary automation interface

@@ -96,7 +96,7 @@ curl -k -u ctf-admin:CTFRegistryPass123! \
 
 ```bash
 # 1. Build the image (from this directory)
-cd /home/skhoury/go/src/github.com/sherine-k/supply-chain-dd/tekton/challenges/victim-repo-sample
+cd /home/skhoury/go/src/github.com/sherine-k/supply-chain-dd/challenges/victim-repo-sample
 
 podman build -t localhost:30000/recipe-api:v1.0 -f Dockerfile .
 
@@ -185,7 +185,7 @@ Hidden in the git history (commit `b4acebb`) in the file `.env.production`:
 ## Files in This Attack
 
 ```
-tekton/challenges/victim-repo-sample/
+challenges/victim-repo-sample/
 ├── Dockerfile                        # Vulnerable Dockerfile with layer leak
 ├── .git/                             # Git repository with secret history
 │   ├── objects/                      # Contains deleted .env.production

@@ -45,10 +45,10 @@ This is similar to the GitHub Actions `pull_request_target` vulnerability, but p
 
 ```bash
 # 1. Apply Tekton resources
-kubectl apply -f tekton/triggers/vulnerable-eventlistener.yaml
-kubectl apply -f tekton/tasks/supporting-tasks.yaml
-kubectl apply -f tekton/tasks/vulnerable-quality-check-task.yaml
-kubectl apply -f tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
+kubectl apply -f challenges/challenge1/tekton/triggers/vulnerable-eventlistener.yaml
+kubectl apply -f challenges/challenge1/tekton/tasks/supporting-tasks.yaml
+kubectl apply -f challenges/challenge1/tekton/tasks/vulnerable-quality-check-task.yaml
+kubectl apply -f challenges/challenge1/tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
 
 # 2. Create the flag secret
 kubectl create secret generic ctf-flag \
