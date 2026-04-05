@@ -72,31 +72,6 @@ make clean           # Cleanup environment and start fresh
 make help            # Display all available commands
 ```
 
-## Troubleshooting
-
-### Environment won't start
-```bash
-make clean && make setup
-```
-
-### Can't access Gitea
-```bash
-# Verify services are running
-make status
-
-# Check if Gitea pods are ready
-kubectl get pods -n gitea
-```
-
-### Registry TLS issues
-```bash
-# Reconfigure TLS trust
-make configure-registry-tls
-
-# Verify registry access
-make verify-registry
-```
-
 ## CTF Challenges
 
 This environment contains multiple supply chain security challenges:
@@ -141,6 +116,31 @@ Challenge 1 (Tekton PWN)
 Challenge 2 (Layer Leak)
     ↓ (discover webhook configuration)
 Challenge 3+ (Coming soon)
+```
+
+## Troubleshooting
+
+### Environment won't start
+```bash
+make clean && make setup
+```
+
+### Can't access Gitea
+```bash
+# Verify services are running
+make status
+
+# Check if Gitea pods are ready
+kubectl get pods -n gitea
+```
+
+### Registry TLS issues
+```bash
+# Reconfigure TLS trust
+make configure-registry-tls
+
+# Verify registry access
+make verify-registry
 ```
 
 ## Support
