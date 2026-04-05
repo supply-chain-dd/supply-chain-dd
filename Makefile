@@ -182,6 +182,26 @@ setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE versi
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
 		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
 	@echo ""
+	@echo "Preparing victim repository for Gitea..."
+	@rm -rf /tmp/gitea/victim-repo
+	@mkdir -p /tmp/gitea
+	@cp -r tekton/challenges/victim-repo-sample /tmp/gitea/victim-repo
+	@if [ -d /tmp/gitea/victim-repo/_git ]; then \
+		mv /tmp/gitea/victim-repo/_git /tmp/gitea/victim-repo/.git; \
+		echo "  ✓ Git history restored from _git"; \
+	fi
+	@echo ""
+	@echo "Creating Git credentials for Gitea access..."
+	@echo "[user]" > /tmp/gitea/.gitconfig
+	@echo "	name = CTF Admin" >> /tmp/gitea/.gitconfig
+	@echo "	email = ctf-admin@localhost" >> /tmp/gitea/.gitconfig
+	@echo "[credential]" >> /tmp/gitea/.gitconfig
+	@echo "	helper = store --file /tmp/gitea/.git-credentials" >> /tmp/gitea/.gitconfig
+	@echo "http://ctf-admin:CTFSecurePass123!@localhost:30002" > /tmp/gitea/.git-credentials
+	@chmod 600 /tmp/gitea/.git-credentials
+	@echo "  ✓ Git config created at /tmp/gitea/.gitconfig"
+	@echo "  ✓ Git credentials created at /tmp/gitea/.git-credentials"
+	@echo ""
 	@echo "✓ CTF Challenge installed successfully (VULNERABLE version)"
 	@echo ""
 	@echo "⚠️  WARNING: This uses the VULNERABLE configuration!"
@@ -190,8 +210,8 @@ setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE versi
 	@echo "   - Attack will succeed"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  1. Review the challenge guide: tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
-	@echo "  2. Setup victim repository: tekton/challenges/victim-repo-sample/"
+	@echo "  1. Complete victim repository setup: tekton/challenges/challenge1/SETUP.md"
+	@echo "  2. Review the challenge guide: tekton/challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
 	@echo "  3. Test the attack: make verify-ctf"
 	@echo ""
 	@echo "To deploy SECURE version instead:"
