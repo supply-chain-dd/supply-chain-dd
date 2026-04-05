@@ -1,5 +1,100 @@
 # Attack #2: Container Image Layer Leak
 
+## Pre-requisites (For organizers)
+
+### Step 1: Deploy Challenge 2 Tekton Resources
+
+```bash
+make setup-challenge2-tekton
+```
+
+This will create:
+- Push-triggered EventListener (`push-build-listener`)
+- Pipeline to build and push container images (`push-build-pipeline`)
+- Required tasks (git-clone, build-go-app, quality-check, build-container-image, push-container-image)
+- RBAC resources and webhook secret
+
+### Step 2: Configure Gitea Webhook
+
+Set up a webhook on the `victim-repo` repository to trigger the pipeline on push events:
+
+1. **Access Gitea**: Navigate to http://localhost:30002/ctf-admin/victim-repo/settings/hooks
+
+2. **Add Webhook**: Click "Add Webhook" → "Gitea"
+
+3. **Configure Webhook** with these settings:
+   - **Target URL**: `http://el-push-build-listener.ctf-challenge.svc.cluster.local:8080`
+   - **HTTP Method**: `POST`
+   - **POST Content Type**: `application/json`
+   - **Secret**: `change-me-in-production` (value from `github-webhook-secret`)
+   - **Trigger On**: `Push events`
+   - **Branch filter**: `main`
+
+4. **Save** the webhook configuration
+
+**Get the webhook secret value:**
+```bash
+kubectl get secret github-webhook-secret -n ctf-challenge -o jsonpath='{.data.secretToken}' | base64 -d
+```
+
+### Step 3: Trigger Initial Build to Populate Registry
+
+Push a commit to the `victim-repo` main branch to trigger the pipeline and build the vulnerable image:
+
+**Option A: Via Webhook (Recommended)**
+```bash
+# Clone or navigate to victim-repo
+cd /tmp/gitea/victim-repo
+
+# Make a change and push
+git commit --allow-empty -m "Initial build for CTF"
+git push origin main
+
+# Monitor the pipeline
+kubectl get pipelineruns -n ctf-challenge -w
+```
+
+**Option B: Manual Trigger**
+```bash
+# Trigger the pipeline manually
+make trigger-challenge2-build
+
+# Monitor progress
+tkn pipelinerun logs -f -n ctf-challenge
+```
+
+**Option C: Build and Push Manually** (if pipeline fails)
+```bash
+cd challenges/victim-repo-sample
+
+# Build the image with git history
+podman build -t localhost:30000/recipe-api:v1.0 -f Dockerfile .
+
+# Login to registry
+podman login localhost:30000 --tls-verify=false \
+  -u ctf-admin -p CTFRegistryPass123!
+
+# Push the vulnerable image
+podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
+```
+
+### Step 4: Verify Setup
+
+```bash
+# Check that the image is in the registry
+curl -k -u ctf-admin:CTFRegistryPass123! \
+  https://localhost:30000/v2/recipe-api/tags/list
+
+# Should return: {"name":"recipe-api","tags":["v1.0"]}
+
+# Verify git history is leaked in the image
+podman pull localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman save localhost:30000/recipe-api:v1.0 -o /tmp/test-image.tar
+tar -tf /tmp/test-image.tar | grep -q "\.git" && echo "✓ Git history present in image layers"
+```
+
+The environment is now ready for participants to exploit!
+
 ## Overview
 
 **Attack Type:** Container Supply Chain - Leaked Git History in Image Layers  

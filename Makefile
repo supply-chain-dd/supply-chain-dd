@@ -606,6 +606,9 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 	@echo "========================================"
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
 	@echo ""
+	@echo "Creating registry Docker config secret..."
+	@kubectl apply -f challenges/challenge2/tekton/registry-docker-config-secret.yaml
+	@echo ""
 	@echo "Applying Challenge 2 Tekton tasks..."
 	@kubectl apply -f challenges/challenge2/tekton/tasks/
 	@echo ""
@@ -662,60 +665,21 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	fi
 	@echo ""
 	@echo "Starting pipeline run..."
+	@kubectl create -f challenges/challenge2/tekton/manual-pipelinerun.yaml
+	@echo ""
+	@echo "  ✓ PipelineRun created"
+	@echo ""
+	@echo "  Monitor with:"
+	@echo "    kubectl get pipelineruns -n ctf-challenge -w"
+	@echo ""
 	@if command -v kubectl-tkn >/dev/null 2>&1; then \
-		kubectl tkn pipeline start push-build-pipeline \
-			--param repo-url=http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo.git \
-			--param revision=main \
-			--param image-name=recipe-api \
-			--param image-tag=latest \
-			--workspace name=source,volumeClaimTemplateFile=/dev/stdin <<< '{"spec":{"accessModes":["ReadWriteOnce"],"resources":{"requests":{"storage":"1Gi"}}}}' \
-			--namespace ctf-challenge \
-			--showlog; \
+		echo "  View logs:"; \
+		echo "    kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
 	elif command -v tkn >/dev/null 2>&1; then \
-		tkn pipeline start push-build-pipeline \
-			--param repo-url=http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo.git \
-			--param revision=main \
-			--param image-name=recipe-api \
-			--param image-tag=latest \
-			--workspace name=source,volumeClaimTemplateFile=/dev/stdin <<< '{"spec":{"accessModes":["ReadWriteOnce"],"resources":{"requests":{"storage":"1Gi"}}}}' \
-			--namespace ctf-challenge \
-			--showlog; \
+		echo "  View logs:"; \
+		echo "    tkn pipelinerun logs -f -n ctf-challenge"; \
 	else \
-		echo "  Creating PipelineRun directly (tkn CLI not available)..."; \
-		kubectl create -f - <<EOF
-apiVersion: tekton.dev/v1beta1
-kind: PipelineRun
-metadata:
-  generateName: push-build-manual-
-  namespace: ctf-challenge
-spec:
-  pipelineRef:
-    name: push-build-pipeline
-  params:
-    - name: repo-url
-      value: "http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo.git"
-    - name: revision
-      value: "main"
-    - name: image-name
-      value: "recipe-api"
-    - name: image-tag
-      value: "latest"
-  workspaces:
-    - name: source
-      volumeClaimTemplate:
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 1Gi
-EOF
-		echo "  ✓ PipelineRun created"; \
-		echo ""; \
-		echo "  Monitor with:"; \
-		echo "    kubectl get pipelineruns -n ctf-challenge -w"; \
-		echo ""; \
-		echo "  View logs (install tkn for easier access):"; \
+		echo "  Install tkn for easier log viewing:"; \
 		echo "    make install-tkn"; \
 	fi
 	@echo ""

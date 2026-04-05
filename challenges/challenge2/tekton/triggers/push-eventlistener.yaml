@@ -75,10 +75,12 @@ spec:
         namespace: ctf-challenge
         labels:
           tekton.dev/pipeline: push-build-pipeline
+          git.pusher: $(tt.params.pusher)
+        annotations:
           git.repo: $(tt.params.repo-name)
           git.ref: $(tt.params.ref)
-          git.pusher: $(tt.params.pusher)
       spec:
+        serviceAccountName: pr-pipeline-readonly
         pipelineRef:
           name: push-build-pipeline
         params:

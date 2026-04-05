@@ -103,7 +103,7 @@ metadata:
   namespace: ctf-challenge
 spec:
   description: |
-    Pushes a container image to the local registry.
+    Pushes a container image to the local registry using Kaniko.
   params:
     - name: image-name
       type: string
@@ -118,56 +118,27 @@ spec:
       default: "registry.registry.svc.cluster.local:5000"
   workspaces:
     - name: source
-      description: The workspace containing the image tarball
+      description: The workspace containing the Dockerfile and source code
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+        items:
+          - key: config.json
+            path: config.json
   steps:
     - name: push-image
       image: gcr.io/kaniko-project/executor:v1.23.2
       workingDir: $(workspaces.source.path)
-      env:
-        - name: REGISTRY_USER
-          valueFrom:
-            secretKeyRef:
-              name: ctf-flag
-              key: registry-user
-        - name: REGISTRY_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: ctf-flag
-              key: registry-password
-        - name: DOCKER_CONFIG
-          value: /tekton/home/.docker
-      script: |
-        #!/busybox/sh
-        set -e
-
-        echo "============================================"
-        echo "Pushing Container Image"
-        echo "============================================"
-        echo "Image: $(params.registry-url)/$(params.image-name):$(params.image-tag)"
-        echo ""
-
-        # Create Docker config for authentication
-        mkdir -p /tekton/home/.docker
-        cat > /tekton/home/.docker/config.json <<EOF
-        {
-          "auths": {
-            "$(params.registry-url)": {
-              "auth": "$(echo -n ${REGISTRY_USER}:${REGISTRY_PASSWORD} | base64)"
-            }
-          }
-        }
-        EOF
-
-        # Push the image using kaniko
-        /kaniko/executor \
-          --dockerfile=Dockerfile \
-          --context=$(workspaces.source.path) \
-          --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag) \
-          --skip-tls-verify \
-          --verbosity=info
-
-        echo ""
-        echo "============================================"
-        echo "✓ Image pushed successfully!"
-        echo "Image: $(params.registry-url)/$(params.image-name):$(params.image-tag)"
-        echo "============================================"
+      command:
+        - /kaniko/executor
+      args:
+        - --dockerfile=Dockerfile
+        - --context=$(workspaces.source.path)
+        - --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag)
+        - --skip-tls-verify
+        - --verbosity=info
+      volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker/
+          readOnly: true
