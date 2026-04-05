@@ -56,32 +56,41 @@ Open a terminal and run:
 ```bash
 cd /tmp/gitea/victim-repo
 
-# Configure Git to use the credentials file
-export GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig
-
 # Add the Gitea remote
 git remote add origin http://localhost:30002/ctf-admin/victim-repo.git
 
-# Push to Gitea
-git push -u origin main
+# Push to Gitea (with credentials configured via environment)
+GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push -u origin main
 ```
+
+**Important**: The `GIT_CONFIG_GLOBAL` environment variable tells git to use the credential helper we configured, and `GIT_TERMINAL_PROMPT=0` prevents git from hanging if credentials are missing.
 
 **Expected output:**
 ```
-Enumerating objects: X, done.
-Counting objects: 100% (X/X), done.
-...
+remote: . Processing 1 references
+remote: Processed 1 references in total
 To http://localhost:30002/ctf-admin/victim-repo.git
  * [new branch]      main -> main
-Branch 'main' set up to track remote branch 'main' from 'origin'.
+branch 'main' set up to track 'origin/main'.
 ```
 
 ### 1.4 Verify Repository
 
-Refresh the Gitea web UI. You should now see:
+Refresh the Gitea web UI (http://localhost:30002/ctf-admin/victim-repo). You should now see:
 - ✓ Source code files (`main.go`, `Dockerfile`, etc.)
 - ✓ Complete Git history with multiple commits
 - ✓ `.tekton/` directory with Tekton pipeline configuration
+
+You can also verify Git connectivity:
+
+```bash
+cd /tmp/gitea/victim-repo
+
+# Fetch to verify connectivity (use the same environment variables)
+GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git fetch origin
+
+# Should show no errors
+```
 
 ## Step 2: Configure Webhook
 
@@ -147,9 +156,70 @@ If you see errors, verify:
 - The service URL is correct (check for typos)
 - The secret matches: `change-me-in-production`
 
-## Step 3: Verify Setup
+**Note**: You cannot test the Pull Request webhook without an actual pull request. Testing with "Push" events won't trigger the pipeline because the EventListener only accepts `pull_request` events.
 
-### 3.1 Check All Resources
+## Step 3: Test the Webhook (Create a Pull Request)
+
+To verify the webhook works end-to-end, create a test pull request:
+
+### 3.1 Create a Test Branch and Push
+
+```bash
+cd /tmp/gitea/victim-repo
+
+# Create a new branch
+git checkout -b test-webhook
+
+# Make a small change (optional)
+echo "# Test" >> README.md
+git add README.md
+git commit -m "Test webhook trigger"
+
+# Push the branch
+GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push --set-upstream origin test-webhook
+```
+
+### 3.2 Create Pull Request in Gitea
+
+After pushing, Gitea will show a helpful message:
+```
+remote: Create a new pull request for 'test-webhook':        
+remote:   http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo/pulls/new/test-webhook
+```
+
+**Create the PR via web UI**:
+
+1. Go to http://localhost:30002/ctf-admin/victim-repo
+2. You should see a banner: **"test-webhook had recent pushes"** with a **"Compare & pull request"** button
+3. Click **"Compare & pull request"**
+4. Fill in:
+   - **Title**: "Test webhook"
+   - **Description**: "Testing Tekton webhook integration"
+5. Click **"Create Pull Request"**
+
+**Or use the direct URL**:
+- http://localhost:30002/ctf-admin/victim-repo/compare/main...test-webhook
+
+### 3.3 Verify Pipeline Started
+
+Once you create the PR, the webhook should trigger immediately. Check if a PipelineRun was created:
+
+```bash
+# Watch for new PipelineRuns
+kubectl get pipelinerun -n ctf-challenge --watch
+
+# Or check the latest PipelineRun
+kubectl get pipelinerun -n ctf-challenge --sort-by=.metadata.creationTimestamp | tail -5
+
+# View PipelineRun logs (if you have tkn CLI)
+tkn pipelinerun logs -n ctf-challenge --last -f
+```
+
+You should see a PipelineRun with a name like `pr-quality-check-xxxxx` that was automatically created by the webhook.
+
+## Step 4: Verify Complete Setup
+
+### 4.1 Check All Resources
 
 Run the verification command:
 
@@ -181,22 +251,29 @@ CTF Flag Secret:
 ✓ Verification complete
 ```
 
-### 3.2 Check Victim Repository
+### 4.2 Check Victim Repository
 
-Verify the victim repository exists in Gitea:
+Verify the victim repository is accessible:
 
 ```bash
-# From /tmp/gitea/victim-repo
+# Check repository in web UI
+# Visit: http://localhost:30002/ctf-admin/victim-repo
+
+# Or test git connectivity
 cd /tmp/gitea/victim-repo
-export GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig
-
-# Fetch to verify connectivity
-git fetch origin
-
-# Should show no errors
+GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git fetch origin
 ```
 
-## Step 4: Understanding the Attack Surface
+### 4.3 Check Webhook Deliveries
+
+In Gitea, verify webhook deliveries are successful:
+
+1. Go to: http://localhost:30002/ctf-admin/victim-repo/settings/hooks/1
+2. Scroll down to **"Recent Deliveries"**
+3. You should see successful deliveries (green checkmarks) for your Pull Request events
+4. Click on a delivery to see the request/response details
+
+## Step 5: Understanding the Attack Surface
 
 Now that everything is set up, here's what participants will exploit:
 
@@ -270,19 +347,26 @@ kubectl get triggerbinding,triggertemplate -n ctf-challenge
 kubectl auth can-i create pipelineruns --as=system:serviceaccount:ctf-challenge:tekton-triggers-sa -n ctf-challenge
 ```
 
-### Repository push fails
+### Repository push fails or hangs
+
+If `git push` hangs or fails with "could not read Username", it means git isn't using the credential helper:
 
 ```bash
-# Verify Git credentials
+# Verify Git credentials exist
 cat /tmp/gitea/.git-credentials
 
 # Verify Gitea is accessible
 curl http://localhost:30002
 
-# Re-export Git config
-export GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig
+# Always use the environment variables when running git commands
+cd /tmp/gitea/victim-repo
+GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push -u origin main
 
-# Check Gitea repository exists
+# Or create an alias for convenience
+alias git-ctf='GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git'
+git-ctf push -u origin main
+
+# Check Gitea repository exists in web UI
 # Visit http://localhost:30002/ctf-admin/victim-repo
 ```
 
