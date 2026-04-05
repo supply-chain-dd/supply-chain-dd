@@ -103,7 +103,7 @@ metadata:
 rules:
 # Read Tekton Triggers resources (needed to process webhooks)
 - apiGroups: ["triggers.tekton.dev"]
-  resources: ["triggerbindings", "triggertemplates", "eventlisteners"]
+  resources: ["triggerbindings", "triggertemplates", "eventlisteners","interceptors", "triggers"]
   verbs: ["get","list","watch"]  # Only "get", not "list" or "watch"
 
 # Read ONLY the specific webhook secret (not all secrets)
