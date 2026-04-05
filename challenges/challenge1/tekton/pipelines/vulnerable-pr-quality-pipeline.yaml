@@ -39,8 +39,16 @@ spec:
         - name: output
           workspace: source
 
-    - name: show-repo-info
+    - name: build-go-app
       runAfter: ["clone-pr-code"]
+      taskRef:
+        name: build-go-app
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: show-repo-info
+      runAfter: ["build-go-app"]
       taskRef:
         name: print-info
       params:

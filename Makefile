@@ -1,7 +1,7 @@
 .PHONY: help setup setup-kind setup-gitea setup-tekton setup-registry setup-ctf-challenge setup-ctf-challenge-secure verify verify-ctf status clean
 .PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security create-security-policies
 .PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls
-.PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2
+.PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build
 
 CLUSTER_NAME ?= ctf-cluster
 GITEA_VERSION ?= 10.6.1
@@ -599,4 +599,127 @@ push-recipe-api: ## Push recipe-api image to registry
 verify-challenge2: ## Verify Challenge 2 setup
 	@echo "Verifying Challenge 2 setup..."
 	@cd challenges/challenge2 && ./test-attack2.sh
+
+setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
+	@echo "========================================"
+	@echo "Installing Challenge 2 Tekton Resources"
+	@echo "========================================"
+	@kubectl create namespace ctf-challenge 2>/dev/null || true
+	@echo ""
+	@echo "Applying Challenge 2 Tekton tasks..."
+	@kubectl apply -f challenges/challenge2/tekton/tasks/
+	@echo ""
+	@echo "Applying Challenge 2 Tekton pipeline..."
+	@kubectl apply -f challenges/challenge2/tekton/pipelines/
+	@echo ""
+	@echo "Applying Challenge 2 Tekton EventListener..."
+	@kubectl apply -f challenges/challenge2/tekton/triggers/
+	@echo ""
+	@echo "Creating CTF flag secret with registry credentials (if not exists)..."
+	@kubectl create secret generic ctf-flag \
+		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
+		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
+		--from-literal=registry-user='$(REGISTRY_USER)' \
+		--from-literal=registry-password='$(REGISTRY_PASS)' \
+		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
+	@echo ""
+	@echo "✓ Challenge 2 Tekton resources installed successfully"
+	@echo ""
+	@echo "Pipeline: push-build-pipeline"
+	@echo "  - Triggers on push events"
+	@echo "  - Builds Go application"
+	@echo "  - Runs quality checks"
+	@echo "  - Builds container image"
+	@echo "  - Pushes to registry"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Trigger a build: make trigger-challenge2-build"
+	@echo "  2. Monitor pipeline runs: kubectl get pipelineruns -n ctf-challenge"
+	@if command -v kubectl-tkn >/dev/null 2>&1; then \
+		echo "  3. View logs: kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
+	elif command -v tkn >/dev/null 2>&1; then \
+		echo "  3. View logs: tkn pipelinerun logs -f -n ctf-challenge"; \
+	else \
+		echo "  3. Install tkn for easier log viewing: make install-tkn"; \
+	fi
+
+trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push image
+	@echo "========================================"
+	@echo "Triggering Challenge 2 Build Pipeline"
+	@echo "========================================"
+	@echo ""
+	@if ! kubectl get pipeline push-build-pipeline -n ctf-challenge >/dev/null 2>&1; then \
+		echo "❌ Pipeline not found. Run 'make setup-challenge2-tekton' first"; \
+		exit 1; \
+	fi
+	@echo "Preparing victim repository for build..."
+	@rm -rf /tmp/gitea/victim-repo-build
+	@mkdir -p /tmp/gitea
+	@cp -r challenges/victim-repo-sample /tmp/gitea/victim-repo-build
+	@if [ -d /tmp/gitea/victim-repo-build/_git ]; then \
+		mv /tmp/gitea/victim-repo-build/_git /tmp/gitea/victim-repo-build/.git; \
+		echo "  ✓ Git history restored"; \
+	fi
+	@echo ""
+	@echo "Starting pipeline run..."
+	@if command -v kubectl-tkn >/dev/null 2>&1; then \
+		kubectl tkn pipeline start push-build-pipeline \
+			--param repo-url=http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo.git \
+			--param revision=main \
+			--param image-name=recipe-api \
+			--param image-tag=latest \
+			--workspace name=source,volumeClaimTemplateFile=/dev/stdin <<< '{"spec":{"accessModes":["ReadWriteOnce"],"resources":{"requests":{"storage":"1Gi"}}}}' \
+			--namespace ctf-challenge \
+			--showlog; \
+	elif command -v tkn >/dev/null 2>&1; then \
+		tkn pipeline start push-build-pipeline \
+			--param repo-url=http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo.git \
+			--param revision=main \
+			--param image-name=recipe-api \
+			--param image-tag=latest \
+			--workspace name=source,volumeClaimTemplateFile=/dev/stdin <<< '{"spec":{"accessModes":["ReadWriteOnce"],"resources":{"requests":{"storage":"1Gi"}}}}' \
+			--namespace ctf-challenge \
+			--showlog; \
+	else \
+		echo "  Creating PipelineRun directly (tkn CLI not available)..."; \
+		kubectl create -f - <<EOF
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: push-build-manual-
+  namespace: ctf-challenge
+spec:
+  pipelineRef:
+    name: push-build-pipeline
+  params:
+    - name: repo-url
+      value: "http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo.git"
+    - name: revision
+      value: "main"
+    - name: image-name
+      value: "recipe-api"
+    - name: image-tag
+      value: "latest"
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+EOF
+		echo "  ✓ PipelineRun created"; \
+		echo ""; \
+		echo "  Monitor with:"; \
+		echo "    kubectl get pipelineruns -n ctf-challenge -w"; \
+		echo ""; \
+		echo "  View logs (install tkn for easier access):"; \
+		echo "    make install-tkn"; \
+	fi
+	@echo ""
+	@echo "✓ Pipeline triggered successfully"
+	@echo ""
+	@echo "Image will be pushed to: registry.registry.svc.cluster.local:5000/recipe-api:latest"
 
