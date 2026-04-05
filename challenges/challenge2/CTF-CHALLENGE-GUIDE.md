@@ -107,7 +107,7 @@ podman save localhost:30000/recipe-api:v1.0 -o recipe-api.tar
 
 # Extract the tar
 mkdir recipe-api-extracted
-tar -xf recipe-api.tar -C recipe-api-extracted/
+tar -xf recipe-api.tar -C /tmp/recipe-api-extracted/
 
 # The structure will be:
 # recipe-api-extracted/
@@ -117,15 +117,21 @@ tar -xf recipe-api.tar -C recipe-api-extracted/
 # │   └── json               # Layer config
 
 # Find the layer containing .git
-cd recipe-api-extracted/
+cd /tmp/recipe-api-extracted/
 
 # List all layer directories
 ls -la
 
-# Check each layer for .git
+# Check each layer for .git and find the one containing .git/HEAD
 for layer in */; do
-  echo "Checking $layer"
-  tar -tf "$layer/layer.tar" | grep -E "^\.git/" | head -3
+  if tar -tf "$layer/layer.tar" 2>/dev/null | grep -q "\.git/HEAD"; then
+    echo "✓ Found .git in: $layer"
+    LAYER_DIR="$layer"
+    # Show some .git files for verification
+    echo "  Sample .git files:"
+    tar -tf "$layer/layer.tar" | grep -E "\.git/" | head -5
+    break
+  fi
 done
 ```
 
@@ -146,22 +152,19 @@ cat analysis.json | jq
 
 ### Step 5: Extract and Explore .git Directory
 
-Once you've identified the layer containing `.git`:
+Now that LAYER_DIR is set to the layer containing `.git`, extract and explore it:
 
 ```bash
-# Example: Extract layer 98bb3b95fd70
-cd recipe-api-extracted/
+# Verify LAYER_DIR is set (should be set from previous step)
+echo "Using layer: $LAYER_DIR"
 
-# Find the directory (hash will differ)
-LAYER_DIR=$(ls -d */ | grep -v blobs | head -1)
-
-# Extract the layer
-mkdir layer-contents
+# Extract the layer contents
+mkdir -p layer-contents
 tar -xf "$LAYER_DIR/layer.tar" -C layer-contents/
 
 # Navigate to .git
 cd layer-contents/
-ls -la .git/
+ls -la app/.git/
 
 # Expected output:
 # .git/

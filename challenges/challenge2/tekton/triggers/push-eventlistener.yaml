@@ -63,7 +63,7 @@ spec:
       default: "recipe-api"
     - name: image-tag
       description: Container image tag
-      default: "latest"
+      default: "v1.0"
     - name: registry-url
       description: Container registry URL
       default: "registry.registry.svc.cluster.local:5000"
