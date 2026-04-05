@@ -25,3 +25,6 @@ certs/
 # Environment specific
 .env
 .env.local
+
+# Kubescape report
+kubescape-report.txt

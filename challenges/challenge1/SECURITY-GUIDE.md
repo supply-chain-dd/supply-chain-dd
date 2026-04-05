@@ -223,7 +223,7 @@ make create-security-policies
    - `main-pipeline`: Limited secret access
    - `security-auditor`: Monitoring access
 
-#### Apply Prevention Policies
+#### Apply Prevention Policies (only if updating the above created resources)
 
 ```bash
 make apply-prevention-policies
@@ -248,6 +248,9 @@ kubectl describe role pr-pipeline-minimal -n ctf-challenge
 
 #### Test 1: Kyverno Blocks Dangerous ServiceAccount
 
+Open a new Pull Request, or close and reopen the existing one. No Pipeline should get triggered. 
+
+**Other possibility** 
 ```bash
 # Try to create PipelineRun with default ServiceAccount
 cat <<EOF | kubectl apply -f -
@@ -285,29 +288,22 @@ Error from server: admission webhook "validate.kyverno.svc" denied the request:
 
 **Fix and retry:**
 ```bash
-# Use correct ServiceAccount
-cat <<EOF | kubectl apply -f -
-apiVersion: tekton.dev/v1
-kind: PipelineRun
-metadata:
-  name: test-correct-sa
-  namespace: ctf-challenge
-spec:
-  pipelineRef:
-    name: pr-quality-check-pipeline
-  serviceAccountName: pr-pipeline-readonly  # ✅ Allowed
-  params:
-  - name: pr-repo-url
-    value: http://gitea.gitea.svc.cluster.local/ctf/test-repo.git
-  - name: pr-sha
-    value: main
-  - name: pr-number
-    value: "1"
-  workspaces:
-  - name: source
-    emptyDir: {}
-EOF
+make setup-ctf-challenge-secure
 ```
+Close or re-open the pull request. 
+Then, verify if the pipelinerun was triggered, and that the init code was unsuccessful in reading the ctf-flag secret
+```bash
+$ tkn pr list
+NAME                     STARTED          DURATION   STATUS
+pr-quality-check-qzltm   4 seconds ago    ---        Running
+pr-quality-check-s72gp   33 minutes ago   35s        Succeeded
+pr-quality-check-86plr   37 minutes ago   39s        Succeeded
+pr-quality-check-4jwqd   4 hours ago      1m4s       Succeeded
+$ tkn pr logs -f pr-quality-check-qzltm
+# ... Skipping
+[run-quality-checks : run-quality-script] Secret retrieved : {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"secrets \"ctf-flag\" is forbidden: User \"system:serviceaccount:ctf-challenge:pr-pipeline-readonly\" cannot get resource \"secrets\" in API group \"\" in the namespace \"ctf-challenge\"","reason":"Forbidden","details":{"name":"ctf-flag","kind":"secrets"},"code":403}
+# ... Skipping
+``` 
 
 #### Test 2: RBAC Blocks Secret Access
 
@@ -339,7 +335,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 **✅ Defense successful!** Even if malicious code runs, it cannot access secrets.
 
-#### Test 3: Network Policy Blocks Exfiltration
+#### (NOT YET TESTED) Test 3: Network Policy Blocks Exfiltration
 
 ```bash
 # Create a test pod in ctf-challenge namespace
@@ -373,7 +369,7 @@ curl -m 5 http://gitea.gitea.svc.cluster.local:3000
 
 ### Phase 6: Continuous Monitoring
 
-#### Set up Kyverno Policy Reports
+#### (NOT YET TESTED) Set up Kyverno Policy Reports
 
 ```bash
 # View policy violations
@@ -387,7 +383,7 @@ kubectl get policyreport -A -o json | \
   jq '.items[] | select(.summary.fail > 0) | {name: .metadata.name, namespace: .metadata.namespace, failures: .summary.fail}'
 ```
 
-#### Monitor with Kubescape
+#### (NOT YET TESTED) Monitor with Kubescape
 
 ```bash
 # Continuous scanning (if enabled)
@@ -397,7 +393,7 @@ kubectl get workloadconfigurationscans -n kubescape
 kubectl describe workloadconfigurationscans -n kubescape
 ```
 
-#### Audit Logs Analysis (with Audicia.io or manual)
+#### (NOT YET TESTED) Audit Logs Analysis (with Audicia.io or manual)
 
 If using Audicia.io:
 ```bash
