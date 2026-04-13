@@ -15,7 +15,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Step 1: Check registry is running
-echo -e "${YELLOW}[1/7] Checking registry status...${NC}"
+echo -e "${YELLOW}[1/8] Checking registry status...${NC}"
 if kubectl get pods -n registry | grep -q "Running"; then
     echo -e "${GREEN}✓ Registry is running${NC}"
 else
@@ -23,8 +23,18 @@ else
     exit 1
 fi
 
-# Step 2: Verify image exists in registry
-echo -e "\n${YELLOW}[2/7] Verifying image in registry...${NC}"
+# Step 2: Verify golang base image exists (for Challenge 3)
+echo -e "\n${YELLOW}[2/8] Verifying golang base image for Challenge 3...${NC}"
+BASE_IMAGE_TAGS=$(curl -k -s -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/golang/tags/list)
+if echo "$BASE_IMAGE_TAGS" | grep -q "1.25-alpine"; then
+    echo -e "${GREEN}✓ golang:1.25-alpine base image seeded${NC}"
+else
+    echo -e "${YELLOW}⚠ golang base image not found (required for Challenge 3)${NC}"
+    echo "  Run: make seed-legitimate-base-image"
+fi
+
+# Step 3: Verify image exists in registry
+echo -e "\n${YELLOW}[3/8] Verifying recipe-api image in registry...${NC}"
 CATALOG=$(curl -k -s -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog)
 if echo "$CATALOG" | grep -q "recipe-api"; then
     echo -e "${GREEN}✓ recipe-api image found in registry${NC}"
@@ -34,8 +44,8 @@ else
     exit 1
 fi
 
-# Step 3: Check Attack #1 flag contains registry credentials
-echo -e "\n${YELLOW}[3/7] Checking Attack #1 flag...${NC}"
+# Step 4: Check Attack #1 flag contains registry credentials
+echo -e "\n${YELLOW}[4/8] Checking Attack #1 flag...${NC}"
 FLAG=$(kubectl get secret ctf-flag -n ctf-challenge -o jsonpath='{.data.flag}' | base64 -d)
 if echo "$FLAG" | grep -q "registry_layer_leak"; then
     echo -e "${GREEN}✓ Flag contains registry hint${NC}"
@@ -45,8 +55,8 @@ else
     exit 1
 fi
 
-# Step 4: Verify registry credentials in secret
-echo -e "\n${YELLOW}[4/7] Verifying registry credentials...${NC}"
+# Step 5: Verify registry credentials in secret
+echo -e "\n${YELLOW}[5/8] Verifying registry credentials...${NC}"
 REG_USER=$(kubectl get secret ctf-flag -n ctf-challenge -o jsonpath='{.data.registry-user}' | base64 -d)
 REG_PASS=$(kubectl get secret ctf-flag -n ctf-challenge -o jsonpath='{.data.registry-password}' | base64 -d)
 if [[ "$REG_USER" == "ctf-admin" ]] && [[ "$REG_PASS" == "CTFRegistryPass123!" ]]; then
@@ -56,8 +66,8 @@ else
     exit 1
 fi
 
-# Step 5: Pull the image
-echo -e "\n${YELLOW}[5/7] Pulling image...${NC}"
+# Step 6: Pull the image
+echo -e "\n${YELLOW}[6/8] Pulling image...${NC}"
 if podman pull localhost:30000/recipe-api:v1.0 --tls-verify=false > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Image pulled successfully${NC}"
 else
@@ -65,8 +75,8 @@ else
     exit 1
 fi
 
-# Step 6: Check for .git in layers
-echo -e "\n${YELLOW}[6/7] Checking image layers for .git directory...${NC}"
+# Step 7: Check for .git in layers
+echo -e "\n${YELLOW}[7/8] Checking image layers for .git directory...${NC}"
 TMPDIR=$(mktemp -d)
 podman save localhost:30000/recipe-api:v1.0 -o "$TMPDIR/recipe-api.tar" 2>/dev/null
 tar -xf "$TMPDIR/recipe-api.tar" -C "$TMPDIR" 2>/dev/null
@@ -88,8 +98,8 @@ for layer in "$TMPDIR"/*.tar; do
         mkdir -p "$EXTRACT_DIR"
         tar -xf "$layer" -C "$EXTRACT_DIR" 2>/dev/null
 
-        # Step 7: Verify flag in git history
-        echo -e "\n${YELLOW}[7/7] Extracting flag from git history...${NC}"
+        # Step 8: Verify flag in git history
+        echo -e "\n${YELLOW}[8/8] Extracting flag from git history...${NC}"
         cd "$EXTRACT_DIR"
 
         # Check for .git in current dir or app/

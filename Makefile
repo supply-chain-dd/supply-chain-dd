@@ -2,6 +2,7 @@
 .PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security create-security-policies
 .PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build
+.PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3
 
 CLUSTER_NAME ?= ctf-cluster
 GITEA_VERSION ?= 10.6.1
@@ -556,13 +557,14 @@ verify-security: ## Verify security tools and policies are working
 # Challenge 2: Container Image Layer Leak
 # ============================================================
 
-setup-challenge2: setup-registry build-recipe-api push-recipe-api ## Setup Challenge 2 (container layer leak)
+setup-challenge2: setup-registry seed-legitimate-base-image build-recipe-api push-recipe-api ## Setup Challenge 2 (container layer leak)
 	@echo ""
 	@echo "========================================"
 	@echo "Challenge 2: Container Image Layer Leak"
 	@echo "========================================"
 	@echo ""
 	@echo "✓ Registry deployed and configured"
+	@echo "✓ Legitimate base image seeded (golang:1.25-alpine)"
 	@echo "✓ recipe-api:v1.0 image built and pushed"
 	@echo ""
 	@echo "Attack #1 flag updated with registry credentials"
@@ -686,4 +688,83 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	@echo "✓ Pipeline triggered successfully"
 	@echo ""
 	@echo "Image will be pushed to: registry.registry.svc.cluster.local:5000/recipe-api:latest"
+
+# ============================================================
+# Challenge 3: Malware in Base Image
+# ============================================================
+
+setup-challenge3: setup-registry ## Setup Challenge 3 (base image poisoning)
+	@echo ""
+	@echo "============================================"
+	@echo "Challenge 3: Malware in Base Image Attack"
+	@echo "============================================"
+	@echo ""
+	@echo "✓ Registry deployed and configured"
+	@echo ""
+	@echo "Prerequisites:"
+	@echo "  • Challenge 1 completed (registry credentials obtained)"
+	@echo "  • Challenge 2 completed (legitimate base image seeded)"
+	@echo "  • Victim repository Dockerfile uses localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine"
+	@echo ""
+	@echo "Attack Scenario:"
+	@echo "  1. Create malicious base image with backdoor"
+	@echo "  2. Push poisoned image to registry (overwrites legitimate base)"
+	@echo "  3. Trigger build pipeline"
+	@echo "  4. Malware embedded in recipe-api production image"
+	@echo ""
+	@echo "Next Steps:"
+	@echo "  1. Follow setup: challenges/challenge3/SETUP.md"
+	@echo "  2. Execute attack: challenges/challenge3/CTF-CHALLENGE-GUIDE.md"
+	@echo "  3. Learn detection: challenges/challenge3/SECURITY-GUIDE.md"
+	@echo ""
+	@echo "Flag: FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}"
+
+seed-legitimate-base-image: ## Seed legitimate golang base image to local registry
+	@echo "Seeding legitimate base image to registry..."
+	@if ! podman images | grep -q "golang.*1.25-alpine"; then \
+		echo "  Pulling golang:1.25-alpine..."; \
+		podman pull golang:1.25-alpine; \
+	else \
+		echo "  ✓ golang:1.25-alpine already pulled"; \
+	fi
+	@echo "  Tagging as localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine..."
+	@podman tag golang:1.25-alpine localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine
+	@echo "  Logging in to registry..."
+	@podman login localhost:$(REGISTRY_NODE_PORT) --tls-verify=false \
+		-u $(REGISTRY_USER) -p $(REGISTRY_PASS) 2>/dev/null || true
+	@echo "  Pushing to registry..."
+	@podman push localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine --tls-verify=false
+	@echo "✓ Legitimate base image seeded to registry"
+
+verify-challenge3: ## Verify Challenge 3 setup
+	@echo "Verifying Challenge 3 setup..."
+	@echo ""
+	@echo "Registry Status:"
+	@kubectl get pods,svc -n registry 2>/dev/null || { echo "  ❌ Registry not running (run: make setup-registry)"; exit 1; }
+	@echo ""
+	@echo "Base Image in Registry:"
+	@if curl --cacert certs/registry.crt -s -u $(REGISTRY_USER):$(REGISTRY_PASS) \
+		https://localhost:$(REGISTRY_NODE_PORT)/v2/golang/tags/list 2>/dev/null | grep -q "1.25-alpine"; then \
+		echo "  ✓ golang:1.25-alpine exists in registry"; \
+	else \
+		echo "  ❌ Base image not found (run: make seed-legitimate-base-image)"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Victim Dockerfile Configuration:"
+	@if grep -q "FROM localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine" challenges/victim-repo-sample/Dockerfile; then \
+		echo "  ✓ Dockerfile uses local registry base image"; \
+	else \
+		echo "  ❌ Dockerfile not configured for challenge3"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Registry Credentials (from Challenge 1):"
+	@echo "  URL:      https://localhost:$(REGISTRY_NODE_PORT)"
+	@echo "  Username: $(REGISTRY_USER)"
+	@echo "  Password: $(REGISTRY_PASS)"
+	@echo ""
+	@echo "✓ Challenge 3 environment ready"
+	@echo ""
+	@echo "Next: Follow challenges/challenge3/CTF-CHALLENGE-GUIDE.md to execute the attack"
 

@@ -1,11 +1,15 @@
 # Single-stage build for Recipe API
-# VULNERABILITY: This Dockerfile copies .git directory and then deletes it,
+# VULNERABILITY 1 (Challenge 2): This Dockerfile copies .git directory and then deletes it,
 # but the .git content remains in the previous layer and can be extracted!
+#
+# VULNERABILITY 2 (Challenge 3): Using base image from local registry without verification.
+# If an attacker compromises the registry or poisons the base image tag,
+# malware will be included in all builds!
 #
 # This is a common mistake when developers try to "clean up" sensitive files
 # after copying them, not realizing that Docker layers are immutable.
 
-FROM golang:1.25-alpine
+FROM localhost:30000/golang:1.25-alpine
 
 WORKDIR /app
 

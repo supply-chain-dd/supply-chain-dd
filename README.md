@@ -100,9 +100,23 @@ make setup-challenge2
 make verify-challenge2
 ```
 
+**Note**: Challenge 2 setup also seeds the `golang:1.25-alpine` base image to the registry for Challenge 3.
+
 **Documentation**: [challenges/challenge2/ATTACK2-README.md](challenges/challenge2/ATTACK2-README.md)
 
 **Flag**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}`
+
+---
+
+### Challenge 3: Malware in Base Image
+**Difficulty**: Hard  
+**Type**: Supply Chain Attack, Base Image Poisoning
+
+Poison a base container image in the registry to inject malware into production builds.
+
+**Setup**: See [challenges/challenge3/SETUP.md](challenges/challenge3/SETUP.md)
+
+**Flag**: `FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}`
 
 ---
 
@@ -114,8 +128,10 @@ The challenges are designed to be completed in sequence, with each providing cre
 Challenge 1 (Tekton PWN)
     ↓ (steal registry credentials)
 Challenge 2 (Layer Leak)
-    ↓ (discover webhook configuration)
-Challenge 3+ (Coming soon)
+    ↓ (seeds golang base image + discover victim uses local registry)
+Challenge 3 (Base Image Poisoning)
+    ↓ (poison base image → inject malware into production)
+Challenge 4 (Coming soon - GitOps Compromise)
 ```
 
 ## Troubleshooting

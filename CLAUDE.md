@@ -79,6 +79,7 @@ Each challenge must contain:
 │   │   ├── SETUP.md                # Challenge setup instructions
 │   │   ├── CTF-CHALLENGE-GUIDE.md  # Participant walkthrough
 │   │   ├── ATTACK-ANALYSIS.md      # Technical analysis
+│   │   ├── SECURITY-GUIDE.md       # Detection and prevention
 │   │   ├── tekton/                 # Vulnerable Tekton resources
 │   │   │   ├── tasks/              # Vulnerable tasks
 │   │   │   ├── pipelines/          # Vulnerable pipelines
@@ -92,20 +93,28 @@ Each challenge must contain:
 │   │   ├── ATTACK-ANALYSIS.md
 │   │   ├── CTF-CHALLENGE-GUIDE.md
 │   │   ├── SETUP.md
-│   │   ├── tekton
+│   │   ├── SECURITY-GUIDE.md
+│   │   ├── tekton/
 │   │   │   ├── manual-pipelinerun.yaml
-│   │   │   ├── pipelines
+│   │   │   ├── pipelines/
 │   │   │   │   └── push-build-pipeline.yaml
 │   │   │   ├── registry-docker-config-secret.yaml
-│   │   │   ├── tasks
+│   │   │   ├── tasks/
 │   │   │   │   ├── build-tasks.yaml
 │   │   │   │   ├── quality-check-task.yaml
 │   │   │   │   └── supporting-tasks.yaml
-│   │   │   └── triggers
+│   │   │   └── triggers/
 │   │   │       └── push-eventlistener.yaml
 │   │   └── test-attack2.sh
-│   ├── challenge3/                 # Attack #3: Container Layer Leak
-│   ├── challenge4/                 # Attack #4: Container Layer Leak
+│   ├── challenge3/                 # Attack #3: Base Image Poisoning
+│   │   ├── ATTACK-ANALYSIS.md      # Technical analysis and real-world examples
+│   │   ├── CTF-CHALLENGE-GUIDE.md  # Step-by-step attack execution
+│   │   ├── SETUP.md                # Environment setup for attack
+│   │   ├── SECURITY-GUIDE.md       # Detection and prevention methods
+│   │   ├── tekton/                 # Vulnerable pipeline configs
+│   │   ├── security/               # Kyverno, NetworkPolicy, RBAC
+│   │   └── tekton-patched/         # Secured pipeline with image verification
+│   ├── challenge4/                 # Attack #4: GitOps Compromise (Coming soon)
 │   └── victim-repo-sample/         # Shared victim application
 ├── gitea/                          # Gitea configurations
 ├── certs/                          # Registry TLS certificates (generated)
