@@ -2,15 +2,38 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**IMPORTANT**: See [AGENTS.md](AGENTS.md) for detailed documentation update requirements. All changes must update corresponding documentation files (README.md, CLAUDE.md, challenge docs).
+
 ## Project Overview
 
 This is a Capture The Flag (CTF) environment setup project focused on supply chain security. The project provides automated scripts to provision a complete Kubernetes environment for CTF participants, including:
 
 - A KinD (Kubernetes in Docker) cluster
 - Gitea self-hosted Git service for Git-based supply chain scenarios
+- A container registry
+- A CI/CD Tekton pipeline
 - Pre-configured repositories and CTF challenges
+- Step-by-step (demo-magic) scripts to show-case the attacks, then to detect and prevent them
+
+## Attacks show-cased
+
+| Attack | Description | Detection tools | Prevention tools |
+|--------|-------------|-----------------|------------------|
+|Pull Request Target |Execution of malicious code from the attacker's fork on the CI/CD pipeline, resulting in hacker extracting tokens and secrets|Zizmor (workflow security analysis), Scorecard (repo security posture), Audicia (RBAC abuse from audit logs), Kubescape | Kyverno (pipeline policies), Network Policies (egress restrictions), RBAC (least privilege), AMPEL (attestation enforcement) |
+|Leaked secrets within container images|Sensitive credentials and secrets embedded in container image layers, exposing them to anyone with image access|Kubescape (image scanning), Baseline (project security baseline), Falco (runtime secret access detection) | Kyverno (block images with secrets), SBOM (transparency), Signatures (image verification), Secret scanning in CI/CD |
+|Malware in base image |Compromised or malicious base container images containing backdoors or malware|Kubescape (vuln scanning), Guac (SBOM + provenance analysis), Scorecard (base image repo security), AMPEL (verify build attestations) | Kyverno (trusted registry/image policies), SBOM (component transparency), Signatures (image signing/verification), VEX (exploit context), Guac (supply chain graph) |
+|Compromised Continuous Deployment (GitOps pipeline)|Attacker gains control of GitOps deployment pipeline to deploy malicious workloads|Falco (runtime anomaly detection), Audicia (RBAC abuse from audit logs), Kubescape (config scanning), AMPEL (deployment attestation verification) | Kyverno (deployment admission policies), RBAC (strict permissions), Network Policies (lateral movement prevention), SBOM, Signatures (artifact verification), Dependabot/Renovate (toolchain updates) |
 
 ## Architecture
+
+
+## # Challenge structure
+Each challenge must contain:
+* A `SETUP.md` file that explains what needs to be setup in the environment so that the attack can be performed 
+* A `CTF-CHALLENGE-GUIDE.md` that explains how to conduct the attack
+* A `ATTACK-ANALYSIS.md` that explains the attack, eventually contains real world attack examples of the same type
+* A `SECURITY-GUIDE.md` that explains how to detect it and prevent it
+* All scripts, source code, manifests needed to setup the attack, conduct it, detect and prevent it
 
 ### Component Stack
 1. **KinD Cluster**: Local Kubernetes cluster running in Docker containers
@@ -35,6 +58,10 @@ This is a Capture The Flag (CTF) environment setup project focused on supply cha
    - Persistent storage via PersistentVolumeClaim (10Gi)
    - Credentials stored in ctf-flag secret for CTF challenge integration
    - CA certificate saved to `certs/registry.crt` for client configuration
+
+4. **Tekton Pipeline**: Cloud-native, CI/CD pipeline 
+   - Installed via Helm chart
+
 
 ### Directory Structure
 ```
@@ -62,10 +89,23 @@ This is a Capture The Flag (CTF) environment setup project focused on supply cha
 │   │   │   └── network-policies/
 │   │   └── tekton-patched/         # Secured configurations
 │   ├── challenge2/                 # Attack #2: Container Layer Leak
-│   │   ├── ATTACK2-README.md
-│   │   ├── ATTACK2-EXPLOITATION-GUIDE.md
-│   │   ├── ATTACK2-SUMMARY.md
+│   │   ├── ATTACK-ANALYSIS.md
+│   │   ├── CTF-CHALLENGE-GUIDE.md
+│   │   ├── SETUP.md
+│   │   ├── tekton
+│   │   │   ├── manual-pipelinerun.yaml
+│   │   │   ├── pipelines
+│   │   │   │   └── push-build-pipeline.yaml
+│   │   │   ├── registry-docker-config-secret.yaml
+│   │   │   ├── tasks
+│   │   │   │   ├── build-tasks.yaml
+│   │   │   │   ├── quality-check-task.yaml
+│   │   │   │   └── supporting-tasks.yaml
+│   │   │   └── triggers
+│   │   │       └── push-eventlistener.yaml
 │   │   └── test-attack2.sh
+│   ├── challenge3/                 # Attack #3: Container Layer Leak
+│   ├── challenge4/                 # Attack #4: Container Layer Leak
 │   └── victim-repo-sample/         # Shared victim application
 ├── gitea/                          # Gitea configurations
 ├── certs/                          # Registry TLS certificates (generated)
@@ -87,8 +127,6 @@ make setup-kind      # Create KinD cluster only
 make setup-gitea     # Install Gitea only
 make setup-registry  # Setup Docker registry
 
-# Alternative: use main script
-cd setup && ./setup.sh
 ```
 
 ### Verification and Status
@@ -120,30 +158,7 @@ Example:
 CLUSTER_NAME=my-ctf GITEA_VERSION=10.5.0 make setup
 ```
 
-## Adding CTF Challenges
 
-### Gitea Repositories
-CTF challenges can be created as Git repositories with specific vulnerabilities or scenarios:
-
-**Example Challenge Ideas:**
-- **Malicious Commits**: Repository with hidden backdoors in commit history
-- **Compromised Dependencies**: Projects with vulnerable or malicious dependencies
-- **Leaked Secrets**: Repositories containing accidentally committed credentials
-- **Branch Protection Bypass**: Scenarios testing Git workflow security
-- **Hook Exploits**: Custom Git hooks with security implications
-
-### Pre-configured Repositories
-Place repository configurations in `gitea/repos/`:
-```bash
-gitea/repos/
-├── challenge-1/
-│   ├── README.md
-│   └── src/
-└── challenge-2/
-    └── ...
-```
-
-Repositories can be imported into Gitea via API or manually after setup.
 
 ## Script Architecture
 
@@ -204,15 +219,39 @@ Repositories can be imported into Gitea via API or manually after setup.
 ## Makefile Targets
 
 The Makefile provides a clean interface for common operations:
-- `make help` - Display all available targets
-- `make setup` - Complete environment setup (kind + gitea + verify)
-- `make setup-kind` - Create KinD cluster
-- `make setup-gitea` - Install Gitea
-- `make setup-registry` - Setup Docker registry
-- `make verify` - Verify environment health
-- `make verify-registry` - Verify registry is working correctly
-- `make status` - Show environment status
-- `make clean` - Cleanup environment
+**CLI Tools:**
+- `check-cli-tools`  -      Check if required CLI tools are installed
+- `install-tkn`      -      Install Tekton CLI as kubectl plugin
+- `install-kubescape`-      Install Kubescape CLI as kubectl plugin
+
+**Environment Setup:**
+- `setup`                      -   Complete setup (KinD cluster + Gitea + tekton + registry + verification)
+- `setup-kind`                 -   Create KinD cluster
+- `setup-gitea`                -   Install Gitea via Helm
+- `setup-tekton`               -   Install Tekton Pipelines and Triggers
+- `setup-registry`             -   Setup local Docker registry with authentication
+- `configure-registry-tls`     -   Configure TLS trust for the registry (interactive)
+- `setup-ctf-challenge`        -   Install Tekton CTF challenge resources (VULNERABLE version)
+- `setup-ctf-challenge-secure` -   Install Tekton CTF challenge with SECURE configuration
+
+**Security Tools:**
+- `setup-security-tools`       -   Deploy all security tools (Kyverno + Kubescape)
+- `setup-kyverno`              -   Deploy Kyverno policy engine
+- `setup-kubescape`            -   Deploy Kubescape security scanner
+
+**Security Operations:**
+- `security-scan`              -   Run all security scans (static analysis + runtime checks)
+- `apply-prevention-policies`  -   Apply Kyverno policies and network policies
+- `create-security-policies`   -   Create security policy files (Kyverno, NetworkPolicy, RBAC)
+- `verify-security`            -   Verify security tools and policies are working
+
+**Verification:**
+- `status`                     -  Show environment status
+- `verify-ctf`                 -  Verify Tekton CTF challenge installation
+- `verify-registry`            -  Verify registry is working correctly
+
+**Cleanup:**
+- `clean`                      - Cleanup environment (delete cluster and resources)
 
 ## Kubernetes Context
 
@@ -223,20 +262,7 @@ kind-ctf-cluster
 
 All kubectl commands will target this cluster by default.
 
-## Testing Changes
 
-When modifying setup scripts:
-
-1. **Test cleanup**: `make clean`
-2. **Test full setup**: `make setup`
-3. **Verify**: `make verify`
-4. **Check individual components**:
-   ```bash
-   kubectl get pods -A
-   kubectl get pods -n gitea
-   kubectl get svc -n gitea
-   helm list -n gitea
-   ```
 
 ## Common Issues
 
@@ -370,3 +396,28 @@ Optional tools:
 - **curl** (for testing)
 
 All scripts assume bash and use `set -euo pipefail` for safety.
+
+## Documentation Update Requirements
+
+**CRITICAL**: When making changes to this repository, you MUST update documentation:
+
+### Always Update
+- **README.md**: For any user-facing changes (new commands, features, challenges)
+- **CLAUDE.md**: For architecture, development workflow, or tool changes
+
+### Challenge Folder Changes (`challenges/challengeN/`)
+When modifying challenge files, update the appropriate documentation:
+
+| Change Type | Update File |
+|-------------|-------------|
+| Environment setup, configuration | `SETUP.md` |
+| Attack execution steps | `CTF-CHALLENGE-GUIDE.md` |
+| Attack explanation, real-world examples | `ATTACK-ANALYSIS.md` |
+| Detection/prevention methods | `SECURITY-GUIDE.md` |
+
+**See [AGENTS.md](AGENTS.md) for complete guidelines.**
+
+## Contributing
+
+- **Human contributors**: See [CONTRIBUTING.md](CONTRIBUTING.md)
+- **AI agents**: See [AGENTS.md](AGENTS.md)

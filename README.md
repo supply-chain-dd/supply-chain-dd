@@ -143,6 +143,12 @@ make configure-registry-tls
 make verify-registry
 ```
 
+## Contributing
+
+Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**For AI Agents**: See [AGENTS.md](AGENTS.md) for documentation update requirements.
+
 ## Support
 
 For issues or questions, please open an issue in this repository.
