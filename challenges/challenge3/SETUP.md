@@ -70,7 +70,7 @@ The Tekton pipeline should build the `recipe-api` using this Dockerfile:
 # Check current pipeline runs
 kubectl get pipelineruns -n ctf-challenge
 
-# Verify the build task pulls from localhost:30000
+# Verify the build task pulls from registry.registry.svc.cluster.local:5000
 tkn pr logs <latest-run> -n ctf-challenge | grep -A5 " from registry "
 ```
 

@@ -60,6 +60,10 @@ spec:
   workspaces:
     - name: source
       description: The workspace containing the Dockerfile and source code
+  volumes:
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
   steps:
     - name: build-image
       image: gcr.io/kaniko-project/executor:v1.23.2
@@ -67,6 +71,8 @@ spec:
       env:
         - name: DOCKER_CONFIG
           value: /tekton/home/.docker
+        - name: SSL_CERT_DIR
+          value: /kaniko/ssl/certs
       command:
         - /kaniko/executor
       args:
@@ -75,6 +81,11 @@ spec:
         - --destination=$(params.image-name):$(params.image-tag)
         - --no-push
         - --tar-path=/workspace/source/image.tar
+      volumeMounts:
+        - name: registry-ca-cert
+          mountPath: /kaniko/ssl/certs/additional-ca-cert-bundle.crt
+          subPath: ca.crt
+          readOnly: true
       script: ""
 
     - name: verify-image
@@ -126,19 +137,28 @@ spec:
         items:
           - key: config.json
             path: config.json
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
   steps:
     - name: push-image
       image: gcr.io/kaniko-project/executor:v1.23.2
       workingDir: $(workspaces.source.path)
+      env:
+        - name: SSL_CERT_DIR
+          value: /kaniko/ssl/certs
       command:
         - /kaniko/executor
       args:
         - --dockerfile=Dockerfile
         - --context=$(workspaces.source.path)
         - --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag)
-        - --skip-tls-verify
         - --verbosity=info
       volumeMounts:
         - name: docker-config
           mountPath: /kaniko/.docker/
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /kaniko/ssl/certs/additional-ca-cert-bundle.crt
+          subPath: ca.crt
           readOnly: true

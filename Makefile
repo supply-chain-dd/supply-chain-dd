@@ -170,6 +170,10 @@ configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE version)
 	@echo "Installing Tekton CTF Challenge (VULNERABLE version)..."
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
+	@echo ""
+	@echo "Setting up registry CA certificate for Tekton..."
+	@cd setup/scripts && ./setup-registry-cert-for-tekton.sh
+	@echo ""
 	@kubectl apply -f challenges/challenge1/tekton/triggers/vulnerable-eventlistener.yaml
 	@kubectl apply -f challenges/challenge1/tekton/tasks/supporting-tasks.yaml
 	@kubectl apply -f challenges/challenge1/tekton/tasks/vulnerable-quality-check-task.yaml

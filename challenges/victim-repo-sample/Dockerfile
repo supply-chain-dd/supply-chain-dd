@@ -9,7 +9,7 @@
 # This is a common mistake when developers try to "clean up" sensitive files
 # after copying them, not realizing that Docker layers are immutable.
 
-FROM localhost:30000/golang:1.25-alpine
+FROM registry.registry.svc.cluster.local:5000/golang:1.25-alpine
 
 WORKDIR /app
 
