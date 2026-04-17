@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: recipe-api-production
+  namespace: argocd
+  labels:
+    environment: production
+    app: recipe-api
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/production-manifests.git
+    targetRevision: main
+    path: recipe-api
+
+    kustomize:
+      namePrefix: ""
+      nameSuffix: ""
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=false
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # No validation or restrictions (vulnerable!)
+  ignoreDifferences: []
+
+  revisionHistoryLimit: 10

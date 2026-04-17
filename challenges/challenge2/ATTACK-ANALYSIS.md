@@ -16,13 +16,13 @@ All components for Attack #2 are now in place and tested.
 
 #### 2. Git Repository with Secrets
 - **Commits**:
-  - `b4acebb` - Initial commit with `.env.production` containing:
+  - `cb0d66f` - Initial commit with `.env.production` containing:
     - Database credentials
     - API keys (Stripe, SendGrid)
     - Session secrets
     - **Registry credentials**: `ctf-admin` / `CTFRegistryPass123!`
-    - **FLAG**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}`
-  - `6f94c1f` - "Security fix" that deletes `.env.production`
+    - **FLAG**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}`
+  - `3dd110a` - "Security fix" that deletes `.env.production`
 
 #### 3. Updated Attack #1 Flag
 - **Old**: `FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}`
@@ -61,11 +61,11 @@ Attack #1 (Tekton PWN)
          ↓
    Extract git history
          ↓
-   git show b4acebb:.env.production
+   git show cb0d66f:.env.production
          ↓
-   Capture FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}
+   Capture FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}
          ↓
-   Proceed to Attack #3: webhook_c0nf1g_1nj3ct10n
+   Proceed to Attack #3: g1t0ps_c0mpr0m1s3
 ```
 
 ### Verification
@@ -102,7 +102,7 @@ done
 
 # 6. Extract flag
 cd app
-git show b4acebb:.env.production | grep FLAG
+git show cb0d66f:.env.production | grep FLAG
 ```
 
 ### Files Modified/Created
@@ -162,7 +162,7 @@ Kubernetes Secrets:
 
 ### Connection to Attack #3
 
-The flag hints at: `webhook_c0nf1g_1nj3ct10n`
+The flag hints at: `g1t0ps_c0mpr0m1s3`
 
 **Next vulnerability**: Gitea webhook manipulation
 - Use registry access to modify webhook configurations
@@ -193,7 +193,7 @@ podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
 ```bash
 cd challenges/victim-repo-sample
 git log --all --oneline
-git show b4acebb:.env.production
+git show cb0d66f:.env.production
 ```
 
 ### CTF Organizer Notes
@@ -227,7 +227,7 @@ git show b4acebb:.env.production
 5. Locate the .git directory in a previous layer
 6. Explore git commit history
 7. Find the .env.production file in the first commit
-8. Extract the flag: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}`
+8. Extract the flag: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}`
 9. Understand the vulnerability and prevention measures
 10. Are prepared for Attack #3
 

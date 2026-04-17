@@ -3,6 +3,7 @@
 .PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3
+.PHONY: setup-production-cluster setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
 
 CLUSTER_NAME ?= ctf-cluster
 GITEA_VERSION ?= 10.6.1
@@ -612,6 +613,9 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 	@echo "========================================"
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
 	@echo ""
+	@echo "Setting up registry CA certificate for Tekton..."
+	@cd setup/scripts && ./setup-registry-cert-for-tekton.sh
+	@echo ""
 	@echo "Creating registry Docker config secret..."
 	@kubectl apply -f challenges/challenge2/tekton/registry-docker-config-secret.yaml
 	@echo ""
@@ -772,3 +776,71 @@ verify-challenge3: ## Verify Challenge 3 setup
 	@echo ""
 	@echo "Next: Follow challenges/challenge3/CTF-CHALLENGE-GUIDE.md to execute the attack"
 
+
+# ============================================================
+# Challenge 4: GitOps Pipeline Compromise
+# ============================================================
+
+PRODUCTION_CLUSTER_NAME ?= ctf-production-cluster
+ARGOCD_VERSION ?= 5.51.0
+ARGOCD_NAMESPACE ?= argocd
+
+setup-production-cluster: ## Create production KinD cluster for Challenge 4
+	@./setup/scripts/setup-production-cluster.sh
+
+setup-argocd: ## Install ArgoCD on production cluster
+	@./setup/scripts/setup-argocd.sh
+
+setup-challenge4: setup-production-cluster setup-argocd ## Complete Challenge 4 setup
+	@echo ""
+	@echo "========================================"
+	@echo "Challenge 4 Setup Complete"
+	@echo "========================================"
+	@echo ""
+	@echo "✓ Production KinD cluster created: $(PRODUCTION_CLUSTER_NAME)"
+	@echo "✓ ArgoCD installed in namespace: $(ARGOCD_NAMESPACE)"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Follow challenges/challenge4/SETUP.md to:"
+	@echo "     - Create production-manifests repository in Gitea"
+	@echo "     - Configure ArgoCD application"
+	@echo "  2. Start the attack: challenges/challenge4/CTF-CHALLENGE-GUIDE.md"
+	@echo ""
+
+verify-challenge4: ## Verify Challenge 4 setup
+	@echo "Verifying Challenge 4 setup..."
+	@echo ""
+	@echo "Production Cluster:"
+	@kind get clusters | grep -q "$(PRODUCTION_CLUSTER_NAME)" && echo "  ✓ Production cluster exists" || echo "  ❌ Production cluster not found"
+	@echo ""
+	@echo "ArgoCD Pods (switching context):"
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get pods -n $(ARGOCD_NAMESPACE) 2>/dev/null || echo "  ❌ ArgoCD not installed"
+	@echo ""
+	@echo "ArgoCD Applications:"
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get applications -n $(ARGOCD_NAMESPACE) 2>/dev/null || echo "  ⚠ No applications deployed yet"
+	@echo ""
+	@echo "Production Namespace:"
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get namespace production 2>/dev/null && echo "  ✓ Production namespace exists" || echo "  ⚠ Production namespace not created"
+	@echo ""
+
+clean-challenge4: ## Cleanup Challenge 4 (delete production cluster)
+	@echo "Cleaning up Challenge 4..."
+	@kind delete cluster --name $(PRODUCTION_CLUSTER_NAME) 2>/dev/null || true
+	@echo "✓ Production cluster deleted"
+
+apply-challenge4-security: ## Apply security controls to production cluster
+	@echo "Applying Challenge 4 security controls..."
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/security/kyverno-policies/
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/security/network-policies/
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/security/rbac/least-privilege-argocd.yaml
+	@echo "✓ Security controls applied"
+
+test-challenge4-attack: ## Test that Challenge 4 attack payloads are blocked by security controls
+	@echo "Testing Challenge 4 attack prevention..."
+	@echo ""
+	@echo "Test 1: Backdoored deployment (should be BLOCKED by Kyverno)"
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/attack-payloads/backdoored-deployment.yaml 2>&1 | grep -q "blocked" && echo "  ✓ Blocked by admission policy" || echo "  ❌ Not blocked!"
+	@echo ""
+	@echo "Test 2: Malicious pod (should be BLOCKED by resource limits)"
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/attack-payloads/malicious-pod.yaml 2>&1 | grep -q "blocked\|exceeds" && echo "  ✓ Blocked by admission policy" || echo "  ❌ Not blocked!"
+	@echo ""

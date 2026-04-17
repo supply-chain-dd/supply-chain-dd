@@ -123,7 +123,7 @@ registry-password: CTFRegistryPass123!
 next-target: recipe-api:v1.0
 ```
 
-The organization has built and pushed a `recipe-api:v1.0` container image to this registry. A developer accidentally committed production secrets to git, then removed them, but **didn't realize the git history remains in the container image layers**.
+The organization has built and pushed a `recipe-api:v1.0` container image to this registry. A developer accidentally committed production secrets (including database credentials, API keys, registry access, and **ArgoCD deployment credentials**) to git, then removed them, but **didn't realize the git history remains in the container image layers**.
 
 ## Vulnerability Details
 
@@ -273,10 +273,10 @@ git show <commit-hash>:.env.production
 
 ## The Flag
 
-Hidden in the git history (commit `b4acebb`) in the file `.env.production`:
+Hidden in the git history (commit `cb0d66f`) in the file `.env.production`:
 
 ```bash
-# FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}
+# FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}
 ```
 
 ## Files in This Attack

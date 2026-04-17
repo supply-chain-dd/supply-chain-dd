@@ -1,0 +1,76 @@
+# ArgoCD Helm Values for Challenge 4
+# This configuration is intentionally permissive for CTF demonstration
+
+global:
+  domain: argocd.ctf.local
+
+server:
+  service:
+    type: NodePort
+    nodePortHttp: 30080
+    nodePortHttps: 30443
+
+  # Insecure mode for easier access (vulnerable!)
+  extraArgs:
+    - --insecure
+
+  config:
+    # Anonymous read access (vulnerable!)
+    users.anonymous.enabled: "true"
+
+    # Disable TLS verification (vulnerable!)
+    repositories: |
+      - url: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/production-manifests.git
+        type: git
+        name: production-manifests
+        insecure: true
+
+  rbacConfig:
+    # Overly permissive RBAC (vulnerable!)
+    policy.default: role:admin
+    policy.csv: |
+      p, role:deployer, applications, *, */*, allow
+      p, role:deployer, clusters, *, *, allow
+      p, role:deployer, projects, *, *, allow
+      p, role:deployer, repositories, *, *, allow
+      g, deployer, role:deployer
+
+configs:
+  secret:
+    # Default admin credentials (weak!)
+    argocdServerAdminPassword: "$2a$10$mivhwttXM0U5eBrZGtAG8.VSRL1l9cZNAmaSaqotIzXRBRwF/x/KS"  # BCrypt hash of "admin123"
+    argocdServerAdminPasswordMtime: "2026-04-01T00:00:00Z"
+
+  cm:
+    # Allow apps in any namespace (vulnerable!)
+    application.instanceLabelKey: argocd.argoproj.io/instance
+
+    # Timeout settings
+    timeout.reconciliation: 180s
+    timeout.hard.reconciliation: 0s
+
+controller:
+  metrics:
+    enabled: true
+
+  # High privileges for controller (vulnerable!)
+  serviceAccount:
+    create: true
+    name: argocd-application-controller
+
+repoServer:
+  serviceAccount:
+    create: true
+    name: argocd-repo-server
+
+dex:
+  enabled: false  # Disable SSO for simplicity
+
+redis:
+  enabled: true
+
+notifications:
+  enabled: false
+
+applicationSet:
+  enabled: false

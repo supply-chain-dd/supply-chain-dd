@@ -1,0 +1,59 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-high-resource-usage
+  annotations:
+    policies.kyverno.io/title: Restrict High Resource Usage
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Prevents deployment of containers with unusually high CPU/memory requests.
+      Helps detect cryptominers and resource abuse.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: limit-cpu-requests
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - production
+      exclude:
+        any:
+        - resources:
+            annotations:
+              high-resources.allowed: "true"
+      validate:
+        message: "Container CPU request exceeds maximum allowed (1 core). Cryptomining suspected."
+        deny:
+          conditions:
+            any:
+            - key: "{{ request.object.spec.containers[].resources.requests.cpu }}"
+              operator: GreaterThan
+              value: "1000m"
+
+    - name: limit-memory-requests
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - production
+      exclude:
+        any:
+        - resources:
+            annotations:
+              high-resources.allowed: "true"
+      validate:
+        message: "Container memory request exceeds maximum allowed (1Gi). Resource abuse suspected."
+        deny:
+          conditions:
+            any:
+            - key: "{{ request.object.spec.containers[].resources.requests.memory }}"
+              operator: GreaterThan
+              value: "1Gi"

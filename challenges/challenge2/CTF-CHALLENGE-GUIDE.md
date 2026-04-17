@@ -182,19 +182,19 @@ ls -la app/.git/
 git log
 
 # Expected output:
-# commit 6f94c1f... Security fix: Remove accidentally committed production secrets
-# commit b4acebb... Initial commit: Recipe API v1.0 with production config
+# commit 3dd110a... Security fix: Remove accidentally committed production secrets
+# commit cb0d66f... Initial commit: Recipe API v1.0 with production config
 
 # Check what was deleted in the second commit
-git show 6f94c1f
+git show 3dd110a
 
 # Expected output shows deletion of .env.production
 
 # Restore the deleted file from the first commit
-git show b4acebb:.env.production
+git show cb0d66f:.env.production
 
 # Or checkout the first commit
-git checkout b4acebb
+git checkout cb0d66f
 cat .env.production
 ```
 
@@ -220,12 +220,12 @@ REGISTRY_USERNAME=ctf-admin
 REGISTRY_PASSWORD=CTFRegistryPass123!
 
 # Next Challenge Flag
-# FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}
+# FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}
 # The attacker can use these registry credentials to manipulate container images
 # Next attack: Investigate Gitea webhook configurations for pipeline manipulation
 ```
 
-**FLAG:** `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}`
+**FLAG:** `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}`
 
 ## Real-World Impact
 
@@ -351,7 +351,7 @@ Organizations can detect this vulnerability through:
 
 ## Next Steps
 
-The flag reveals: `webhook_c0nf1g_1nj3ct10n`
+The flag reveals: `g1t0ps_c0mpr0m1s3`
 
 **Attack #3** involves:
 - Using registry access to inject malicious webhook configurations

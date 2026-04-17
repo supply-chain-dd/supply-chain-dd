@@ -1,0 +1,62 @@
+# SECURE RBAC Configuration for ArgoCD
+# This configuration follows least-privilege principles
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-deployer
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-deployer
+
+---
+# Limited permissions for ArgoCD application controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-deployer-production
+  namespace: production
+  labels:
+    app.kubernetes.io/name: argocd-deployer
+rules:
+  # Allow managing deployments, services, configmaps
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # Read-only access to secrets (no delete/update)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+
+  # Allow managing pods (for troubleshooting)
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+
+  # Deny: No RBAC, ClusterRole, or namespace creation
+  # Deny: No persistent volume access
+  # Deny: No CRD manipulation
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-deployer-production
+  namespace: production
+subjects:
+  - kind: ServiceAccount
+    name: argocd-deployer
+    namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-deployer-production
+
+---
+# No ClusterRole or ClusterRoleBinding!
+# ArgoCD should only have namespace-scoped permissions

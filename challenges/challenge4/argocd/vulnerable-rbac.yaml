@@ -1,0 +1,79 @@
+# VULNERABLE RBAC Configuration for ArgoCD
+# This configuration grants excessive permissions to ArgoCD ServiceAccounts
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-deployer
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-deployer
+    ctf-challenge: challenge4
+
+---
+# VULNERABILITY: ClusterAdmin privileges for ArgoCD controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-controller-admin
+  labels:
+    ctf-challenge: challenge4
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin  # DANGEROUS: Full cluster access!
+
+---
+# VULNERABILITY: Deployer has admin access to production namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-deployer-admin
+  namespace: production
+  labels:
+    ctf-challenge: challenge4
+subjects:
+  - kind: ServiceAccount
+    name: argocd-deployer
+    namespace: argocd
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+
+---
+# VULNERABILITY: repo-server can read secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-repo-server-secrets
+  labels:
+    ctf-challenge: challenge4
+subjects:
+  - kind: ServiceAccount
+    name: argocd-repo-server
+    namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+
+---
+# ServiceAccount token for API access (will be exposed in .env.production)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-deployer-token
+  namespace: argocd
+  annotations:
+    kubernetes.io/service-account.name: argocd-deployer
+  labels:
+    ctf-challenge: challenge4
+type: kubernetes.io/service-account-token

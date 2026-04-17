@@ -1,0 +1,109 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Restrict Privileged Containers
+    policies.kyverno.io/category: Pod Security Standards
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Prevents deployment of privileged containers, containers running as root,
+      and containers with dangerous capabilities. Blocks the backdoor attack payload.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: deny-privileged
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - production
+      validate:
+        message: "Privileged containers are not allowed in production"
+        pattern:
+          spec:
+            =(ephemeralContainers):
+            - =(securityContext):
+                =(privileged): false
+            =(initContainers):
+            - =(securityContext):
+                =(privileged): false
+            containers:
+            - =(securityContext):
+                =(privileged): false
+
+    - name: require-non-root
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - production
+      validate:
+        message: "Containers must run as non-root user"
+        pattern:
+          spec:
+            =(ephemeralContainers):
+            - securityContext:
+                runAsNonRoot: true
+            =(initContainers):
+            - securityContext:
+                runAsNonRoot: true
+            containers:
+            - securityContext:
+                runAsNonRoot: true
+
+    - name: drop-all-capabilities
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - production
+      validate:
+        message: "Containers must drop ALL capabilities"
+        pattern:
+          spec:
+            =(ephemeralContainers):
+            - securityContext:
+                capabilities:
+                  drop:
+                  - ALL
+            =(initContainers):
+            - securityContext:
+                capabilities:
+                  drop:
+                  - ALL
+            containers:
+            - securityContext:
+                capabilities:
+                  drop:
+                  - ALL
+
+    - name: deny-privilege-escalation
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - production
+      validate:
+        message: "Privilege escalation is not allowed"
+        pattern:
+          spec:
+            =(ephemeralContainers):
+            - securityContext:
+                allowPrivilegeEscalation: false
+            =(initContainers):
+            - securityContext:
+                allowPrivilegeEscalation: false
+            containers:
+            - securityContext:
+                allowPrivilegeEscalation: false

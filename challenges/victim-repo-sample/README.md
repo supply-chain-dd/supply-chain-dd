@@ -12,12 +12,14 @@ This directory contains:
 ## Git History (_git)
 
 The `_git` directory contains git history with:
-- **Commit 1 (b4acebb)**: Includes `.env.production` with secrets:
+- **Commit 1 (cb0d66f)**: Includes `.env.production` with secrets:
   - Database credentials
   - API keys (Stripe, SendGrid)
   - Registry credentials
-  - **FLAG**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}`
-- **Commit 2 (6f94c1f)**: Attempts to delete `.env.production` (but it remains in history!)
+  - ArgoCD deployment credentials
+  - Production cluster kubeconfig
+  - **FLAG**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}`
+- **Commit 2 (3dd110a)**: Attempts to delete `.env.production` (but it remains in history!)
 
 During the build process, the Dockerfile copies this git history into the container image layers.
 
@@ -99,8 +101,8 @@ The flag is hidden in the first git commit in `.env.production`:
 ```bash
 # After extracting image layers:
 cd /path/to/extracted/layer/with/.git
-git show b4acebb:.env.production
-# Look for: FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:webhook_c0nf1g_1nj3ct10n}
+git show cb0d66f:.env.production
+# Look for: FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}
 ```
 
 ## API Endpoints

@@ -1,0 +1,97 @@
+# Falco Rules for Detecting GitOps Pipeline Attacks
+# These rules detect suspicious runtime behavior in containers
+
+- rule: Reverse Shell in Container
+  desc: Detects reverse shell connections from containers
+  condition: >
+    spawned_process and container and
+    (proc.name in (nc, ncat, netcat, socat) or
+    (proc.name = bash and proc.args contains "/dev/tcp/"))
+  output: >
+    Reverse shell detected in container
+    (user=%user.name container=%container.name image=%container.image.repository
+    proc=%proc.cmdline parent=%proc.pname gparent=%proc.aname[2])
+  priority: CRITICAL
+  tags: [container, shell, mitre_execution]
+
+- rule: Cryptomining Activity
+  desc: Detects common cryptocurrency mining patterns
+  condition: >
+    spawned_process and container and
+    (proc.name in (xmrig, ethminer, cpuminer, minerd, ccminer) or
+    proc.cmdline contains "stratum+tcp" or
+    proc.cmdline contains "pool.supportxmr.com" or
+    proc.cmdline contains "cryptonight")
+  output: >
+    Cryptocurrency mining detected in container
+    (user=%user.name container=%container.name image=%container.image.repository
+    proc=%proc.cmdline parent=%proc.pname)
+  priority: CRITICAL
+  tags: [container, cryptomining, resource_abuse]
+
+- rule: Unauthorized Secret Access
+  desc: Detects unusual access to Kubernetes secrets
+  condition: >
+    open_read and container and
+    fd.name startswith "/var/run/secrets/kubernetes.io/" and
+    not proc.name in (recipe-api, nginx, envoy)
+  output: >
+    Unauthorized access to Kubernetes secrets
+    (user=%user.name container=%container.name file=%fd.name
+    proc=%proc.cmdline parent=%proc.pname)
+  priority: HIGH
+  tags: [container, secrets, mitre_credential_access]
+
+- rule: Data Exfiltration via curl/wget
+  desc: Detects data exfiltration using curl or wget
+  condition: >
+    spawned_process and container and
+    (proc.name in (curl, wget) and
+    (proc.args contains "POST" or proc.args contains "--data" or proc.args contains "-d"))
+  output: >
+    Potential data exfiltration detected
+    (user=%user.name container=%container.name image=%container.image.repository
+    proc=%proc.cmdline parent=%proc.pname)
+  priority: HIGH
+  tags: [container, exfiltration, network]
+
+- rule: Kubectl Execution in Production
+  desc: Detects kubectl execution in production containers
+  condition: >
+    spawned_process and container and
+    k8s.ns.name = "production" and
+    proc.name = kubectl
+  output: >
+    kubectl executed in production container
+    (user=%user.name container=%container.name pod=%k8s.pod.name
+    proc=%proc.cmdline parent=%proc.pname)
+  priority: HIGH
+  tags: [container, kubectl, mitre_discovery]
+
+- rule: Shell Spawned in Container
+  desc: Detects interactive shell spawned in container
+  condition: >
+    spawned_process and container and
+    k8s.ns.name = "production" and
+    proc.name in (bash, sh, zsh, fish) and
+    proc.tty != 0 and
+    not proc.pname in (recipe-api, node, python)
+  output: >
+    Shell spawned in production container
+    (user=%user.name container=%container.name pod=%k8s.pod.name
+    proc=%proc.cmdline parent=%proc.pname terminal=%proc.tty)
+  priority: WARNING
+  tags: [container, shell, mitre_execution]
+
+- rule: Privilege Escalation Attempt
+  desc: Detects attempts to escalate privileges
+  condition: >
+    spawned_process and container and
+    (proc.name in (sudo, su, pkexec) or
+    (proc.args contains "cap_" or proc.args contains "CAP_"))
+  output: >
+    Privilege escalation attempt detected
+    (user=%user.name container=%container.name image=%container.image.repository
+    proc=%proc.cmdline parent=%proc.pname)
+  priority: CRITICAL
+  tags: [container, privilege_escalation]
