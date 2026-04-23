@@ -93,7 +93,8 @@ challenges/challenge4/
 │       └── gitops-attacks.yaml
 │
 └── scripts/                           # Helper scripts
-    └── generate-argocd-token.sh       # Token generation utility
+    ├── setup-argocd-token.sh       # Token configuration utility
+    └── test-leaked-token.sh
 ```
 
 ## Challenge Workflow

@@ -96,18 +96,22 @@ This installs:
 ```bash
 kubectl get pods -n argocd
 # All pods should be Running
-
-# Get admin password
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath="{.data.password}" | base64 -d
 ```
 
 **Access ArgoCD Web UI**:
 ```
 URL: https://localhost:30443
 Username: admin
-Password: <from above>
+Password: admin123
 ```
+
+**ArgoCD Token Configuration**:
+The setup script automatically configures ArgoCD to accept the token from `.env.production`:
+```
+Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjpsb2dpbiIsIm5iZiI6MTcxMjMyMTQwMCwiaWF0IjoxNzEyMzIxNDAwLCJqdGkiOiJjdGYtZGVwbG95ZXIifQ.Q3RGX0RlcGxveV9Ub2tlbl9TdXBlclNlY3JldCE
+```
+
+This token is intentionally configured with a weak JWT signing secret for CTF purposes.
 
 ## Step 3: Create production-manifests Repository in Gitea
 
@@ -219,10 +223,15 @@ The vulnerable configuration enables the attack:
 
 1. **Leaked ArgoCD Credentials**: In `.env.production` (Challenge 2)
    ```
-   ARGOCD_AUTH_TOKEN=eyJhbGci...
+   ARGOCD_AUTH_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjpsb2dpbiIsIm5iZiI6MTcxMjMyMTQwMCwiaWF0IjoxNzEyMzIxNDAwLCJqdGkiOiJjdGYtZGVwbG95ZXIifQ.Q3RGX0RlcGxveV9Ub2tlbl9TdXBlclNlY3JldCE
    ARGOCD_SERVER=argocd-server.argocd.svc.cluster.local
    ARGOCD_APP_NAME=recipe-api-production
    ```
+   
+   This token is valid and accepted by ArgoCD because:
+   - The JWT signing secret is intentionally weak: `CtF_Deploy_Token_SuperSecret!`
+   - The token ID `ctf-deployer` is registered in ArgoCD configuration
+   - Configured automatically during `make setup-argocd`
 
 2. **Excessive RBAC Permissions**:
    - ArgoCD controller has `cluster-admin` (full cluster access)

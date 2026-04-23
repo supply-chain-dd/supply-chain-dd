@@ -57,9 +57,23 @@ kubectl wait --for=condition=ready pod \
   -n "$ARGOCD_NAMESPACE" \
   --timeout=300s
 
-# Get admin password
-ADMIN_PASSWORD=$(kubectl -n "$ARGOCD_NAMESPACE" get secret argocd-initial-admin-secret \
-  -o jsonpath="{.data.password}" | base64 -d 2>/dev/null || echo "admin123")
+# Set admin password to "admin123" (weak password for CTF)
+echo "Configuring admin password..."
+ADMIN_PASSWORD="admin123"
+
+# Generate bcrypt hash and update secret
+python3 -c "import bcrypt; import base64; print(base64.b64encode(bcrypt.hashpw(b'${ADMIN_PASSWORD}', bcrypt.gensalt(rounds=10))).decode())" > /tmp/admin-password-hash
+ADMIN_HASH=$(cat /tmp/admin-password-hash)
+kubectl patch secret argocd-secret -n "$ARGOCD_NAMESPACE" -p "{\"data\":{\"admin.password\":\"$ADMIN_HASH\"}}"
+rm /tmp/admin-password-hash
+
+# Configure ArgoCD to accept the leaked token from Challenge 2
+echo "Configuring leaked ArgoCD token..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/../../challenges/challenge4/scripts/setup-argocd-token.sh" "$ARGOCD_NAMESPACE"
+
+# Get the leaked token for display
+LEAKED_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjpsb2dpbiIsIm5iZiI6MTcxMjMyMTQwMCwiaWF0IjoxNzEyMzIxNDAwLCJqdGkiOiJjdGYtZGVwbG95ZXIifQ.Q3RGX0RlcGxveV9Ub2tlbl9TdXBlclNlY3JldCE"
 
 echo ""
 echo "==> ArgoCD installed successfully!"
@@ -69,8 +83,15 @@ echo "  Web UI: https://localhost:30443"
 echo "  Username: admin"
 echo "  Password: $ADMIN_PASSWORD"
 echo ""
-echo "Login with CLI:"
-echo "  argocd login localhost:30443 --username admin --password $ADMIN_PASSWORD --insecure"
+echo "Leaked ArgoCD Token (from Challenge 2 .env.production):"
+echo "  $LEAKED_TOKEN"
+echo ""
+echo "Login with CLI (password):"
+echo "  echo y | argocd login localhost:30443 --username admin --password $ADMIN_PASSWORD --insecure --grpc-web"
+echo ""
+echo "Login with CLI (token from .env.production):"
+echo "  export ARGOCD_AUTH_TOKEN='$LEAKED_TOKEN'"
+echo "  argocd app list --auth-token=\"\$ARGOCD_AUTH_TOKEN\" --server localhost:30443 --insecure --grpc-web"
 echo ""
 echo "Next steps:"
 echo "  1. Create production-manifests repository in Gitea"
