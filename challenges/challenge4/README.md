@@ -126,7 +126,7 @@ argocd login localhost:30443 --auth-token=$ARGOCD_AUTH_TOKEN --insecure
 Clone production manifests, inject backdoor, commit and push:
 
 ```bash
-git clone http://localhost:30002/ctf-admin/production-manifests.git
+git clone http://localhost:30004/ctf-admin/production-manifests.git
 # Modify deployment.yaml with malicious payload
 git commit -am "Update deployment configuration"
 git push origin main

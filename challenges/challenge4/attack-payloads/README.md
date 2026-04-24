@@ -51,7 +51,7 @@ This directory contains example malicious payloads that demonstrate GitOps pipel
 
 ```bash
 # Clone the production-manifests repository
-git clone http://localhost:30002/ctf-admin/production-manifests.git
+git clone http://localhost:30004/ctf-admin/production-manifests.git
 cd production-manifests/recipe-api
 
 # Replace deployment with backdoored version

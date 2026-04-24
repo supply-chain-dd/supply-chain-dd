@@ -24,13 +24,34 @@ production-manifests/
 
 ## Setup Instructions (For CTF Organizers)
 
-### Step 1: Create Repository in Gitea
+### Automated Setup (Recommended)
 
-1. Log into Gitea at http://localhost:30002
+The easiest way to set up the production-manifests repository is via the automated script:
+
+```bash
+# Ensure you're on the production cluster context
+kubectl config use-context kind-ctf-production-cluster
+
+# Seed the repository (creates repo and pushes manifests automatically)
+make seed-production-repo
+```
+
+This automatically:
+1. Creates the `production-manifests` repository in production Gitea via API
+2. Initializes it with the manifests from this folder
+3. Pushes to the production Gitea instance
+
+### Manual Setup (Step by Step)
+
+If you prefer to set up manually:
+
+#### Step 1: Create Repository in Gitea
+
+1. Log into production Gitea at http://localhost:30004 (not port 30002!)
 2. Create a new repository named `production-manifests`
 3. Initialize it as a **public** repository (for easier access)
 
-### Step 2: Push Manifests to Gitea
+#### Step 2: Push Manifests to Gitea
 
 ```bash
 cd challenges/challenge4/production-manifests-sample
@@ -40,18 +61,18 @@ git init
 git add .
 git commit -m "Initial production manifests"
 
-# Add Gitea remote
-git remote add origin http://localhost:30002/ctf-admin/production-manifests.git
+# Add production Gitea remote (port 30004!)
+git remote add origin http://localhost:30004/ctf-admin/production-manifests.git
 
 # Push to Gitea
 git push -u origin main
 ```
 
-### Step 3: Verify Repository
+#### Step 3: Verify Repository
 
 ```bash
 # Clone the repository to verify
-git clone http://localhost:30002/ctf-admin/production-manifests.git /tmp/verify-manifests
+git clone http://localhost:30004/ctf-admin/production-manifests.git /tmp/verify-manifests
 cd /tmp/verify-manifests
 ls -la recipe-api/
 ```

@@ -42,6 +42,12 @@ nodes:
       - containerPort: 30443
         hostPort: 30443
         protocol: TCP
+      - containerPort: 30004
+        hostPort: 30004
+        protocol: TCP
+      - containerPort: 30005
+        hostPort: 30005
+        protocol: TCP
 EOF
 
 # Create the cluster

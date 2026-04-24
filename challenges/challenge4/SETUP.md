@@ -27,33 +27,73 @@ Challenge 4 demonstrates a **GitOps pipeline compromise** attack where an attack
 ## Architecture
 
 ```
-┌─────────────────────┐         ┌──────────────────────┐
-│  CTF Cluster        │         │  Production Cluster  │
-│  (ctf-cluster)      │         │  (ctf-production)    │
-│                     │         │                      │
-│  ┌──────────────┐   │         │  ┌────────────────┐  │
-│  │  Gitea       │◄──┼─────────┼──┤  ArgoCD        │  │
-│  │  victim-repo │   │   Git   │  │                │  │
-│  └──────────────┘   │   Sync  │  └────────┬───────┘  │
-│                     │         │            │          │
-│  ┌──────────────┐   │         │  ┌─────────▼───────┐  │
-│  │  Gitea       │◄──┼─────────┼──┤  Recipe API     │  │
-│  │  prod-manifests│ │         │  │  (production)   │  │
-│  └──────────────┘   │         │  └─────────────────┘  │
-└─────────────────────┘         └──────────────────────┘
-        ▲
-        │ Attacker modifies
-        │ manifests via Git
-        │
-   ┌────┴──────┐
-   │  Attacker │
-   │ (with     │
-   │  stolen   │
-   │  creds)   │
-   └───────────┘
+┌─────────────────────┐         ┌──────────────────────────┐
+│  CTF Cluster        │         │  Production Cluster      │
+│  (ctf-cluster)      │         │  (ctf-production)        │
+│                     │         │                          │
+│  ┌──────────────┐   │         │  ┌────────────────────┐  │
+│  │  Gitea       │   │         │  │  Gitea (prod)      │  │
+│  │  victim-repo │   │         │  │  prod-manifests    │  │
+│  │  (.env leak) │   │         │  └──────┬─────────────┘  │
+│  └──────────────┘   │         │         │ Git Sync       │
+│                     │         │  ┌──────▼─────────────┐  │
+│                     │         │  │  ArgoCD            │  │
+│                     │         │  │                    │  │
+│                     │         │  └────────┬───────────┘  │
+│                     │         │           │              │
+│                     │         │  ┌────────▼───────────┐  │
+│                     │         │  │  Recipe API        │  │
+│                     │         │  │  (production)      │  │
+│                     │         │  └────────────────────┘  │
+└─────────────────────┘         └──────────────────────────┘
+                                          ▲
+                                          │ Attacker modifies
+                                          │ manifests via Git
+                                          │
+                                     ┌────┴──────┐
+                                     │  Attacker │
+                                     │ (with     │
+                                     │  stolen   │
+                                     │  creds)   │
+                                     └───────────┘
 ```
 
-## Step 1: Create Production KinD Cluster
+## Automated Setup (Recommended)
+
+The fastest way to set up Challenge 4 is using the automated setup:
+
+```bash
+# Complete automated setup (creates cluster, Gitea, ArgoCD, seeds repository, and deploys application)
+make setup-challenge4
+
+# Verify setup
+make verify-challenge4
+```
+
+This automates all the steps below including:
+- Creating production KinD cluster
+- Installing production Gitea
+- Loading recipe-api image into production cluster (from CTF cluster registry)
+- Installing ArgoCD
+- Seeding production-manifests repository
+- Deploying ArgoCD application
+
+**Note**: Before running this, ensure you've built the recipe-api image in Challenge 2:
+```bash
+cd challenges/challenge2
+make build-recipe-api
+make push-recipe-api
+```
+
+**Skip to "Verify Complete Setup" if using automated setup.**
+
+---
+
+## Manual Setup (Step by Step)
+
+If you prefer to understand each component, follow these steps:
+
+### Step 1: Create Production KinD Cluster
 
 Create a second KinD cluster to simulate the production environment:
 
@@ -64,7 +104,7 @@ make setup-production-cluster
 This creates:
 - Cluster name: `ctf-production-cluster`
 - Context: `kind-ctf-production-cluster`
-- NodePorts: 30080 (HTTP), 30443 (HTTPS) for ArgoCD access
+- NodePorts: 30080 (HTTP), 30443 (HTTPS) for ArgoCD access, 30004 (Gitea HTTP), 30005 (Gitea SSH)
 
 **Verify**:
 ```bash
@@ -75,15 +115,65 @@ kubectl config get-contexts
 # Should show both contexts
 ```
 
-## Step 2: Install ArgoCD
+### Step 2: Install Gitea on Production Cluster
 
-Switch to the production cluster and install ArgoCD:
+Install a separate Gitea instance on the production cluster for GitOps manifests:
 
 ```bash
-# Switch context
+# Switch to production cluster
 kubectl config use-context kind-ctf-production-cluster
 
-# Install ArgoCD
+# Install Gitea
+make setup-production-gitea
+```
+
+This installs:
+- **Gitea** in the `gitea` namespace
+- Web UI accessible at http://localhost:30004
+- SSH access at ssh://git@localhost:30005
+- Same credentials: `ctf-admin` / `CTFSecurePass123!`
+
+**Verify**:
+```bash
+kubectl get pods -n gitea
+# Gitea pod should be Running
+
+curl http://localhost:30004
+# Should return Gitea web page
+```
+
+### Step 3: Load recipe-api Image into Production Cluster
+
+Since the production cluster can't access the CTF cluster's registry, we need to load the image directly:
+
+```bash
+# Load the recipe-api image into production cluster (works with Docker or Podman)
+make load-image-to-production
+```
+
+This loads `localhost:30000/recipe-api:v1.0` from your local container runtime into the production cluster's containerd, making it available for deployment.
+
+**Prerequisites**: Ensure you've built the recipe-api image first:
+```bash
+cd challenges/challenge2
+make build-recipe-api
+make push-recipe-api
+cd ../..
+```
+
+**Verify**:
+```bash
+# The image should now be available in the production cluster
+kubectl --context kind-ctf-production-cluster run test --image=localhost:30000/recipe-api:v1.0 --dry-run=client
+# Should succeed without errors
+```
+
+### Step 4: Install ArgoCD
+
+Install ArgoCD on the production cluster:
+
+```bash
+# Install ArgoCD (should still be on production cluster context)
 make setup-argocd
 ```
 
@@ -113,57 +203,35 @@ Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1p
 
 This token is intentionally configured with a weak JWT signing secret for CTF purposes.
 
-## Step 3: Create production-manifests Repository in Gitea
+### Step 5: Seed production-manifests Repository
 
-Create a Git repository in Gitea that ArgoCD will sync from.
-
-### 3.1 Create Repository in Gitea Web UI
-
-1. Navigate to http://localhost:30002
-2. Login as `ctf-admin` / `CTFSecurePass123!`
-3. Click "+" → "New Repository"
-4. Fill in:
-   - Repository Name: `production-manifests`
-   - Visibility: **Public** (for easier access)
-   - Initialize: **DO NOT** check any initialization options
-5. Click "Create Repository"
-
-### 3.2 Push Manifests to Gitea
+Create and populate the `production-manifests` repository in production Gitea:
 
 ```bash
-cd challenges/challenge4/production-manifests-sample
-
-# Initialize git repository
-git init
-git add .
-git commit -m "Initial production manifests for recipe-api"
-
-# Add Gitea remote (switch to CTF cluster context first!)
-kubectl config use-context kind-ctf-cluster
-GITEA_URL="http://localhost:30002/ctf-admin/production-manifests.git"
-git remote add origin $GITEA_URL
-
-# Push to Gitea
-git push -u origin main
+# Seed the repository (automated)
+make seed-production-repo
 ```
+
+This automatically:
+1. Creates the `production-manifests` repository in production Gitea via API
+2. Copies manifests from `challenges/challenge4/production-manifests-sample/`
+3. Initializes git repository and pushes to production Gitea
 
 **Verify**:
 ```bash
-# Clone to verify
-git clone http://localhost:30002/ctf-admin/production-manifests.git /tmp/verify-prod-manifests
-ls /tmp/verify-prod-manifests/recipe-api/
-# Should show: deployment.yaml, service.yaml, serviceaccount.yaml, kustomization.yaml
+# Check repository exists
+curl -u ctf-admin:CTFSecurePass123! http://localhost:30004/api/v1/repos/ctf-admin/production-manifests
+
+# Or visit in browser
+# http://localhost:30004/ctf-admin/production-manifests
 ```
 
-## Step 4: Configure ArgoCD Application
+### Step 6: Configure ArgoCD Application
 
-Create an ArgoCD Application that syncs the production-manifests repository.
+Create an ArgoCD Application that syncs the production-manifests repository:
 
 ```bash
-# Switch back to production cluster
-kubectl config use-context kind-ctf-production-cluster
-
-# Apply ArgoCD application
+# Apply ArgoCD application (should still be on production cluster context)
 kubectl apply -f challenges/challenge4/argocd/recipe-api-application.yaml
 ```
 
@@ -184,7 +252,7 @@ kubectl get all -n production
 3. You should see the `recipe-api-production` application
 4. Status should be "Synced" and "Healthy"
 
-## Step 5: Verify Complete Setup
+## Verify Complete Setup
 
 Run the verification:
 
@@ -195,25 +263,28 @@ make verify-challenge4
 **Expected Output**:
 ```
 ✓ Production cluster exists
-✓ ArgoCD pods running
+✓ Gitea running on production cluster
+✓ ArgoCD running
 ✓ ArgoCD applications deployed
 ✓ Production namespace exists
-✓ Recipe-API running in production
+✓ Recipe-API deployment in production
 ```
 
 ## Environment State After Setup
 
 **CTF Cluster (ctf-cluster)**:
-- ✅ Gitea with two repositories:
-  - `victim-repo` (contains leaked .env.production in git history)
-  - `production-manifests` (GitOps manifests for production)
+- ✅ Gitea with `victim-repo` (contains leaked .env.production in git history)
 - ✅ Docker Registry with `recipe-api:v1.0` image
 - ✅ Tekton CI/CD pipelines
 
 **Production Cluster (ctf-production-cluster)**:
+- ✅ Gitea with `production-manifests` repository (GitOps manifests)
+  - Accessible at http://localhost:30004
+  - Internal URL: http://gitea-http.gitea.svc.cluster.local:3000
 - ✅ ArgoCD with **vulnerable RBAC** (cluster-admin access)
+  - Web UI: https://localhost:30443
 - ✅ Production namespace with recipe-api deployed
-- ✅ ArgoCD syncing from Gitea production-manifests repository
+- ✅ ArgoCD syncing from production Gitea
 - ⚠️ **No admission policies** (Kyverno not installed - vulnerable!)
 - ⚠️ **No network policies** (unrestricted egress - vulnerable!)
 
@@ -268,7 +339,21 @@ The vulnerable configuration enables the attack:
 
 **Problem**: ArgoCD shows "connection refused" for Git repository.
 
-**Solution**: Ensure both clusters can communicate. Gitea is in the CTF cluster but accessible via NodePort. Update the repository URL in `recipe-api-application.yaml` to use the host's IP or `host.docker.internal`.
+**Solution**: Gitea should be running on the production cluster itself. Verify:
+```bash
+kubectl --context kind-ctf-production-cluster get pods -n gitea
+# Should show Gitea pod Running
+
+kubectl --context kind-ctf-production-cluster get svc -n gitea
+# Should show gitea-http service
+```
+
+If Gitea is not installed on the production cluster:
+```bash
+kubectl config use-context kind-ctf-production-cluster
+make setup-production-gitea
+make seed-production-repo
+```
 
 ### Application not syncing
 
@@ -284,11 +369,28 @@ kubectl patch application recipe-api-production -n argocd \
   --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{}}}'
 ```
 
-### Registry image pull failures
+### Registry image pull failures (ErrImagePull)
 
-**Problem**: Pods can't pull `localhost:30000/recipe-api:v1.0`.
+**Problem**: Pods show `ErrImagePull` or `ImagePullBackOff` for `localhost:30000/recipe-api:v1.0`.
 
-**Solution**: The production cluster needs registry access. Configure containerd or add imagePullSecrets with registry credentials.
+**Cause**: The production cluster can't access the CTF cluster's registry at `localhost:30000`.
+
+**Solution**: Load the image into the production cluster:
+```bash
+# Ensure recipe-api image exists locally
+cd challenges/challenge2
+make build-recipe-api
+make push-recipe-api
+
+# Load into production cluster
+cd ../..
+make load-image-to-production
+
+# Restart the deployment to pull the newly loaded image
+kubectl --context kind-ctf-production-cluster rollout restart deployment/recipe-api -n production
+```
+
+This loads the image from your local container runtime (Docker/Podman) directly into the production cluster's containerd.
 
 ## Cleanup
 

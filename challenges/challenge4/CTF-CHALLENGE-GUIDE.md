@@ -142,8 +142,8 @@ Modify the production deployment to inject a backdoor.
 ### 5.1 Clone the production-manifests Repository
 
 ```bash
-# Clone from Gitea
-git clone http://localhost:30002/ctf-admin/production-manifests.git
+# Clone from production Gitea (port 30004, not the CTF cluster's 30002!)
+git clone http://localhost:30004/ctf-admin/production-manifests.git
 cd production-manifests/recipe-api
 ```
 

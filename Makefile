@@ -3,10 +3,10 @@
 .PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3
-.PHONY: setup-production-cluster setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
+.PHONY: setup-production-cluster setup-production-gitea seed-production-repo load-image-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
 
 CLUSTER_NAME ?= ctf-cluster
-GITEA_VERSION ?= 10.6.1
+GITEA_HELM_VERSION ?= v12.5.0
 TEKTON_PIPELINE_VERSION ?= v0.53.0
 KYVERNO_VERSION ?= v3.7.1
 KUBESCAPE_VERSION ?= latest
@@ -782,29 +782,49 @@ verify-challenge3: ## Verify Challenge 3 setup
 # ============================================================
 
 PRODUCTION_CLUSTER_NAME ?= ctf-production-cluster
+PRODUCTION_GITEA_HTTP_PORT ?= 30004
+PRODUCTION_GITEA_SSH_PORT ?= 30005
 ARGOCD_VERSION ?= 5.51.0
 ARGOCD_NAMESPACE ?= argocd
 
 setup-production-cluster: ## Create production KinD cluster for Challenge 4
 	@./setup/scripts/setup-production-cluster.sh
 
+setup-production-gitea: ## Install Gitea on production cluster
+	@./setup/scripts/setup-production-gitea.sh
+
+seed-production-repo: ## Seed production-manifests repository to production Gitea
+	@./setup/scripts/seed-production-repo.sh
+
+load-image-to-production: ## Load recipe-api image into production cluster
+	@./setup/scripts/load-image-to-production.sh
+
 setup-argocd: ## Install ArgoCD on production cluster
 	@./setup/scripts/setup-argocd.sh
 
-setup-challenge4: setup-production-cluster setup-argocd ## Complete Challenge 4 setup
+setup-challenge4: setup-production-cluster setup-production-gitea load-image-to-production setup-argocd seed-production-repo ## Complete Challenge 4 setup
+	@echo ""
+	@echo "Applying ArgoCD application..."
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/argocd/recipe-api-application.yaml
+	@echo ""
+	@echo "Waiting for ArgoCD to sync application..."
+	@sleep 5
 	@echo ""
 	@echo "========================================"
 	@echo "Challenge 4 Setup Complete"
 	@echo "========================================"
 	@echo ""
 	@echo "✓ Production KinD cluster created: $(PRODUCTION_CLUSTER_NAME)"
+	@echo "✓ Production Gitea installed (http://localhost:30004)"
+	@echo "✓ recipe-api image loaded into production cluster"
 	@echo "✓ ArgoCD installed in namespace: $(ARGOCD_NAMESPACE)"
+	@echo "✓ production-manifests repository seeded"
+	@echo "✓ ArgoCD application deployed (recipe-api-production)"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  1. Follow challenges/challenge4/SETUP.md to:"
-	@echo "     - Create production-manifests repository in Gitea"
-	@echo "     - Configure ArgoCD application"
-	@echo "  2. Start the attack: challenges/challenge4/CTF-CHALLENGE-GUIDE.md"
+	@echo "  1. Verify setup: make verify-challenge4"
+	@echo "  2. Check ArgoCD sync status: kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get applications -n argocd"
+	@echo "  3. Start the attack: challenges/challenge4/CTF-CHALLENGE-GUIDE.md"
 	@echo ""
 
 verify-challenge4: ## Verify Challenge 4 setup
@@ -813,14 +833,20 @@ verify-challenge4: ## Verify Challenge 4 setup
 	@echo "Production Cluster:"
 	@kind get clusters | grep -q "$(PRODUCTION_CLUSTER_NAME)" && echo "  ✓ Production cluster exists" || echo "  ❌ Production cluster not found"
 	@echo ""
-	@echo "ArgoCD Pods (switching context):"
-	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get pods -n $(ARGOCD_NAMESPACE) 2>/dev/null || echo "  ❌ ArgoCD not installed"
+	@echo "Production Gitea:"
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get pods -n gitea 2>/dev/null | grep -q Running && echo "  ✓ Gitea running on production cluster" || echo "  ❌ Gitea not installed"
+	@echo ""
+	@echo "ArgoCD Pods:"
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get pods -n $(ARGOCD_NAMESPACE) 2>/dev/null | grep -q Running && echo "  ✓ ArgoCD running" || echo "  ❌ ArgoCD not installed"
 	@echo ""
 	@echo "ArgoCD Applications:"
 	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get applications -n $(ARGOCD_NAMESPACE) 2>/dev/null || echo "  ⚠ No applications deployed yet"
 	@echo ""
 	@echo "Production Namespace:"
 	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get namespace production 2>/dev/null && echo "  ✓ Production namespace exists" || echo "  ⚠ Production namespace not created"
+	@echo ""
+	@echo "Recipe API Deployment:"
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get deployment -n production 2>/dev/null || echo "  ⚠ No deployments in production namespace yet"
 	@echo ""
 
 clean-challenge4: ## Cleanup Challenge 4 (delete production cluster)
