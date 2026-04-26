@@ -38,10 +38,10 @@ nodes:
   - containerPort: 30003
     hostPort: 30003
     protocol: TCP
-containerdConfigPatches:
-- |-
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
-    endpoint = ["http://kind-registry:5000"]
+# containerdConfigPatches:
+# - |-
+#   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
+#     endpoint = ["http://kind-registry:5000"]
 EOF
 
 echo "✓ KinD cluster '${CLUSTER_NAME}' created successfully"

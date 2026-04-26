@@ -179,6 +179,9 @@ setup-registry: ## Setup local Docker registry with authentication
 configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 	@cd setup && ./scripts/configure-registry-tls.sh
 
+seed-victim-repo: ## Seed victim-repo repository to CTF cluster Gitea
+	@cd setup && ./scripts/seed-victim-repo.sh
+
 setup-ctf-challenge: ## Install Tekton CTF challenge resources (VULNERABLE version)
 	@echo "Installing Tekton CTF Challenge (VULNERABLE version)..."
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
