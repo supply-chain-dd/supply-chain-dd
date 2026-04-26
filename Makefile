@@ -10,7 +10,7 @@ GITEA_HELM_VERSION ?= v12.5.0
 TEKTON_PIPELINE_VERSION ?= v0.53.0
 KYVERNO_VERSION ?= v3.7.1
 KUBESCAPE_VERSION ?= latest
-TKN_VERSION ?= v0.35.1
+TKN_VERSION ?= v0.44.1
 KUBESCAPE_CLI_VERSION ?= v3.0.3
 REGISTRY_PORT ?= 5000
 REGISTRY_NODE_PORT ?= 30000
@@ -51,14 +51,15 @@ install-tkn: ## Install Tekton CLI as kubectl plugin
 		*) echo "  ❌ Unsupported architecture: $$ARCH"; exit 1 ;; \
 	esac; \
 	echo "  OS: $$OS, Arch: $$ARCH"; \
-	TKN_URL="https://github.com/tektoncd/cli/releases/download/$(TKN_VERSION)/tkn_$(TKN_VERSION)_$${OS}_$${ARCH}.tar.gz"; \
+	TKN_VERSION_RAW=$$(echo $(TKN_VERSION) | cut -f2 -dv); \
+	TKN_URL="https://github.com/tektoncd/cli/releases/download/$(TKN_VERSION)/tkn_$${TKN_VERSION_RAW}_$${OS}_$${ARCH}.tar.gz"; \
 	echo "  Downloading from: $$TKN_URL"; \
 	curl -LO "$$TKN_URL"; \
-	tar xvzf tkn_$(TKN_VERSION)_$${OS}_$${ARCH}.tar.gz tkn; \
+	tar xvzf tkn_$${TKN_VERSION_RAW}_$${OS}_$${ARCH}.tar.gz tkn; \
 	chmod +x tkn; \
 	mkdir -p ~/.local/bin; \
 	mv tkn ~/.local/bin/kubectl-tkn; \
-	rm -f tkn_$(TKN_VERSION)_$${OS}_$${ARCH}.tar.gz; \
+	rm -f tkn_$${TKN_VERSION_RAW}_$${OS}_$${ARCH}.tar.gz; \
 	if ! echo $$PATH | grep -q "$${HOME}/.local/bin"; then \
 		echo "  ⚠ Add ~/.local/bin to your PATH:"; \
 		echo "    export PATH=\$$PATH:~/.local/bin"; \
