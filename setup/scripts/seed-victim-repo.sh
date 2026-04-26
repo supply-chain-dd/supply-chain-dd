@@ -69,31 +69,48 @@ cp -r challenges/victim-repo-sample/* "$TEMP_DIR/"
 cp -r challenges/victim-repo-sample/.gitignore "$TEMP_DIR/" 2>/dev/null || true
 cp -r challenges/victim-repo-sample/.tekton "$TEMP_DIR/" 2>/dev/null || true
 
-# Move _git to .git if it exists (restore git history)
-if [ -d "$TEMP_DIR/_git" ]; then
-    echo "Restoring git history from _git folder..."
-    mv "$TEMP_DIR/_git" "$TEMP_DIR/.git"
-fi
-
-# Initialize git repository if .git doesn't exist
+# Change to temp directory
 cd "$TEMP_DIR"
-if [ ! -d ".git" ]; then
+
+# Move _git to .git if it exists (restore git history)
+if [ -d "_git" ]; then
+    echo "Restoring git history from _git folder..."
+    mv _git .git
+
+    # Configure git user
+    git config user.name "Recipe Developer"
+    git config user.email "developer@recipeco.com"
+
+    # Verify git repository is valid
+    if git log -1 >/dev/null 2>&1; then
+        echo "✓ Git history restored successfully"
+        echo "  Current branch: $(git branch --show-current)"
+        echo "  Latest commit: $(git log -1 --oneline)"
+    else
+        echo "⚠ Warning: Git repository invalid. Reinitializing..."
+        rm -rf .git
+        git init
+        git config user.name "CTF Admin"
+        git config user.email "ctf-admin@ctf.local"
+        git add .
+        git commit -m "Initial commit: Recipe API application"
+    fi
+else
+    # Initialize new git repository
     echo "Initializing new git repository..."
     git init
     git config user.name "CTF Admin"
     git config user.email "ctf-admin@ctf.local"
     git add .
     git commit -m "Initial commit: Recipe API application"
-else
-    echo "Using existing git history..."
-    git config user.name "CTF Admin"
-    git config user.email "ctf-admin@ctf.local"
 fi
 
 # Push to Gitea
 echo "Pushing to CTF cluster Gitea..."
-git remote add origin "$GITEA_URL/$GITEA_USER/$REPO_NAME.git" 2>/dev/null || \
-    git remote set-url origin "$GITEA_URL/$GITEA_USER/$REPO_NAME.git"
+# Construct URL with embedded credentials
+GITEA_URL_WITH_CREDS="http://$GITEA_USER:$GITEA_PASS@localhost:$GITEA_HTTP_PORT"
+git remote add origin "$GITEA_URL_WITH_CREDS/$GITEA_USER/$REPO_NAME.git" 2>/dev/null || \
+    git remote set-url origin "$GITEA_URL_WITH_CREDS/$GITEA_USER/$REPO_NAME.git"
 git push -u origin main --force
 
 echo ""

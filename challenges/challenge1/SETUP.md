@@ -17,8 +17,9 @@ The `make setup-ctf-challenge` command has already:
 - ✓ Created the CTF flag secret with registry credentials
 - ✓ Prepared the victim repository at `/tmp/gitea/victim-repo`
 - ✓ Configured Git credentials for Gitea access
+- ✓ Created the victim-repo repository on the Gitea instance
 
-## Step 1: Create Victim Repository in Gitea
+## Step 1: Verify Victim Repository in Gitea
 
 ### 1.1 Access Gitea Web UI
 
@@ -31,66 +32,15 @@ Login with:
 - **Username**: `ctf-admin`
 - **Password**: `CTFSecurePass123!`
 
-### 1.2 Create New Repository
 
-1. Click the **"+"** icon in the top-right corner
-2. Select **"New Repository"**
-3. Fill in the repository details:
-   - **Owner**: `ctf-admin` (should be pre-selected)
-   - **Repository Name**: `victim-repo`
-   - **Visibility**: Select **Private** (or Public, your choice)
-   - **Initialize Repository**: **DO NOT** check "Initialize repository" options
-   - **Add .gitignore**: None
-   - **Add README**: None
-   - **Add License**: None
-4. Click **"Create Repository"**
 
-You should now see an empty repository with setup instructions.
-
-### 1.3 Push Victim Repository Code
-
-The victim repository has already been prepared at `/tmp/gitea/victim-repo` with the complete Git history restored.
-
-Open a terminal and run:
-
-```bash
-cd /tmp/gitea/victim-repo
-
-# Add the Gitea remote
-git remote add origin http://localhost:30002/ctf-admin/victim-repo.git
-
-# Push to Gitea (with credentials configured via environment)
-GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push -u origin main
-```
-
-**Important**: The `GIT_CONFIG_GLOBAL` environment variable tells git to use the credential helper we configured, and `GIT_TERMINAL_PROMPT=0` prevents git from hanging if credentials are missing.
-
-**Expected output:**
-```
-remote: . Processing 1 references
-remote: Processed 1 references in total
-To http://localhost:30002/ctf-admin/victim-repo.git
- * [new branch]      main -> main
-branch 'main' set up to track 'origin/main'.
-```
-
-### 1.4 Verify Repository
+### 1.2 Verify Repository
 
 Refresh the Gitea web UI (http://localhost:30002/ctf-admin/victim-repo). You should now see:
 - ✓ Source code files (`main.go`, `Dockerfile`, etc.)
 - ✓ Complete Git history with multiple commits
 - ✓ `.tekton/` directory with Tekton pipeline configuration
 
-You can also verify Git connectivity:
-
-```bash
-cd /tmp/gitea/victim-repo
-
-# Fetch to verify connectivity (use the same environment variables)
-GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git fetch origin
-
-# Should show no errors
-```
 
 ## Step 2: Configure Webhook
 
