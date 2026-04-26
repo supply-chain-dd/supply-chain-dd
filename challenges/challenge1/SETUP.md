@@ -91,27 +91,27 @@ http://el-pr-quality-check-listener.ctf-challenge.svc.cluster.local:8080
 
 6. Click **"Add Webhook"**
 
-### 2.3 Test Webhook (Optional)
-
-You can test the webhook delivery:
-
-1. In the webhook settings, scroll down to **"Recent Deliveries"**
-2. Click **"Test Delivery"**
-3. Check the response:
-   - **Status**: Should be `200 OK` or `201 Created`
-   - **Response Body**: Should indicate successful webhook processing
-
-If you see errors, verify:
-- The EventListener service is running: `kubectl get pods -n ctf-challenge`
-- The service URL is correct (check for typos)
-- The secret matches: `change-me-in-production`
-
 **Note**: You cannot test the Pull Request webhook without an actual pull request. Testing with "Push" events won't trigger the pipeline because the EventListener only accepts `pull_request` events.
 
 ## Step 3: Test the Webhook (Create a Pull Request)
 
 To verify the webhook works end-to-end, create a test pull request:
 
+### 3.0 Clone (or fork) the repository
+```
+rm -rf /tmp/gitea/victim-repo
+mkdir -p /tmp/gitea
+cd /tmp/gitea
+git clone http://ctf-admin:CTFSecurePass123\!@localhost:30002/ctf-admin/victim-repo
+echo "Creating Git credentials for Gitea access..."
+echo "[user]" > /tmp/gitea/.gitconfig
+echo "	name = CTF Admin" >> /tmp/gitea/.gitconfig
+echo "	email = ctf-admin@localhost" >> /tmp/gitea/.gitconfig
+echo "[credential]" >> /tmp/gitea/.gitconfig
+echo "	helper = store --file /tmp/gitea/.git-credentials" >> /tmp/gitea/.gitconfig
+echo "http://ctf-admin:CTFSecurePass123\!@localhost:30002" > /tmp/gitea/.git-credentials
+chmod 600 /tmp/gitea/.git-credentials
+```
 ### 3.1 Create a Test Branch and Push
 
 ```bash

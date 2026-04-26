@@ -15,7 +15,7 @@ The current configuration enables signing, but the tasks need to output `IMAGE_D
 ### ✅ What Works Now (After `make setup-tektonchains`)
 
 1. **PipelineRun Attestations** - Automatically generated for all pipeline runs
-   - Format: in-toto (AMPEL/Conforma compatible)
+   - Format: in-toto (AMPEL/Conforma compatible) 
    - Storage: OCI registry
    - Includes full execution provenance
 
