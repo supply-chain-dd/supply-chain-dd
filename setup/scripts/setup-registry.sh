@@ -97,9 +97,7 @@ else
     CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-podman}
 
     if command -v "${CONTAINER_RUNTIME}" &> /dev/null; then
-
-            HTPASSWD=$(${CONTAINER_RUNTIME} run --rm --entrypoint htpasswd docker.io/httpd:2 -Bbn "${REGISTRY_USER}" "${REGISTRY_PASS}")
-        fi
+        HTPASSWD=$(${CONTAINER_RUNTIME} run --rm --entrypoint htpasswd docker.io/httpd:2 -Bbn "${REGISTRY_USER}" "${REGISTRY_PASS}")
     else
         echo "Error: htpasswd or ${CONTAINER_RUNTIME} is required to generate credentials."
         echo "Please install one of: apache2-utils (for htpasswd) or set CONTAINER_RUNTIME to your preferred runtime"
