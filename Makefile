@@ -17,6 +17,9 @@ REGISTRY_NODE_PORT ?= 30000
 REGISTRY_USER ?= ctf-admin
 REGISTRY_PASS ?= CTFRegistryPass123!
 
+# Container runtime selection (podman or docker)
+CONTAINER_RUNTIME ?= podman
+
 # ============================================================
 # CLI Tools Installation
 # ============================================================
@@ -46,8 +49,8 @@ install-tkn: ## Install Tekton CLI as kubectl plugin
 	@OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
 	ARCH=$$(uname -m); \
 	case $$ARCH in \
-		x86_64) ARCH="amd64" ;; \
-		aarch64|arm64) ARCH="arm64" ;; \
+		x86_64) ARCH="x86_64" ;; \
+		arm64) ARCH="arm64" ;; \
 		*) echo "  ❌ Unsupported architecture: $$ARCH"; exit 1 ;; \
 	esac; \
 	echo "  OS: $$OS, Arch: $$ARCH"; \
@@ -127,6 +130,13 @@ help: ## Display this help message
 	@echo "  4. make setup-security-tools     # Deploy Kyverno + Kubescape"
 	@echo "  5. make apply-prevention-policies # Apply security policies"
 	@echo "  6. make security-scan            # Run security scans"
+	@echo ""
+	@echo "Environment Variables:"
+	@echo "  CONTAINER_RUNTIME=podman|docker  # Select container runtime (default: podman)"
+	@echo "  Example: CONTAINER_RUNTIME=docker make build-recipe-api"
+	@echo ""
+	@echo "  Note: Registry uses TLS with self-signed certificates."
+	@echo "        Run 'make configure-registry-tls' to trust the certificate."
 	@echo ""
 	@echo "Documentation:"
 	@echo "  • SECURITY-GUIDE.md - Comprehensive security tools guide"
@@ -593,15 +603,15 @@ build-recipe-api: ## Build the recipe-api container image
 	fi
 	@echo "  Building image with leaked git history..."
 	@cd /tmp/recipe-api-build && \
-		podman build -t localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
+		$(CONTAINER_RUNTIME) build -t localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
 	@echo "✓ Image built successfully with .git in layers"
 	@echo "  Note: /tmp/recipe-api-build contains the build context (you can inspect it)"
 
 push-recipe-api: ## Push recipe-api image to registry
 	@echo "Pushing recipe-api:v1.0 to registry..."
-	@podman login localhost:$(REGISTRY_NODE_PORT) --tls-verify=false \
+	@$(CONTAINER_RUNTIME) login localhost:$(REGISTRY_NODE_PORT) \
 		-u $(REGISTRY_USER) -p $(REGISTRY_PASS) 2>/dev/null || true
-	@podman push localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 --tls-verify=false
+	@$(CONTAINER_RUNTIME) push localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0
 	@echo "✓ Image pushed to registry"
 
 verify-challenge2: ## Verify Challenge 2 setup
@@ -730,19 +740,19 @@ setup-challenge3: setup-registry ## Setup Challenge 3 (base image poisoning)
 
 seed-legitimate-base-image: ## Seed legitimate golang base image to local registry
 	@echo "Seeding legitimate base image to registry..."
-	@if ! podman images | grep -q "golang.*1.25-alpine"; then \
+	@if ! $(CONTAINER_RUNTIME) images | grep -q "golang.*1.25-alpine"; then \
 		echo "  Pulling golang:1.25-alpine..."; \
-		podman pull golang:1.25-alpine; \
+		$(CONTAINER_RUNTIME) pull golang:1.25-alpine; \
 	else \
 		echo "  ✓ golang:1.25-alpine already pulled"; \
 	fi
 	@echo "  Tagging as localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine..."
-	@podman tag golang:1.25-alpine localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine
+	@$(CONTAINER_RUNTIME) tag golang:1.25-alpine localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine
 	@echo "  Logging in to registry..."
-	@podman login localhost:$(REGISTRY_NODE_PORT) --tls-verify=false \
+	@$(CONTAINER_RUNTIME) login localhost:$(REGISTRY_NODE_PORT) \
 		-u $(REGISTRY_USER) -p $(REGISTRY_PASS) 2>/dev/null || true
 	@echo "  Pushing to registry..."
-	@podman push localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine --tls-verify=false
+	@$(CONTAINER_RUNTIME) push localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine
 	@echo "✓ Legitimate base image seeded to registry"
 
 verify-challenge3: ## Verify Challenge 3 setup

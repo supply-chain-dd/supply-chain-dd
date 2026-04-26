@@ -18,17 +18,28 @@ fi
 echo "Certificate found: ${CERT_FILE}"
 echo ""
 
-# Detect container runtime
-RUNTIME=""
-if command -v podman &> /dev/null; then
-    RUNTIME="podman"
-    echo "✓ Podman detected"
-elif command -v docker &> /dev/null; then
-    RUNTIME="docker"
-    echo "✓ Docker detected"
+# Detect container runtime (respect CONTAINER_RUNTIME env var if set)
+RUNTIME="${CONTAINER_RUNTIME:-}"
+
+if [ -z "$RUNTIME" ]; then
+    # Auto-detect if not set
+    if command -v podman &> /dev/null; then
+        RUNTIME="podman"
+        echo "✓ Podman detected"
+    elif command -v docker &> /dev/null; then
+        RUNTIME="docker"
+        echo "✓ Docker detected"
+    else
+        echo "Error: Neither podman nor docker found."
+        exit 1
+    fi
 else
-    echo "Error: Neither podman nor docker found."
-    exit 1
+    # Validate the specified runtime
+    if ! command -v "$RUNTIME" &> /dev/null; then
+        echo "Error: CONTAINER_RUNTIME is set to '$RUNTIME' but it's not installed."
+        exit 1
+    fi
+    echo "✓ Using CONTAINER_RUNTIME=$RUNTIME"
 fi
 
 echo ""

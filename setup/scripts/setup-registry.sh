@@ -92,16 +92,19 @@ echo "Generating registry credentials..."
 if command -v htpasswd &> /dev/null; then
     # Use htpasswd if available
     HTPASSWD=$(htpasswd -Bbn "${REGISTRY_USER}" "${REGISTRY_PASS}")
-elif command -v podman &> /dev/null; then
-    # Use podman if available
-    HTPASSWD=$(podman run --rm --entrypoint htpasswd docker.io/httpd:2 -Bbn "${REGISTRY_USER}" "${REGISTRY_PASS}")
-elif command -v docker &> /dev/null; then
-    # Fallback to docker if available
-    HTPASSWD=$(docker run --rm --entrypoint htpasswd httpd:2 -Bbn "${REGISTRY_USER}" "${REGISTRY_PASS}")
 else
-    echo "Error: htpasswd, podman, or docker is required to generate credentials."
-    echo "Please install one of: apache2-utils (for htpasswd), podman, or docker"
-    exit 1
+    # Use container runtime (default to podman if not set)
+    CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-podman}
+
+    if command -v "${CONTAINER_RUNTIME}" &> /dev/null; then
+
+            HTPASSWD=$(${CONTAINER_RUNTIME} run --rm --entrypoint htpasswd docker.io/httpd:2 -Bbn "${REGISTRY_USER}" "${REGISTRY_PASS}")
+        fi
+    else
+        echo "Error: htpasswd or ${CONTAINER_RUNTIME} is required to generate credentials."
+        echo "Please install one of: apache2-utils (for htpasswd) or set CONTAINER_RUNTIME to your preferred runtime"
+        exit 1
+    fi
 fi
 
 # Create Secret with registry credentials
@@ -343,10 +346,16 @@ echo "  # {\"insecure-registries\": [\"localhost:${REGISTRY_NODE_PORT}\"]}"
 echo ""
 echo "Test registry access:"
 echo "====================="
-echo "  # After configuring TLS, test with podman:"
+echo "  # After configuring TLS, test with your container runtime:"
+echo "  # Using Podman:"
 echo "  podman login localhost:${REGISTRY_NODE_PORT} -u ${REGISTRY_USER} -p ${REGISTRY_PASS}"
 echo "  podman tag nginx:latest localhost:${REGISTRY_NODE_PORT}/nginx:test"
 echo "  podman push localhost:${REGISTRY_NODE_PORT}/nginx:test"
+echo ""
+echo "  # Using Docker:"
+echo "  docker login localhost:${REGISTRY_NODE_PORT} -u ${REGISTRY_USER} -p ${REGISTRY_PASS}"
+echo "  docker tag nginx:latest localhost:${REGISTRY_NODE_PORT}/nginx:test"
+echo "  docker push localhost:${REGISTRY_NODE_PORT}/nginx:test"
 echo ""
 echo "  # List images in registry:"
 echo "  curl --cacert ${CERTS_OUTPUT_DIR}/registry.crt -u ${REGISTRY_USER}:${REGISTRY_PASS} https://localhost:${REGISTRY_NODE_PORT}/v2/_catalog"
