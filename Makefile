@@ -1,6 +1,6 @@
-.PHONY: help setup setup-kind setup-gitea setup-tekton setup-registry setup-ctf-challenge setup-ctf-challenge-secure verify verify-ctf status clean
+.PHONY: help setup setup-kind setup-gitea setup-tekton setup-tektonchains setup-registry seed-victim-repo setup-ctf-challenge setup-ctf-challenge-secure verify verify-ctf status clean
 .PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security create-security-policies
-.PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls
+.PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls verify-tektonchains
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3
 .PHONY: setup-production-cluster setup-production-gitea seed-production-repo load-image-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
@@ -8,6 +8,7 @@
 CLUSTER_NAME ?= ctf-cluster
 GITEA_HELM_VERSION ?= v12.5.0
 TEKTON_PIPELINE_VERSION ?= v0.53.0
+TEKTON_CHAINS_VERSION ?= v0.26.3
 KYVERNO_VERSION ?= v3.7.1
 KUBESCAPE_VERSION ?= latest
 TKN_VERSION ?= v0.44.1
@@ -109,7 +110,7 @@ help: ## Display this help message
 	@grep -E '^(check-cli-tools|install-tkn|install-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Environment Setup:"
-	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-registry|configure-registry-tls|setup-ctf-challenge|setup-ctf-challenge-secure):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-tektonchains|setup-registry|configure-registry-tls|seed-victim-repo|setup-ctf-challenge|setup-ctf-challenge-secure):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Tools:"
 	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -118,7 +119,7 @@ help: ## Display this help message
 	@grep -E '^(create-security-policies|apply-prevention-policies|security-scan|verify-security):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Verification:"
-	@grep -E '^(verify|verify-ctf|verify-registry|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(verify|verify-ctf|verify-registry|verify-tektonchains|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Cleanup:"
 	@grep -E '^(clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -173,6 +174,20 @@ setup-tekton: ## Install Tekton Pipelines and Triggers
 		echo ""; \
 	fi
 
+setup-tektonchains: ## Install and configure Tekton Chains for supply chain security
+	@cd setup && ./scripts/setup-tektonchains.sh
+	@echo ""
+	@echo "💡 Tekton Chains is now configured with:"
+	@echo "   • Format: in-toto (AMPEL/Conforma compatible)"
+	@echo "   • Storage: OCI registry"
+	@echo "   • Deep inspection: enabled"
+	@echo ""
+	@echo "Next steps:"
+	@echo "   • Run pipelines to automatically generate attestations"
+	@echo "   • Configure OCI registry credentials if needed"
+	@echo "   • Verify installation: make verify-tektonchains"
+	@echo ""
+
 setup-registry: ## Setup local Docker registry with authentication
 	@cd setup && ./scripts/setup-registry.sh
 
@@ -180,12 +195,12 @@ configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 	@cd setup && ./scripts/configure-registry-tls.sh
 
 seed-victim-repo: ## Seed victim-repo repository to CTF cluster Gitea
-	@cd setup && ./scripts/seed-victim-repo.sh
+	@./setup/scripts/seed-victim-repo.sh
 
 setup-ctf-challenge: seed-victim-repo ## Install Tekton CTF challenge resources (VULNERABLE version)
 	@echo "Installing Tekton CTF Challenge (VULNERABLE version)..."
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
-	@echo ""
+	@echo ""	
 	@echo "Setting up registry CA certificate for Tekton..."
 	@cd setup/scripts && ./setup-registry-cert-for-tekton.sh
 	@echo ""
@@ -372,6 +387,32 @@ verify-registry: ## Verify registry is working correctly
 	@echo "Registry credentials:"
 	@echo "  Username: $(REGISTRY_USER)"
 	@echo "  Password: $(REGISTRY_PASS)"
+
+verify-tektonchains: ## Verify Tekton Chains installation and configuration
+	@echo "Verifying Tekton Chains..."
+	@echo ""
+	@echo "Tekton Chains Namespace:"
+	@kubectl get namespace tekton-chains 2>/dev/null && echo "  ✓ Namespace exists" || { echo "  ❌ Namespace not found (run: make setup-tektonchains)"; exit 1; }
+	@echo ""
+	@echo "Tekton Chains Controller:"
+	@kubectl get deployment tekton-chains-controller -n tekton-chains 2>/dev/null && echo "  ✓ Controller deployment exists" || echo "  ❌ Controller not found"
+	@echo ""
+	@kubectl get pods -n tekton-chains -l app.kubernetes.io/name=controller 2>/dev/null || echo "  ❌ Controller pods not found"
+	@echo ""
+	@echo "Tekton Chains Configuration:"
+	@kubectl get configmap chains-config -n tekton-chains 2>/dev/null && echo "  ✓ Config exists" || echo "  ❌ Config not found"
+	@echo ""
+	@echo "Current Configuration Settings:"
+	@kubectl get configmap chains-config -n tekton-chains -o jsonpath='{.data.artifacts\.pipelinerun\.format}' 2>/dev/null && echo "" || echo "  ❌ Format not configured"
+	@echo "  Format: $$(kubectl get configmap chains-config -n tekton-chains -o jsonpath='{.data.artifacts\.pipelinerun\.format}' 2>/dev/null || echo 'not set')"
+	@echo "  Storage: $$(kubectl get configmap chains-config -n tekton-chains -o jsonpath='{.data.artifacts\.pipelinerun\.storage}' 2>/dev/null || echo 'not set')"
+	@echo "  Deep Inspection: $$(kubectl get configmap chains-config -n tekton-chains -o jsonpath='{.data.artifacts\.pipelinerun\.enable-deep-inspection}' 2>/dev/null || echo 'not set')"
+	@echo ""
+	@echo "✓ Tekton Chains verification complete"
+	@echo ""
+	@echo "Pipelines configured for attestation:"
+	@echo "  • pr-quality-check-pipeline (Challenge 1)"
+	@echo "  • push-build-pipeline (Challenge 2)"
 
 clean: ## Cleanup environment (delete cluster and resources)
 	@cd setup && ./scripts/cleanup.sh

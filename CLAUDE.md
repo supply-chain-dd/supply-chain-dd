@@ -71,6 +71,7 @@ Each challenge must contain:
 │       ├── setup-kind.sh           # KinD cluster provisioning
 │       ├── setup-gitea.sh          # Gitea installation via Helm
 │       ├── setup-tekton.sh         # Tekton Pipelines installation
+│       ├── setup-tektonchains.sh   # Tekton Chains installation and configuration
 │       ├── setup-registry.sh       # Registry deployment with TLS
 │       ├── configure-registry-tls.sh # TLS trust configuration helper
 │       └── cleanup.sh              # Environment teardown
@@ -121,6 +122,8 @@ Each challenge must contain:
 │   └── registry.crt                # CA certificate for client trust
 ├── Makefile                        # Primary automation interface
 ├── REGISTRY.md                     # Registry setup and usage documentation
+├── TEKTON-CHAINS.md                # Tekton Chains attestation guide
+├── IMAGE-SIGNING-SBOM.md           # Image signing and SBOM generation guide
 └── SECURITY-GUIDE.md               # Security tools and prevention guide
 ```
 
@@ -132,17 +135,20 @@ Each challenge must contain:
 make setup
 
 # Individual components
-make setup-kind      # Create KinD cluster only
-make setup-gitea     # Install Gitea only
-make setup-registry  # Setup Docker registry
+make setup-kind         # Create KinD cluster only
+make setup-gitea        # Install Gitea only
+make setup-tekton       # Install Tekton Pipelines and Triggers
+make setup-tektonchains # Install Tekton Chains for attestation
+make setup-registry     # Setup Docker registry
 
 ```
 
 ### Verification and Status
 ```bash
-make verify          # Verify environment is working
-make verify-registry # Verify registry is working
-make status          # Show detailed status
+make verify               # Verify environment is working
+make verify-registry      # Verify registry is working
+make verify-tektonchains  # Verify Tekton Chains installation
+make status               # Show detailed status
 ```
 
 ### Cleanup
@@ -158,6 +164,7 @@ Environment variables that control setup:
 - `GITEA_HTTP_PORT` (default: `30002`) - Gitea web UI port
 - `GITEA_SSH_PORT` (default: `30003`) - Gitea SSH port
 - `KIND_VERSION` (default: `v1.27.3`) - Kubernetes version for KinD
+- `TEKTON_CHAINS_VERSION` (default: `v0.26.3`) - Tekton Chains version
 - `REGISTRY_NODE_PORT` (default: `30000`) - Registry external access port
 - `REGISTRY_USER` (default: `ctf-admin`) - Registry username
 - `REGISTRY_PASS` (default: `CTFRegistryPass123!`) - Registry password
@@ -212,6 +219,17 @@ CLUSTER_NAME=my-ctf GITEA_VERSION=10.5.0 make setup
 - Restarts services when needed
 - Provides verification commands
 
+### setup-tektonchains.sh
+- Installs Tekton Chains for supply chain security
+- Configures Chains with AMPEL/Conforma compatible settings:
+  - Format: `in-toto` (standard attestation format)
+  - Storage: `oci` (stores attestations in OCI registries)
+  - Deep inspection: enabled
+- Patches chains-config ConfigMap with security settings
+- Restarts controller to apply configuration
+- Displays configuration summary and next steps
+- Enables automatic provenance generation for PipelineRuns
+
 ### cleanup.sh
 - Cleans up registry namespace if it exists
 - Uninstalls Gitea Helm release if it exists
@@ -238,6 +256,7 @@ The Makefile provides a clean interface for common operations:
 - `setup-kind`                 -   Create KinD cluster
 - `setup-gitea`                -   Install Gitea via Helm
 - `setup-tekton`               -   Install Tekton Pipelines and Triggers
+- `setup-tektonchains`         -   Install and configure Tekton Chains for supply chain security
 - `setup-registry`             -   Setup local Docker registry with authentication
 - `configure-registry-tls`     -   Configure TLS trust for the registry (interactive)
 - `setup-ctf-challenge`        -   Install Tekton CTF challenge resources (VULNERABLE version)
@@ -258,6 +277,7 @@ The Makefile provides a clean interface for common operations:
 - `status`                     -  Show environment status
 - `verify-ctf`                 -  Verify Tekton CTF challenge installation
 - `verify-registry`            -  Verify registry is working correctly
+- `verify-tektonchains`        -  Verify Tekton Chains installation and configuration
 
 **Cleanup:**
 - `clean`                      - Cleanup environment (delete cluster and resources)

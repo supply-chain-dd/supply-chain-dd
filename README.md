@@ -65,11 +65,13 @@ After setup, you'll have access to:
 ## Useful Commands
 
 ```bash
-make status          # Show environment status
-make verify          # Verify environment is working
-make verify-registry # Verify registry is working
-make clean           # Cleanup environment and start fresh
-make help            # Display all available commands
+make status               # Show environment status
+make verify               # Verify environment is working
+make verify-registry      # Verify registry is working
+make setup-tektonchains   # Install Tekton Chains for attestation
+make verify-tektonchains  # Verify Tekton Chains installation
+make clean                # Cleanup environment and start fresh
+make help                 # Display all available commands
 ```
 
 ## CTF Challenges
@@ -133,6 +135,45 @@ Challenge 3 (Base Image Poisoning)
     ↓ (poison base image → inject malware into production)
 Challenge 4 (Coming soon - GitOps Compromise)
 ```
+
+## Supply Chain Security Tools
+
+### Tekton Chains (Provenance & Attestation)
+
+Tekton Chains automatically generates and signs provenance for your pipeline runs, enabling supply chain security and attestation verification.
+
+**Installation**:
+```bash
+make setup-tektonchains
+make verify-tektonchains
+```
+
+**Features**:
+- Automatically generates cryptographically signed provenance for PipelineRuns
+- Stores attestations in OCI registries
+- Supports in-toto and SLSA provenance formats
+- Compatible with AMPEL and Conforma for policy enforcement
+- Enables deep inspection of pipeline execution
+
+**Configuration**:
+The setup automatically configures Tekton Chains with:
+- Format: `in-toto` (AMPEL/Conforma compatible)
+- Storage: `oci` (stores in OCI registry)
+- Deep inspection: `enabled`
+
+**Documentation**: 
+- [TEKTON-CHAINS.md](TEKTON-CHAINS.md) - Complete guide to Tekton Chains usage and configuration
+- [IMAGE-SIGNING-SBOM.md](IMAGE-SIGNING-SBOM.md) - Image signing and SBOM generation guide
+
+**Pipelines with Automatic Attestation**:
+- `pr-quality-check-pipeline` (Challenge 1) - PipelineRun provenance
+- `push-build-pipeline` (Challenge 2) - PipelineRun provenance + optional image signing
+
+**Image Signing**: For automatic image signing and SBOM generation, use the Chains-compatible tasks:
+```bash
+kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks-with-chains.yaml
+```
+See [IMAGE-SIGNING-SBOM.md](IMAGE-SIGNING-SBOM.md) for details.
 
 ## Troubleshooting
 
