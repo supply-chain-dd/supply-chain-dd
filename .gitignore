@@ -24,8 +24,7 @@ certs/
 
 # Environment specific
 .env
-.env.local
-.env.production
+.env.*
 
 # Kubescape report
 kubescape-report.txt
