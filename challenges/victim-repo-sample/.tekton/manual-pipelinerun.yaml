@@ -1,0 +1,33 @@
+---
+# Manual PipelineRun for Challenge 2
+# This can be used to manually trigger the push-build-pipeline
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: push-build-manual-
+  namespace: ctf-challenge
+  labels:
+    tekton.dev/pipeline: push-build-pipeline
+    trigger-type: manual
+spec:
+  serviceAccountName: pr-pipeline-readonly
+  pipelineRef:
+    name: push-build-pipeline
+  params:
+    - name: repo-url
+      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo.git
+    - name: revision
+      value: main
+    - name: image-name
+      value: recipe-api
+    - name: image-tag
+      value: v1.0
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi

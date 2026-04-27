@@ -55,7 +55,7 @@ See README.md (at root of repository) for more instructions
 
 ### Scenario
 
-You have discovered that the repository `victim-repo` uses Tekton Pipelines for PR quality checks. The pipeline is configured to run automatically when PRs are opened.
+You have discovered that the repository `recipe-api` uses Tekton Pipelines for PR quality checks. The pipeline is configured to run automatically when PRs are opened.
 
 Your investigation reveals:
 1. The pipeline runs on all PRs (including from forks)

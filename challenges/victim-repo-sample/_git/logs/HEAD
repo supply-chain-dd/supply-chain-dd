@@ -1,12 +1,2 @@
-0000000000000000000000000000000000000000 b4acebb712a01047dd9b76caed4934ae2b988a2a Recipe Developer <developer@recipeco.com> 1775033784 +0200	commit (initial): Initial commit: Recipe API v1.0 with production config
-b4acebb712a01047dd9b76caed4934ae2b988a2a 6f94c1f31385ee96a7aaa66ba8aac1c4cea45e8f Recipe Developer <developer@recipeco.com> 1775033792 +0200	commit: Security fix: Remove accidentally committed production secrets
-6f94c1f31385ee96a7aaa66ba8aac1c4cea45e8f b4acebb712a01047dd9b76caed4934ae2b988a2a Recipe Developer <developer@recipeco.com> 1776142422 +0200	checkout: moving from main to b4acebb
-b4acebb712a01047dd9b76caed4934ae2b988a2a cb0d66f704f78bfdfeeafd84c1229183aad97f87 Recipe Developer <developer@recipeco.com> 1776142431 +0200	commit (amend): Initial commit: Recipe API v1.0 with production config
-cb0d66f704f78bfdfeeafd84c1229183aad97f87 6f94c1f31385ee96a7aaa66ba8aac1c4cea45e8f Recipe Developer <developer@recipeco.com> 1776142468 +0200	checkout: moving from cb0d66f704f78bfdfeeafd84c1229183aad97f87 to main
-6f94c1f31385ee96a7aaa66ba8aac1c4cea45e8f 6f94c1f31385ee96a7aaa66ba8aac1c4cea45e8f Recipe Developer <developer@recipeco.com> 1776142499 +0200	reset: moving to HEAD
-6f94c1f31385ee96a7aaa66ba8aac1c4cea45e8f b4acebb712a01047dd9b76caed4934ae2b988a2a Recipe Developer <developer@recipeco.com> 1776142516 +0200	branch: Reset to b4acebb712a01047dd9b76caed4934ae2b988a2a
-b4acebb712a01047dd9b76caed4934ae2b988a2a b4acebb712a01047dd9b76caed4934ae2b988a2a Recipe Developer <developer@recipeco.com> 1776142516 +0200	checkout: moving from main to main
-b4acebb712a01047dd9b76caed4934ae2b988a2a 1357c00eea0ce1b6eecb6169eb904347e52ea7f5 Recipe Developer <developer@recipeco.com> 1776142516 +0200	cherry-pick: Security fix: Remove accidentally committed production secrets
-1357c00eea0ce1b6eecb6169eb904347e52ea7f5 cb0d66f704f78bfdfeeafd84c1229183aad97f87 Recipe Developer <developer@recipeco.com> 1776142639 +0200	branch: Reset to cb0d66f
-cb0d66f704f78bfdfeeafd84c1229183aad97f87 cb0d66f704f78bfdfeeafd84c1229183aad97f87 Recipe Developer <developer@recipeco.com> 1776142639 +0200	checkout: moving from main to main
-cb0d66f704f78bfdfeeafd84c1229183aad97f87 3dd110a0fd95137443cabc510bf303163d5a9bea Recipe Developer <developer@recipeco.com> 1776142688 +0200	commit (cherry-pick): Security fix: Remove accidentally committed production secrets
+0000000000000000000000000000000000000000 236e20b5a76e1f22c5c5ff8e222f69da2071c1ee sherine-k <skhoury@redhat.com> 1777278744 +0200	commit (initial): Initial commit: Recipe API v1.0
+236e20b5a76e1f22c5c5ff8e222f69da2071c1ee 9d81c465f358fef7efd791966e482e1eece4ff78 sherine-k <skhoury@redhat.com> 1777278820 +0200	commit: Security fix: Remove accidentally committed production secrets

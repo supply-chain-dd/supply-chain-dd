@@ -33,7 +33,7 @@ Challenge 4 demonstrates a **GitOps pipeline compromise** attack where an attack
 │                     │         │                          │
 │  ┌──────────────┐   │         │  ┌────────────────────┐  │
 │  │  Gitea       │   │         │  │  Gitea (prod)      │  │
-│  │  victim-repo │   │         │  │  prod-manifests    │  │
+│  │  recipe-api  │   │         │  │  prod-manifests    │  │
 │  │  (.env leak) │   │         │  └──────┬─────────────┘  │
 │  └──────────────┘   │         │         │ Git Sync       │
 │                     │         │  ┌──────▼─────────────┐  │
@@ -273,7 +273,7 @@ make verify-challenge4
 ## Environment State After Setup
 
 **CTF Cluster (ctf-cluster)**:
-- ✅ Gitea with `victim-repo` (contains leaked .env.production in git history)
+- ✅ Gitea with `recipe-api` (contains leaked .env.production in git history)
 - ✅ Docker Registry with `recipe-api:v1.0` image
 - ✅ Tekton CI/CD pipelines
 

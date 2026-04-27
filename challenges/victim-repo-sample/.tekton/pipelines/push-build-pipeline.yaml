@@ -1,0 +1,106 @@
+---
+# Pipeline for Challenge 2 - Container Layer Leak Attack
+# Triggers on push events to build, quality-check, and push container images
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: push-build-pipeline
+  namespace: ctf-challenge
+spec:
+  description: |
+    Build and push pipeline that triggers on push events.
+    This pipeline:
+    1. Clones the repository
+    2. Builds the Go application
+    3. Runs quality checks
+    4. Builds a container image
+    5. Pushes the image to the local registry
+  params:
+    - name: repo-url
+      type: string
+      description: The git repository URL
+    - name: revision
+      type: string
+      description: The git revision (branch, tag, or SHA)
+      default: "main"
+    - name: image-name
+      type: string
+      description: Container image name
+      default: "recipe-api"
+    - name: image-tag
+      type: string
+      description: Container image tag
+      default: "latest"
+    - name: registry-url
+      type: string
+      description: Container registry URL
+      default: "registry.registry.svc.cluster.local:5000"
+  workspaces:
+    - name: source
+      description: Workspace for source code
+  tasks:
+    - name: clone-repo
+      taskRef:
+        name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: deleteExisting
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: source
+
+    - name: build-go-app
+      runAfter: ["clone-repo"]
+      taskRef:
+        name: build-go-app
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: run-quality-checks
+      runAfter: ["build-go-app"]
+      taskRef:
+        name: quality-check-task
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: build-container-image
+      runAfter: ["run-quality-checks"]
+      taskRef:
+        name: build-container-image
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.image-tag)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: push-container-image
+      runAfter: ["build-container-image"]
+      taskRef:
+        name: push-container-image
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.image-tag)
+        - name: registry-url
+          value: $(params.registry-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: post-results
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: print-results
+      workspaces:
+        - name: source
+          workspace: source

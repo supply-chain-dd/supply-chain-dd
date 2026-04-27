@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Seed victim-repo repository to CTF cluster Gitea
+# Seed recipe-api repository to CTF cluster Gitea
 # This creates and populates the repository used for CTF challenges
 #
 
@@ -11,9 +11,9 @@ GITEA_HTTP_PORT="${GITEA_HTTP_PORT:-30002}"
 GITEA_URL="http://localhost:$GITEA_HTTP_PORT"
 GITEA_USER="ctf-admin"
 GITEA_PASS="CTFSecurePass123!"
-REPO_NAME="victim-repo"
+REPO_NAME="recipe-api"
 
-echo "==> Seeding victim-repo repository to CTF cluster Gitea..."
+echo "==> Seeding recipe-api repository to CTF cluster Gitea..."
 
 # Verify we're on the right cluster
 CURRENT_CONTEXT=$(kubectl config current-context)
@@ -63,8 +63,8 @@ echo "Repository created successfully."
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-# Copy victim repo sample
-echo "Copying victim-repo files..."
+# Copy recipe-api repo sample
+echo "Copying recipe-api files..."
 cp -r challenges/victim-repo-sample/* "$TEMP_DIR/"
 cp -r challenges/victim-repo-sample/.gitignore "$TEMP_DIR/" 2>/dev/null || true
 cp -r challenges/victim-repo-sample/.tekton "$TEMP_DIR/" 2>/dev/null || true
@@ -114,7 +114,7 @@ git remote add origin "$GITEA_URL_WITH_CREDS/$GITEA_USER/$REPO_NAME.git" 2>/dev/
 git push -u origin main --force
 
 echo ""
-echo "==> Victim-repo repository seeded successfully!"
+echo "==> Recipe-api repository seeded successfully!"
 echo ""
 echo "Repository details:"
 echo "  URL: $GITEA_URL/$GITEA_USER/$REPO_NAME"

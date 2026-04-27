@@ -7,7 +7,7 @@ All components for Attack #2 are now in place and tested.
 ### What Was Created
 
 #### 1. Vulnerable Docker Image
-- **Location**: `challenges/victim-repo-sample/Dockerfile`
+- **Location**: `challenges/victim-repo-sample/Dockerfile` (recipe-api application)
 - **Image**: `localhost:30000/recipe-api:v1.0`
 - **Vulnerability**: Single-stage build with `.git` copied and then "deleted"
 - **Key Layers**:
@@ -16,13 +16,13 @@ All components for Attack #2 are now in place and tested.
 
 #### 2. Git Repository with Secrets
 - **Commits**:
-  - `cb0d66f` - Initial commit with `.env.production` containing:
+  - `236e20b` - Initial commit: Recipe API v1.0 (contains `.env.production` with secrets)
     - Database credentials
     - API keys (Stripe, SendGrid)
     - Session secrets
     - **Registry credentials**: `ctf-admin` / `CTFRegistryPass123!`
     - **FLAG**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}`
-  - `3dd110a` - "Security fix" that deletes `.env.production`
+  - `9d81c46` - Security fix: Remove accidentally committed production secrets
 
 #### 3. Updated Attack #1 Flag
 - **Old**: `FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}`
@@ -61,7 +61,7 @@ Attack #1 (Tekton PWN)
          ↓
    Extract git history
          ↓
-   git show cb0d66f:.env.production
+   git show 236e20b:.env.production
          ↓
    Capture FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}
          ↓
@@ -72,7 +72,7 @@ Attack #1 (Tekton PWN)
 
 Run the automated test:
 ```bash
-cd challenges/victim-repo-sample
+cd challenges/challenge2
 ./test-attack2.sh
 ```
 

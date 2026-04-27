@@ -3,6 +3,3 @@
 	filemode = true
 	bare = false
 	logallrefupdates = true
-[user]
-	email = developer@recipeco.com
-	name = Recipe Developer

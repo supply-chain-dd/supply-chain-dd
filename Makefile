@@ -194,7 +194,7 @@ setup-registry: ## Setup local Docker registry with authentication
 configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 	@cd setup && ./scripts/configure-registry-tls.sh
 
-seed-victim-repo: ## Seed victim-repo repository to CTF cluster Gitea
+seed-victim-repo: ## Seed recipe-api repository to CTF cluster Gitea
 	@./setup/scripts/seed-victim-repo.sh
 
 setup-ctf-challenge: seed-victim-repo ## Install Tekton CTF challenge resources (VULNERABLE version)
@@ -693,12 +693,12 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 		echo "❌ Pipeline not found. Run 'make setup-challenge2-tekton' first"; \
 		exit 1; \
 	fi
-	@echo "Preparing victim repository for build..."
-	@rm -rf /tmp/gitea/victim-repo-build
+	@echo "Preparing recipe-api repository for build..."
+	@rm -rf /tmp/gitea/recipe-api-build
 	@mkdir -p /tmp/gitea
-	@cp -r challenges/victim-repo-sample /tmp/gitea/victim-repo-build
-	@if [ -d /tmp/gitea/victim-repo-build/_git ]; then \
-		mv /tmp/gitea/victim-repo-build/_git /tmp/gitea/victim-repo-build/.git; \
+	@cp -r challenges/victim-repo-sample /tmp/gitea/recipe-api-build
+	@if [ -d /tmp/gitea/recipe-api-build/_git ]; then \
+		mv /tmp/gitea/recipe-api-build/_git /tmp/gitea/recipe-api-build/.git; \
 		echo "  ✓ Git history restored"; \
 	fi
 	@echo ""

@@ -6,7 +6,8 @@ TEKTON_CHAINS_VERSION="${TEKTON_CHAINS_VERSION:-v0.26.3}"
 echo "Installing Tekton Chains ${TEKTON_CHAINS_VERSION}..."
 
 # Install Tekton Chains
-kubectl apply -f "https://infra.tekton.dev/tekton-releases/chains/previous/${TEKTON_CHAINS_VERSION}/release.yaml"
+wget "https://infra.tekton.dev/tekton-releases/chains/previous/${TEKTON_CHAINS_VERSION}/release.yaml"
+kubectl apply -f release.yaml
 
 echo "Waiting for Tekton Chains to be ready..."
 kubectl wait --for=condition=Ready pods --all -n tekton-chains --timeout=300s

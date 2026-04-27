@@ -18,9 +18,9 @@ This will create:
 
 ### Step 2: Configure Gitea Webhook
 
-Set up a webhook on the `victim-repo` repository to trigger the pipeline on push events:
+Set up a webhook on the `recipe-api` repository to trigger the pipeline on push events:
 
-1. **Access Gitea**: Navigate to http://localhost:30002/ctf-admin/victim-repo/settings/hooks
+1. **Access Gitea**: Navigate to http://localhost:30002/ctf-admin/recipe-api/settings/hooks
 
 2. **Add Webhook**: Click "Add Webhook" → "Gitea"
 
@@ -41,12 +41,12 @@ kubectl get secret github-webhook-secret -n ctf-challenge -o jsonpath='{.data.se
 
 ### Step 3: Trigger Initial Build to Populate Registry
 
-Push a commit to the `victim-repo` main branch to trigger the pipeline and build the vulnerable image:
+Push a commit to the `recipe-api` main branch to trigger the pipeline and build the vulnerable image:
 
 **Option A: Via Webhook (Recommended)**
 ```bash
-# Clone or navigate to victim-repo
-cd /tmp/gitea/victim-repo
+# Clone or navigate to recipe-api
+cd /tmp/gitea/recipe-api
 
 # Make a change and push
 git commit --allow-empty -m "Initial build for CTF"
@@ -382,7 +382,7 @@ Participants will learn:
 **Stuck?** Check the [ATTACK2-EXPLOITATION-GUIDE.md](./ATTACK2-EXPLOITATION-GUIDE.md) for detailed walkthroughs.
 
 **Questions?** Review the git history structure:
-- Commit 1 (`b4acebb`): Has the `.env.production` file
-- Commit 2 (`6f94c1f`): Deletes the `.env.production` file
+- Commit 1 (`236e20b`): Initial commit with the Recipe API v1.0
+- Commit 2 (`9d81c46`): Security fix - removed accidentally committed production secrets
 
 The secrets are in Commit 1!
