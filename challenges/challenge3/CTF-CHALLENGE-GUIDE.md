@@ -270,10 +270,10 @@ Verify the tag matches exactly:
 podman images | grep golang.*1.25-alpine
 ```
 
-Check the Dockerfile in victim-repo:
+Check the Dockerfile in recipe-api:
 ```bash
-git clone http://localhost:30002/ctf-admin/victim-repo.git
-grep "FROM" victim-repo/Dockerfile
+git clone http://localhost:30002/ctf-admin/recipe-api.git
+grep "FROM" recipe-api/Dockerfile
 ```
 </details>
 

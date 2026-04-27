@@ -116,8 +116,8 @@ podman push localhost:30000/golang:1.25-alpine
 
 ### Can't verify Dockerfile in Gitea
 ```bash
-# Clone the victim repository locally
-git clone http://localhost:30002/ctf-admin/victim-repo.git
-cd victim-repo
+# Clone the recipe-api repository locally
+git clone http://localhost:30002/ctf-admin/recipe-api.git
+cd recipe-api
 cat Dockerfile
 ```

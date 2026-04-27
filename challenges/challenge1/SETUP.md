@@ -15,9 +15,9 @@ make setup-ctf-challenge      # Deploy CTF challenge resources
 The `make setup-ctf-challenge` command has already:
 - ✓ Deployed vulnerable Tekton resources (EventListener, Pipeline, Tasks)
 - ✓ Created the CTF flag secret with registry credentials
-- ✓ Prepared the victim repository at `/tmp/gitea/victim-repo`
+- ✓ Prepared the victim repository at `/tmp/gitea/recipe-api`
 - ✓ Configured Git credentials for Gitea access
-- ✓ Created the victim-repo repository on the Gitea instance
+- ✓ Created the recipe-api repository on the Gitea instance
 
 ## Step 1: Verify Victim Repository in Gitea
 
@@ -36,7 +36,7 @@ Login with:
 
 ### 1.2 Verify Repository
 
-Refresh the Gitea web UI (http://localhost:30002/ctf-admin/victim-repo). You should now see:
+Refresh the Gitea web UI (http://localhost:30002/ctf-admin/recipe-api). You should now see:
 - ✓ Source code files (`main.go`, `Dockerfile`, etc.)
 - ✓ Complete Git history with multiple commits
 - ✓ `.tekton/` directory with Tekton pipeline configuration
@@ -67,7 +67,7 @@ http://el-pr-quality-check-listener.ctf-challenge.svc.cluster.local:8080
 
 ### 2.2 Add Webhook in Gitea
 
-1. In the Gitea web UI, navigate to your `victim-repo` repository
+1. In the Gitea web UI, navigate to your `recipe-api` repository
 2. Click **"Settings"** (top-right, gear icon)
 3. In the left sidebar, click **"Webhooks"**
 4. Click **"Add Webhook"** → Select **"Gitea"** (or **"Gogs"** if Gitea not available)
@@ -99,10 +99,10 @@ To verify the webhook works end-to-end, create a test pull request:
 
 ### 3.0 Clone (or fork) the repository
 ```
-rm -rf /tmp/gitea/victim-repo
+rm -rf /tmp/gitea/recipe-api
 mkdir -p /tmp/gitea
 cd /tmp/gitea
-git clone http://ctf-admin:CTFSecurePass123\!@localhost:30002/ctf-admin/victim-repo
+git clone http://ctf-admin:CTFSecurePass123\!@localhost:30002/ctf-admin/recipe-api
 echo "Creating Git credentials for Gitea access..."
 echo "[user]" > /tmp/gitea/.gitconfig
 echo "	name = CTF Admin" >> /tmp/gitea/.gitconfig
@@ -115,7 +115,7 @@ chmod 600 /tmp/gitea/.git-credentials
 ### 3.1 Create a Test Branch and Push
 
 ```bash
-cd /tmp/gitea/victim-repo
+cd /tmp/gitea/recipe-api
 
 # Create a new branch
 git checkout -b test-webhook
@@ -134,12 +134,12 @@ GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push --set-ups
 After pushing, Gitea will show a helpful message:
 ```
 remote: Create a new pull request for 'test-webhook':        
-remote:   http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo/pulls/new/test-webhook
+remote:   http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api/pulls/new/test-webhook
 ```
 
 **Create the PR via web UI**:
 
-1. Go to http://localhost:30002/ctf-admin/victim-repo
+1. Go to http://localhost:30002/ctf-admin/recipe-api
 2. You should see a banner: **"test-webhook had recent pushes"** with a **"Compare & pull request"** button
 3. Click **"Compare & pull request"**
 4. Fill in:
@@ -148,7 +148,7 @@ remote:   http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo/p
 5. Click **"Create Pull Request"**
 
 **Or use the direct URL**:
-- http://localhost:30002/ctf-admin/victim-repo/compare/main...test-webhook
+- http://localhost:30002/ctf-admin/recipe-api/compare/main...test-webhook
 
 ### 3.3 Verify Pipeline Started
 
@@ -207,10 +207,10 @@ Verify the victim repository is accessible:
 
 ```bash
 # Check repository in web UI
-# Visit: http://localhost:30002/ctf-admin/victim-repo
+# Visit: http://localhost:30002/ctf-admin/recipe-api
 
 # Or test git connectivity
-cd /tmp/gitea/victim-repo
+cd /tmp/gitea/recipe-api
 GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git fetch origin
 ```
 
@@ -218,7 +218,7 @@ GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git fetch origin
 
 In Gitea, verify webhook deliveries are successful:
 
-1. Go to: http://localhost:30002/ctf-admin/victim-repo/settings/hooks/1
+1. Go to: http://localhost:30002/ctf-admin/recipe-api/settings/hooks/1
 2. Scroll down to **"Recent Deliveries"**
 3. You should see successful deliveries (green checkmarks) for your Pull Request events
 4. Click on a delivery to see the request/response details
@@ -250,7 +250,7 @@ The Tekton pipeline is configured with the **"Pwn Request"** vulnerability:
 ### Attack Flow
 
 ```
-1. Attacker forks victim-repo
+1. Attacker forks recipe-api
 2. Attacker modifies scripts/quality-check/main.go with malicious payload
 3. Attacker creates Pull Request
 4. Gitea webhook triggers EventListener
@@ -309,7 +309,7 @@ cat /tmp/gitea/.git-credentials
 curl http://localhost:30002
 
 # Always use the environment variables when running git commands
-cd /tmp/gitea/victim-repo
+cd /tmp/gitea/recipe-api
 GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push -u origin main
 
 # Or create an alias for convenience
@@ -317,7 +317,7 @@ alias git-ctf='GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git
 git-ctf push -u origin main
 
 # Check Gitea repository exists in web UI
-# Visit http://localhost:30002/ctf-admin/victim-repo
+# Visit http://localhost:30002/ctf-admin/recipe-api
 ```
 
 ### Flag secret not found
@@ -354,6 +354,6 @@ To see the **secure** version, check:
 - [CTF Challenge Guide](CTF-CHALLENGE-GUIDE.md) - Participant walkthrough
 - [Attack Analysis](ATTACK-ANALYSIS.md) - Technical deep-dive comparing vulnerable vs. secure
 - [Security Architecture](security/ARCHITECTURE.md) - Prevention and detection layers
-- [Victim Repository Sample](../victim-repo-sample/) - Source code with attack vectors
+- [Victim Repository Sample](../recipe-api-sample/) - Source code with attack vectors
 
 Happy hacking! 🏴‍☠️

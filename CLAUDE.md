@@ -426,6 +426,39 @@ Optional tools:
 
 All scripts assume bash and use `set -euo pipefail` for safety.
 
+## Working with victim-repo-sample
+
+**IMPORTANT**: The `challenges/victim-repo-sample/` directory contains a `_git` folder (NOT `.git`) to avoid conflicts with the main supply-chain-dd git repository.
+
+**Do NOT run git commands directly in this directory**, as the git history is stored as `_git` and not recognized as a git repository.
+
+**To work with the git history in victim-repo-sample:**
+1. Copy the folder to a temporary location
+2. Rename `_git` to `.git`
+3. Work with git commands in the temporary copy
+
+Example:
+```bash
+# Copy to temporary location and restore git history
+cp -r challenges/victim-repo-sample /tmp/recipe-api-work
+mv /tmp/recipe-api-work/_git /tmp/recipe-api-work/.git
+
+# Now safe to use git commands
+cd /tmp/recipe-api-work
+git log
+git show <commit-hash>
+```
+
+**The setup scripts automatically handle this conversion:**
+- `seed-victim-repo.sh`: Renames `_git` to `.git` before pushing to Gitea
+- Build targets in Makefile: Handle the conversion when building images
+
+**Git History Structure:**
+- Commit 1 (`236e20b`): Initial commit: Recipe API v1.0
+- Commit 2 (`9d81c46`): Security fix: Remove accidentally committed production secrets
+
+These commit IDs are referenced in challenge documentation and should be kept consistent when updating the repository.
+
 ## Documentation Update Requirements
 
 **CRITICAL**: When making changes to this repository, you MUST update documentation:

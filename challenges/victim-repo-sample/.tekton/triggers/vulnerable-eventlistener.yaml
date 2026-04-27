@@ -1,0 +1,200 @@
+---
+# VULNERABLE EventListener - DO NOT USE IN PRODUCTION
+# This EventListener demonstrates the "Pwn Request" vulnerability in Tekton
+# Similar to GitHub Actions pull_request_target vulnerability
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: pr-quality-check-listener
+  namespace: ctf-challenge
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: pull-request-quality-check
+      interceptors:
+        - ref:
+            name: "github"
+          params:
+            - name: "eventTypes"
+              value: ["pull_request", "push"]
+            - name: "secretRef"
+              value:
+                secretName: github-webhook-secret
+                secretKey: secretToken
+      bindings:
+        - ref: pr-quality-binding
+      template:
+        ref: pr-quality-template
+---
+# TriggerBinding - Extracts data from Gitea webhook
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: pr-quality-binding
+  namespace: ctf-challenge
+spec:
+  params:
+    # Gitea webhook format (different from GitHub)
+    # VULNERABLE: Using head repo (attacker's fork)
+    - name: pr-repo-url
+      value: $(body.pull_request.head.repo.clone_url)
+    # VULNERABLE: Using head SHA (attacker's code)
+    - name: pr-sha
+      value: $(body.pull_request.head.sha)
+    - name: pr-number
+      value: $(body.number)
+    - name: pr-repo-name
+      value: $(body.repository.full_name)
+    - name: pr-title
+      value: $(body.pull_request.title)
+---
+# TriggerTemplate - Creates PipelineRun from webhook
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: pr-quality-template
+  namespace: ctf-challenge
+spec:
+  params:
+    - name: pr-repo-url
+    - name: pr-sha
+    - name: pr-number
+    - name: pr-repo-name
+    - name: pr-title
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: pr-quality-check-
+        namespace: ctf-challenge
+      spec:
+        pipelineRef:
+          name: pr-quality-check-pipeline
+        params:
+          - name: pr-repo-url
+            value: $(tt.params.pr-repo-url)
+          - name: pr-sha
+            value: $(tt.params.pr-sha)
+          - name: pr-number
+            value: $(tt.params.pr-number)
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+---
+# ServiceAccount for EventListener
+# VULNERABLE: Has permissions to read secrets and create resources
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-triggers-sa
+  namespace: ctf-challenge
+---
+# Role with minimal permissions (following principle of least privilege)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tekton-triggers-role
+  namespace: ctf-challenge
+rules:
+# Read Tekton Triggers resources (needed to process webhooks)
+- apiGroups: ["triggers.tekton.dev"]
+  resources: ["triggerbindings", "triggertemplates", "eventlisteners", "interceptors", "triggers"]
+  verbs: ["get","list","watch"]
+
+# Read ONLY the specific webhook secret (not all secrets)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+  resourceNames: ["github-webhook-secret"]  # Restricted to specific secret
+
+# Create PipelineRuns (core functionality)
+- apiGroups: ["tekton.dev"]
+  resources: ["pipelineruns"]
+  verbs: ["create"]
+
+# Read ConfigMaps
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+---
+# ClusterRole for cluster-scoped Tekton Triggers resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tekton-triggers-clusterrole
+rules:
+- apiGroups: ["triggers.tekton.dev"]
+  resources: ["clustertriggerbindings", "clusterinterceptors"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-triggers-clusterrolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: ctf-challenge
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-triggers-rolebinding
+  namespace: ctf-challenge
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tekton-triggers-role
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: ctf-challenge
+---
+# Role for default ServiceAccount (used by TaskRuns)
+# VULNERABLE: Allows reading secrets including the CTF flag
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: taskrun-role
+  namespace: ctf-challenge
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: default-taskrun-rolebinding
+  namespace: ctf-challenge
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: taskrun-role
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: ctf-challenge
+---
+# GitHub webhook secret 
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-webhook-secret
+  namespace: ctf-challenge
+type: Opaque
+stringData:
+  secretToken: "change-me-in-production"

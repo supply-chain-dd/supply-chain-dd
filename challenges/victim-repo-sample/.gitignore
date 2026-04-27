@@ -9,3 +9,4 @@ supply-chain-dd
 
 # Ignore actual .git if someone restores it during testing
 .git
+.env.production
