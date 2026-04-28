@@ -2,6 +2,10 @@
 
 ## Pre-requisites (For organizers)
 
+```bash
+make setup-challenge2
+```
+
 **Note**: Setting up Challenge 2 also seeds the `golang:1.25-alpine` base image to the local registry, which is required for Challenge 3 (Base Image Poisoning attack).
 
 ### Step 1: Deploy Challenge 2 Tekton Resources

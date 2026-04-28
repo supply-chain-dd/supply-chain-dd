@@ -15,7 +15,7 @@ spec:
     name: push-build-pipeline
   params:
     - name: repo-url
-      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/victim-repo.git
+      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
     - name: revision
       value: main
     - name: image-name

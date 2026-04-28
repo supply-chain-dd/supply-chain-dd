@@ -134,7 +134,7 @@ GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push --set-ups
 After pushing, Gitea will show a helpful message:
 ```
 remote: Create a new pull request for 'test-webhook':        
-remote:   http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api/pulls/new/test-webhook
+remote:   http://localhost:30002/ctf-admin/recipe-api/pulls/new/test-webhook
 ```
 
 **Create the PR via web UI**:
