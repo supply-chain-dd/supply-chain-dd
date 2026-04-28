@@ -155,6 +155,14 @@ cat analysis.json | jq
 Now that LAYER_DIR is set to the layer containing `.git`, extract and explore it:
 
 ```bash
+cd /tmp
+# Save the image as a tar archive
+podman save localhost:30000/recipe-api:v1.0 -o recipe-api.tar
+
+# Extract the tar
+mkdir recipe-api-extracted
+tar -xf recipe-api.tar -C /tmp/recipe-api-extracted/
+
 # Verify LAYER_DIR is set (should be set from previous step)
 echo "Using layer: $LAYER_DIR"
 
@@ -179,6 +187,7 @@ ls -la app/.git/
 
 ```bash
 # View commit history
+cd app
 git log
 
 # Expected output:

@@ -4,6 +4,7 @@
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3
 .PHONY: setup-production-cluster setup-production-gitea seed-production-repo load-image-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
+.PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness
 
 CLUSTER_NAME ?= ctf-cluster
 GITEA_HELM_VERSION ?= v12.5.0
@@ -106,11 +107,16 @@ install-kubescape: ## Install Kubescape CLI as kubectl plugin
 help: ## Display this help message
 	@echo "Supply Chain CTF Environment - Available Commands:"
 	@echo ""
+	@echo "🚀 Quick Start (Deep Dive Demo):"
+	@echo "  \033[36mmake setup-demo\033[0m              Complete automated setup for Challenges 1 & 2"
+	@echo "  \033[36mmake verify-demo-readiness\033[0m   Verify all prerequisites are met"
+	@echo "  See DEMO-SETUP.md for detailed instructions"
+	@echo ""
 	@echo "CLI Tools:"
 	@grep -E '^(check-cli-tools|install-tkn|install-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Environment Setup:"
-	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-tektonchains|setup-registry|configure-registry-tls|seed-victim-repo|setup-ctf-challenge|setup-ctf-challenge-secure):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-tektonchains|setup-registry|configure-registry-tls|seed-victim-repo|setup-ctf-challenge|setup-ctf-challenge-secure|setup-gitea-webhooks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Tools:"
 	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -119,18 +125,19 @@ help: ## Display this help message
 	@grep -E '^(create-security-policies|apply-prevention-policies|security-scan|verify-security):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Verification:"
-	@grep -E '^(verify|verify-ctf|verify-registry|verify-tektonchains|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(verify|verify-ctf|verify-registry|verify-tektonchains|verify-demo-readiness|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Cleanup:"
 	@grep -E '^(clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-	@echo "Quick Start:"
+	@echo "Quick Start (Manual Steps):"
 	@echo "  1. make check-cli-tools          # Check for required CLI tools"
 	@echo "  2. make setup                    # Setup complete CTF environment"
-	@echo "  3. make setup-registry           # Setup local Docker registry"
-	@echo "  4. make setup-security-tools     # Deploy Kyverno + Kubescape"
-	@echo "  5. make apply-prevention-policies # Apply security policies"
-	@echo "  6. make security-scan            # Run security scans"
+	@echo "  3. make configure-registry-tls   # Configure registry TLS trust"
+	@echo "  4. make setup-ctf-challenge      # Setup Challenge 1"
+	@echo "  5. make setup-challenge2-tekton  # Setup Challenge 2"
+	@echo "  6. make setup-gitea-webhooks     # Create Gitea webhooks"
+	@echo "  7. make verify-demo-readiness    # Verify everything is ready"
 	@echo ""
 	@echo "Environment Variables:"
 	@echo "  CONTAINER_RUNTIME=podman|docker  # Select container runtime (default: podman)"
@@ -140,10 +147,11 @@ help: ## Display this help message
 	@echo "        Run 'make configure-registry-tls' to trust the certificate."
 	@echo ""
 	@echo "Documentation:"
+	@echo "  • DEMO-SETUP.md - Deep dive demo automation guide"
 	@echo "  • SECURITY-GUIDE.md - Comprehensive security tools guide"
 	@echo "  • challenges/challenge1/ATTACK-ANALYSIS.md - Attack comparison"
 	@echo "  • challenges/challenge1/security/README.md - Policy details"
-	@echo "  • challenges/challenge2/ATTACK2-README.md - Container layer attack"
+	@echo "  • challenges/challenge2/ATTACK-ANALYSIS.md - Container layer attack"
 	@echo ""
 
 setup: check-cli-tools setup-kind setup-gitea setup-tekton setup-registry verify ## Complete setup (KinD cluster + Gitea + tekton + registry + verification)
@@ -641,6 +649,12 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 	@echo "========================================"
 	@kubectl create namespace ctf-challenge 2>/dev/null || true
 	@echo ""
+	@echo "Setting up Git credentials for Gitea..."
+	@kubectl apply -f challenges/challenge2/tekton/gitea-credentials.yaml
+	@echo ""
+	@echo "Setting up ServiceAccounts and RBAC..."
+	@kubectl apply -f challenges/challenge2/tekton/serviceaccounts.yaml
+	@echo ""
 	@echo "Setting up registry CA certificate for Tekton..."
 	@cd setup/scripts && ./setup-registry-cert-for-tekton.sh
 	@echo ""
@@ -724,6 +738,39 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	@echo "✓ Pipeline triggered successfully"
 	@echo ""
 	@echo "Image will be pushed to: registry.registry.svc.cluster.local:5000/recipe-api:latest"
+
+# ============================================================
+# Deep Dive Demo Setup (Challenges 1 & 2)
+# ============================================================
+
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks verify-demo-readiness trigger-challenge2-build ## Complete automated setup for deep dive demo (Challenges 1 & 2)
+	@echo ""
+	@echo "=========================================="
+	@echo "✓ Deep Dive Demo Environment Ready!"
+	@echo "=========================================="
+	@echo ""
+	@echo "Access Information:"
+	@echo "  Gitea:    http://localhost:$(GITEA_HTTP_PORT)"
+	@echo "  Registry: https://localhost:$(REGISTRY_NODE_PORT)"
+	@echo "  Username: ctf-admin"
+	@echo "  Password: CTFSecurePass123!"
+	@echo ""
+	@echo "Challenges Ready:"
+	@echo "  • Challenge 1: PR Quality Check Attack"
+	@echo "  • Challenge 2: Container Layer Leak Attack"
+	@echo ""
+	@echo "Start the Demo:"
+	@echo "  1. Open Gitea: http://localhost:$(GITEA_HTTP_PORT)"
+	@echo "  2. Create a pull request in recipe-api repository"
+	@echo "  3. Follow attack guide: challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
+	@echo "  4. Monitor pipelines: kubectl get pipelineruns -n ctf-challenge -w"
+	@echo ""
+
+setup-gitea-webhooks: ## Setup Gitea webhooks for Tekton EventListeners
+	@./setup/scripts/setup-gitea-webhooks.sh
+
+verify-demo-readiness: ## Verify all prerequisites for deep dive demo are met
+	@./setup/scripts/verify-demo-readiness.sh
 
 # ============================================================
 # Challenge 3: Malware in Base Image
