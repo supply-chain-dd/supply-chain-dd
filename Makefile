@@ -185,14 +185,22 @@ setup-tekton: ## Install Tekton Pipelines and Triggers
 setup-tektonchains: ## Install and configure Tekton Chains for supply chain security
 	@cd setup && ./scripts/setup-tektonchains.sh
 	@echo ""
+	@if kubectl get configmap registry-ca-cert -n ctf-challenge &>/dev/null; then \
+		echo "Setting up registry trust for Tekton Chains..."; \
+		cd setup && ./scripts/setup-tektonchains-registry-trust.sh; \
+	else \
+		echo "⚠️  Registry CA cert not found. Tekton Chains may not be able to access the local registry."; \
+		echo "   Run 'make setup-registry' first if you haven't already."; \
+	fi
+	@echo ""
 	@echo "💡 Tekton Chains is now configured with:"
 	@echo "   • Format: in-toto (AMPEL/Conforma compatible)"
 	@echo "   • Storage: OCI registry"
 	@echo "   • Deep inspection: enabled"
+	@echo "   • Registry trust: configured (if registry exists)"
 	@echo ""
 	@echo "Next steps:"
 	@echo "   • Run pipelines to automatically generate attestations"
-	@echo "   • Configure OCI registry credentials if needed"
 	@echo "   • Verify installation: make verify-tektonchains"
 	@echo ""
 

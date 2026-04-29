@@ -416,6 +416,7 @@ Required tools:
 - **kubectl** (Kubernetes CLI) - Required
 - **kind** (Kubernetes in Docker) - Required
 - **helm** (Kubernetes package manager) - Required for Gitea
+- **cosign** (Container signing tool) - Required for Tekton Chains (https://docs.sigstore.dev/cosign/installation/)
 - **podman** or **docker** (container runtime) - Required for registry htpasswd generation
 - **make** (build automation) - Required
 - **bash** (script execution) - Required
@@ -423,6 +424,7 @@ Required tools:
 Optional tools:
 - **htpasswd** (apache2-utils) - Can be used instead of podman/docker for registry auth
 - **curl** (for testing)
+- **jq** (JSON processor) - Useful for debugging
 
 All scripts assume bash and use `set -euo pipefail` for safety.
 

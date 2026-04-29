@@ -223,24 +223,24 @@ This is intentional - the demo requires showing the manual attack steps!
 ┌─────────────────────────────────────────────────────────────┐
 │                     KinD Cluster                            │
 │                                                             │
-│  ┌────────────┐      ┌──────────────┐     ┌─────────────┐ │
-│  │   Gitea    │─────▶│   Tekton     │────▶│  Registry   │ │
-│  │  :30002    │      │  Pipelines   │     │   :30000    │ │
-│  │            │      │              │     │  (TLS)      │ │
-│  │  Webhooks: │      │  Challenge 1:│     │             │ │
-│  │  • PR      │      │  PR Pipeline │     │  Images:    │ │
-│  │  • Push    │      │              │     │  • recipe-  │ │
-│  │            │      │  Challenge 2:│     │    api:v1.0 │ │
-│  │  recipe-   │      │  Push Build  │     │             │ │
-│  │  api repo  │      │              │     │             │ │
-│  └────────────┘      └──────────────┘     └─────────────┘ │
+│  ┌────────────┐      ┌──────────────┐     ┌─────────────┐   │
+│  │   Gitea    │────▶│   Tekton     │───▶│  Registry   │   │
+│  │  :30002    │      │  Pipelines   │     │   :30000    │   │
+│  │            │      │              │     │  (TLS)      │   │
+│  │  Webhooks: │      │  Challenge 1:│     │             │   │
+│  │  • PR      │      │  PR Pipeline │     │  Images:    │   │
+│  │  • Push    │      │              │     │  • recipe-  │   │
+│  │            │      │  Challenge 2:│     │    api:v1.0 │   │
+│  │  recipe-   │      │  Push Build  │     │             │   │
+│  │  api repo  │      │              │     │             │   │
+│  └────────────┘      └──────────────┘     └─────────────┘   │
 │                                                             │
 │  Namespace: ctf-challenge                                   │
-│  • EventListeners (el-pr-quality-check-listener,           │
+│  • EventListeners (el-pr-quality-check-listener,            │
 │                    el-push-build-listener)                  │
-│  • ServiceAccounts (pr-pipeline-readonly,                  │
+│  • ServiceAccounts (pr-pipeline-readonly,                   │
 │                     tekton-triggers-sa)                     │
-│  • Secrets (ctf-flag, registry-docker-config)              │
+│  • Secrets (ctf-flag, registry-docker-config)               │
 └─────────────────────────────────────────────────────────────┘
 ```
 

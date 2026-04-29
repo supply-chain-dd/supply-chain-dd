@@ -11,6 +11,7 @@ Ensure you have the following installed:
 - **kubectl**: Kubernetes command-line tool
 - **kind**: Kubernetes in Docker (https://kind.sigs.k8s.io/)
 - **helm**: Kubernetes package manager (https://helm.sh/)
+- **cosign**: Container signing tool (https://docs.sigstore.dev/cosign/installation/) - Required for Tekton Chains
 - **make**: Build automation tool
 
 ### Setup
@@ -154,6 +155,8 @@ make verify-tektonchains
 - Supports in-toto and SLSA provenance formats
 - Compatible with AMPEL and Conforma for policy enforcement
 - Enables deep inspection of pipeline execution
+- Uses Cosign for signing (industry standard)
+- Public key saved to `cosign.pub` for signature verification
 
 **Configuration**:
 The setup automatically configures Tekton Chains with:

@@ -17,14 +17,19 @@ This directory contains two versions of the build tasks for Challenge 2:
 - **Tekton Chains Support**: Full integration
   - ✅ PipelineRun provenance
   - ✅ TaskRun provenance  
-  - ✅ Image signing
+  - ✅ Image signing (from push task only)
   - ✅ SBOM generation (if configured)
 - **Key Additions**:
-  - Tasks output `IMAGE_DIGEST` result
-  - Tasks output `IMAGE_URL` result
-  - Kaniko configured with `--digest-file` flag
+  - **Push task** outputs `IMAGE_DIGEST` and `IMAGE_URL` results
+  - **Build task** has NO results (uses `--no-push`, image not in registry)
+  - Kaniko configured with `--digest-file` flag in push task
 
 **Use this for**: Learning about supply chain security with automatic attestation and signing.
+
+**Important Design**: Only the `push-container-image` task outputs IMAGE results. The `build-container-image` task does NOT because:
+- It uses `--no-push` (image saved as tarball, not in registry)
+- If it output IMAGE_URL without registry prefix, Tekton Chains would try to pull from Docker Hub
+- This would cause `UNAUTHORIZED: authentication required` errors
 
 ## Switching Between Versions
 
@@ -85,7 +90,8 @@ kubectl get $TASKRUN -n ctf-challenge \
 # Verify signature with cosign (requires cosign CLI)
 cosign verify --insecure-ignore-tlog \
   --key k8s://tekton-chains/signing-secrets \
-  registry.registry.svc.cluster.local:5000/recipe-api:latest
+  --registry-cacert=setup/certs/registry.crt \
+  localhost:30000/recipe-api:v1.0
 ```
 
 ## Attack Scenario Impact
