@@ -1,7 +1,8 @@
 .PHONY: help setup setup-kind setup-gitea setup-tekton setup-tektonchains setup-registry seed-victim-repo setup-ctf-challenge setup-ctf-challenge-secure verify verify-ctf status clean
 .PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security create-security-policies
-.PHONY: check-cli-tools install-tkn install-kubescape verify-registry configure-registry-tls verify-tektonchains
-.PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build
+.PHONY: check-cli-tools install-tkn install-kubescape install-conforma verify-registry configure-registry-tls verify-tektonchains
+.PHONY: setup-conforma verify-conforma
+.PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build trigger-challenge2-build-with-chains
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3
 .PHONY: setup-production-cluster setup-production-gitea seed-production-repo load-image-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
 .PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness
@@ -10,6 +11,7 @@ CLUSTER_NAME ?= ctf-cluster
 GITEA_HELM_VERSION ?= v12.5.0
 TEKTON_PIPELINE_VERSION ?= v0.53.0
 TEKTON_CHAINS_VERSION ?= v0.26.3
+CONFORMA_VERSION ?= v0.9.25
 KYVERNO_VERSION ?= v3.7.1
 KUBESCAPE_VERSION ?= latest
 TKN_VERSION ?= v0.44.1
@@ -39,6 +41,11 @@ check-cli-tools: ## Check if required CLI tools are installed
 		echo "  ✓ kubescape CLI installed"; \
 	else \
 		echo "  ⚠ kubescape CLI not found. Run 'make install-kubescape' to install."; \
+	fi
+	@if command -v ec >/dev/null 2>&1; then \
+		echo "  ✓ ec (Conforma) CLI installed"; \
+	else \
+		echo "  ⚠ ec CLI not found. Run 'make install-conforma' to install."; \
 	fi
 
 install-tkn: ## Install Tekton CLI as kubectl plugin
@@ -100,6 +107,70 @@ install-kubescape: ## Install Kubescape CLI as kubectl plugin
 	echo "  ✓ kubescape CLI installed as kubectl-kubescape"; \
 	echo "  Usage: kubectl kubescape <command> or kubescape <command>"
 
+install-conforma: ## Install Conforma (ec) CLI for supply chain policy validation
+	@echo "Installing Conforma CLI (ec)..."
+	@if command -v ec >/dev/null 2>&1; then \
+		echo "  ✓ ec CLI already installed ($$(ec version 2>/dev/null | head -1 || echo 'unknown version'))"; \
+		exit 0; \
+	fi
+	@echo "  Detecting OS and architecture..."
+	@OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
+	ARCH=$$(uname -m); \
+	case $$ARCH in \
+		x86_64)         ARCH="amd64" ;; \
+		aarch64|arm64)  ARCH="arm64" ;; \
+		arm*)           ARCH="arm" ;; \
+		*) echo "  ❌ Unsupported architecture: $$ARCH"; exit 1 ;; \
+	esac; \
+	ASSET="ec_$${OS}_$${ARCH}"; \
+	DOWNLOAD_URL="https://github.com/conforma/cli/releases/download/$(CONFORMA_VERSION)/$${ASSET}"; \
+	echo "  OS: $$OS, Arch: $$ARCH"; \
+	echo "  Downloading $$ASSET from GitHub..."; \
+	curl -sSfL "$$DOWNLOAD_URL" -o ec; \
+	chmod +x ec; \
+	mkdir -p ~/.local/bin; \
+	mv ec ~/.local/bin/ec; \
+	if ! echo $$PATH | grep -q "$${HOME}/.local/bin"; then \
+		echo "  ⚠  Add ~/.local/bin to your PATH:"; \
+		echo "     export PATH=\$$PATH:~/.local/bin"; \
+	fi; \
+	echo "  ✓ ec CLI $(CONFORMA_VERSION) installed at ~/.local/bin/ec"
+
+setup-conforma: install-conforma ## Install Conforma CLI and create EnterpriseContractPolicy on the cluster
+	@cd setup && CONFORMA_VERSION=$(CONFORMA_VERSION) ./scripts/setup-conforma.sh
+
+verify-conforma: ## Verify Conforma (ec) CLI installation and signing key
+	@echo "Verifying Conforma (ec) installation..."
+	@echo ""
+	@echo "Conforma CLI:"
+	@if command -v ec >/dev/null 2>&1; then \
+		echo "  ✓ ec CLI installed: $$(ec version 2>/dev/null | head -1 || echo 'version unknown')"; \
+	else \
+		echo "  ❌ ec CLI not found (run: make install-conforma)"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Signing key:"
+	@if [ -f cosign.pub ]; then \
+		echo "  ✓ cosign.pub found in repo root"; \
+	else \
+		echo "  ⚠  cosign.pub not found (run: make setup-tektonchains)"; \
+	fi
+	@echo ""
+	@echo "Cluster secret (used by the verify-with-conforma pipeline task):"
+	@kubectl get secret cosign-public-key -n ctf-challenge >/dev/null 2>&1 \
+		&& echo "  ✓ cosign-public-key Secret exists in ctf-challenge" \
+		|| echo "  ⚠  cosign-public-key Secret not found (run: make setup-challenge2-tekton)"
+	@echo ""
+	@echo "Example validation command:"
+	@echo "  SSL_CERT_FILE=certs/registry.crt \\"
+	@echo "  ec validate image \\"
+	@echo "    --image localhost:30000/<image>:<tag>@<digest> \\"
+	@echo "    --public-key cosign.pub \\"
+	@echo "    --policy '{\"sources\":[{\"name\":\"ctf-minimal\",\"policy\":[\"github.com/conforma/policy//policy/lib\",\"github.com/conforma/policy//policy/release\"],\"config\":{\"include\":[\"@minimal\"],\"exclude\":[]}}]}' \\"
+	@echo "    --ignore-rekor \\"
+	@echo "    --output text"
+
 # ============================================================
 # Help and Setup
 # ============================================================
@@ -113,19 +184,19 @@ help: ## Display this help message
 	@echo "  See DEMO-SETUP.md for detailed instructions"
 	@echo ""
 	@echo "CLI Tools:"
-	@grep -E '^(check-cli-tools|install-tkn|install-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(check-cli-tools|install-tkn|install-kubescape|install-conforma):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Environment Setup:"
 	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-tektonchains|setup-registry|configure-registry-tls|seed-victim-repo|setup-ctf-challenge|setup-ctf-challenge-secure|setup-gitea-webhooks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Tools:"
-	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape|setup-conforma):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Operations:"
 	@grep -E '^(create-security-policies|apply-prevention-policies|security-scan|verify-security):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Verification:"
-	@grep -E '^(verify|verify-ctf|verify-registry|verify-tektonchains|verify-demo-readiness|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(verify|verify-ctf|verify-registry|verify-tektonchains|verify-conforma|verify-demo-readiness|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Cleanup:"
 	@grep -E '^(clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -686,24 +757,33 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
 		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
 	@echo ""
+	@echo "Creating cosign public key Secret for verify-enterprise-contract task..."
+	@if [ -f cosign.pub ]; then \
+		kubectl create secret generic cosign-public-key \
+			--from-file=cosign.pub=cosign.pub \
+			-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -; \
+		echo "  ✓ cosign-public-key Secret created (referenced as k8s://ctf-challenge/cosign-public-key)"; \
+	else \
+		echo "  ⚠  cosign.pub not found — run 'make setup-tektonchains' first."; \
+		echo "     verify-enterprise-contract will fail until the key is present."; \
+	fi
+	@echo ""
 	@echo "✓ Challenge 2 Tekton resources installed successfully"
 	@echo ""
-	@echo "Pipeline: push-build-pipeline"
-	@echo "  - Triggers on push events"
-	@echo "  - Builds Go application"
-	@echo "  - Runs quality checks"
-	@echo "  - Builds container image"
-	@echo "  - Pushes to registry"
+	@echo "Pipelines available:"
+	@echo "  push-build-pipeline             — original build + push"
+	@echo "  push-build-pipeline-with-chains — build + push + Conforma policy validation"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  1. Trigger a build: make trigger-challenge2-build"
-	@echo "  2. Monitor pipeline runs: kubectl get pipelineruns -n ctf-challenge"
+	@echo "  1. Trigger original pipeline:      make trigger-challenge2-build"
+	@echo "  2. Trigger Chains+Conforma pipeline: make trigger-challenge2-build-with-chains"
+	@echo "  3. Monitor pipeline runs:          kubectl get pipelineruns -n ctf-challenge"
 	@if command -v kubectl-tkn >/dev/null 2>&1; then \
-		echo "  3. View logs: kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "  4. View logs: kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
 	elif command -v tkn >/dev/null 2>&1; then \
-		echo "  3. View logs: tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "  4. View logs: tkn pipelinerun logs -f -n ctf-challenge"; \
 	else \
-		echo "  3. Install tkn for easier log viewing: make install-tkn"; \
+		echo "  4. Install tkn for easier log viewing: make install-tkn"; \
 	fi
 
 trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push image
@@ -746,6 +826,51 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	@echo "✓ Pipeline triggered successfully"
 	@echo ""
 	@echo "Image will be pushed to: registry.registry.svc.cluster.local:5000/recipe-api:latest"
+
+trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (build + push + Conforma validation)
+	@echo "========================================"
+	@echo "Triggering Challenge 2 Build Pipeline (with Chains + Conforma)"
+	@echo "========================================"
+	@echo ""
+	@if ! kubectl get pipeline push-build-pipeline-with-chains -n ctf-challenge >/dev/null 2>&1; then \
+		echo "❌ Pipeline not found. Run 'make setup-challenge2-tekton' first"; \
+		exit 1; \
+	fi
+	@echo "Preparing recipe-api repository for build..."
+	@rm -rf /tmp/gitea/recipe-api-build
+	@mkdir -p /tmp/gitea
+	@cp -r challenges/victim-repo-sample /tmp/gitea/recipe-api-build
+	@if [ -d /tmp/gitea/recipe-api-build/_git ]; then \
+		mv /tmp/gitea/recipe-api-build/_git /tmp/gitea/recipe-api-build/.git; \
+		echo "  ✓ Git history restored"; \
+	fi
+	@echo ""
+	@echo "Starting pipeline run (push-build-pipeline-with-chains)..."
+	@kubectl create -f challenges/challenge2/tekton/manual-pipelinerun-with-chains.yaml
+	@echo ""
+	@echo "  ✓ PipelineRun created (push-build-pipeline-with-chains)"
+	@echo ""
+	@echo "  Pipeline stages:"
+	@echo "    1. clone-repo                  — fetch source from Gitea"
+	@echo "    2. build-go-app                — compile Go binary"
+	@echo "    3. run-quality-checks          — static analysis"
+	@echo "    4. build-container-image       — kaniko build"
+	@echo "    5. push-container-image        — push + emit IMAGE_URL/IMAGE_DIGEST"
+	@echo "       [Tekton Chains auto-signs image and creates SLSA attestation]"
+	@echo "    6. verify-with-conforma        — validate signature + attestation"
+	@echo ""
+	@echo "  Monitor with:"
+	@echo "    kubectl get pipelineruns -n ctf-challenge -w"
+	@if command -v kubectl-tkn >/dev/null 2>&1; then \
+		echo "  View logs:"; \
+		echo "    kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
+	elif command -v tkn >/dev/null 2>&1; then \
+		echo "  View logs:"; \
+		echo "    tkn pipelinerun logs -f -n ctf-challenge"; \
+	else \
+		echo "  Install tkn for easier log viewing:"; \
+		echo "    make install-tkn"; \
+	fi
 
 # ============================================================
 # Deep Dive Demo Setup (Challenges 1 & 2)

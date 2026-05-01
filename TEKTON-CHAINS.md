@@ -271,14 +271,66 @@ spec:
 
 ## Integration with Conforma
 
-Conforma can validate compliance using Tekton Chains attestations:
+Conforma (Enterprise Contract) validates that a container image has been properly signed
+and attested by Tekton Chains before it can be deployed. It uses the `ec` CLI to evaluate
+the image's cosign signature and SLSA Provenance attestation against a Rego-based policy.
+
+### Install the ec CLI
 
 ```bash
-# Example: Verify pipeline compliance
-conforma verify \
-  --policy policy.yaml \
-  --attestation <(kubectl get pipelinerun <name> -o json)
+make install-conforma          # downloads ec binary to ~/.local/bin/ec
+make setup-conforma            # also creates an EnterpriseContractPolicy CR on the cluster
+make verify-conforma           # check ec is installed and print a sample validate command
 ```
+
+### Validate an image from the command line
+
+```bash
+# After make setup-tektonchains a cosign key pair is in cosign.pub / signing-secrets.
+# After make trigger-challenge2-build-with-chains the image is signed by Chains.
+
+# ec is a Go binary — SSL_CERT_FILE tells it to trust the local registry's self-signed CA.
+SSL_CERT_FILE=certs/registry.crt \
+ec validate image \
+  --image localhost:30000/recipe-api:v1.0@sha256:<digest> \
+  --public-key cosign.pub \
+  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}' \
+  --ignore-rekor \
+  --output text
+```
+
+### Validate as part of the build pipeline (Challenge 2 / Challenge 3)
+
+The `push-build-pipeline-with-chains` pipeline includes a `verify-enterprise-contract`
+step that runs Conforma automatically after every image push:
+
+```bash
+# Trigger the Chains + Conforma pipeline
+make trigger-challenge2-build-with-chains
+
+# The pipeline stages are:
+#   clone-repo → build-go-app → quality-checks → build-image
+#     → push-container-image-with-chains   (emits IMAGE_URL + IMAGE_DIGEST)
+#        [Tekton Chains signs + attests automatically]
+#     → wait-for-chains                    (waits 45 s for Chains to finish)
+#     → verify-enterprise-contract         (runs ec validate image)
+
+# Monitor progress
+kubectl get pipelineruns -n ctf-challenge -w
+
+# STRICT=false (default): violations are logged but the pipeline continues.
+# STRICT=true: violations fail the task and block the pipeline — useful for challenge3.
+```
+
+### Why the official OCI bundle is not used here
+
+The official Tekton task bundle
+(`quay.io/redhat-appstudio-tekton-catalog/task-verify-enterprise-contract:0.1`)
+pulls its step image from `registry.redhat.io/rhtas/ec-rhel9`, which requires Red Hat
+registry credentials. The CTF cluster uses the functionally-equivalent `verify-with-conforma`
+inline task instead — same parameters, same `ec` binary, only public images required.
+In an OpenShift / RHTAP environment the `taskRef` can be switched to the bundle resolver
+with no other changes.
 
 ## Verification
 
