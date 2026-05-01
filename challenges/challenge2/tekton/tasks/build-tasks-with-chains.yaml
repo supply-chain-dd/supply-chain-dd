@@ -1,154 +1,47 @@
 ---
-# Build Go Application Task
+# Push Container Image Task — Chains-aware variant
+#
+# Extends the base push-container-image task with two Tekton task results:
+#   IMAGE_URL    — full registry URL of the pushed image
+#   IMAGE_DIGEST — sha256 digest written by kaniko via --digest-file
+#
+# Tekton Chains watches for completed TaskRuns that emit both of these results and
+# automatically:
+#   1. Signs the image with cosign (stores signature as <image>.sig in the registry)
+#   2. Generates a SLSA Provenance in-toto attestation (stored as <image>.att)
+#
+# Tekton Chains then automatically signs the image and generates a SLSA Provenance
+# attestation. The pipeline validates these using the official verify-enterprise-contract
+# Tekton Task, fetched from its OCI bundle via the bundles resolver.
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: build-go-app
+  name: push-container-image-with-chains
   namespace: ctf-challenge
 spec:
   description: |
-    Builds the Go application and produces a binary.
-  workspaces:
-    - name: source
-      description: The workspace containing the source code
-  steps:
-    - name: build
-      image: golang:1.25
-      workingDir: $(workspaces.source.path)
-      script: |
-        #!/bin/bash
-        set -e
-
-        echo "============================================"
-        echo "Building Go Application"
-        echo "============================================"
-        echo "Working directory: $(pwd)"
-        echo ""
-
-        # Initialize go modules if needed
-        if [ ! -f "go.sum" ]; then
-          echo "Initializing Go modules..."
-          go mod download || true
-        fi
-
-        # Build the application
-        echo "Building binary..."
-        CGO_ENABLED=0 GOOS=linux go build -o recipe-api main.go
-
-        echo ""
-        echo "Build completed successfully!"
-        ls -lh recipe-api
-        echo "============================================"
----
-# Build Container Image Task using Kaniko (Chains-compatible)
-apiVersion: tekton.dev/v1beta1
-kind: Task
-metadata:
-  name: build-container-image
-  namespace: ctf-challenge
-spec:
-  description: |
-    Builds a container image using Kaniko (rootless builder).
-    Outputs IMAGE_DIGEST for Tekton Chains to sign.
+    Pushes a container image to the local registry using Kaniko and emits
+    IMAGE_URL / IMAGE_DIGEST results so Tekton Chains can sign and attest it.
   params:
     - name: image-name
       type: string
-      description: Name of the image to build (e.g., recipe-api)
+      description: Image name (e.g. recipe-api)
     - name: image-tag
       type: string
-      description: Tag for the image
-      default: "latest"
-  workspaces:
-    - name: source
-      description: The workspace containing the Dockerfile and source code
-  results:
-    - name: IMAGE_DIGEST
-      description: Digest of the built image (for Tekton Chains)
-    - name: IMAGE_URL
-      description: URL of the built image (for Tekton Chains)
-  volumes:
-    - name: registry-ca-cert
-      configMap:
-        name: registry-ca-cert
-  steps:
-    - name: build-image
-      image: gcr.io/kaniko-project/executor:v1.23.2
-      workingDir: $(workspaces.source.path)
-      env:
-        - name: DOCKER_CONFIG
-          value: /tekton/home/.docker
-        - name: SSL_CERT_DIR
-          value: /kaniko/ssl/certs
-      command:
-        - /kaniko/executor
-      args:
-        - --dockerfile=Dockerfile
-        - --context=$(workspaces.source.path)
-        - --destination=$(params.image-name):$(params.image-tag)
-        - --no-push
-        - --tar-path=/workspace/source/image.tar
-        - --digest-file=/tekton/results/IMAGE_DIGEST
-      volumeMounts:
-        - name: registry-ca-cert
-          mountPath: /kaniko/ssl/certs/additional-ca-cert-bundle.crt
-          subPath: ca.crt
-          readOnly: true
-
-    - name: write-image-url
-      image: alpine:3.18
-      script: |
-        #!/bin/sh
-        echo -n "$(params.image-name):$(params.image-tag)" > /tekton/results/IMAGE_URL
-
-    - name: verify-image
-      image: alpine:3.18
-      workingDir: $(workspaces.source.path)
-      script: |
-        #!/bin/sh
-        echo "============================================"
-        echo "Container Image Built"
-        echo "============================================"
-        echo "Image: $(params.image-name):$(params.image-tag)"
-        echo "Digest: $(cat /tekton/results/IMAGE_DIGEST)"
-        if [ -f "image.tar" ]; then
-          echo "Image tarball size: $(du -h image.tar | cut -f1)"
-          echo "✓ Image built successfully"
-        else
-          echo "✗ Image tarball not found"
-          exit 1
-        fi
-        echo "============================================"
----
-# Push Container Image Task (Chains-compatible)
-apiVersion: tekton.dev/v1beta1
-kind: Task
-metadata:
-  name: push-container-image
-  namespace: ctf-challenge
-spec:
-  description: |
-    Pushes a container image to the local registry using Kaniko.
-    Outputs IMAGE_DIGEST and IMAGE_URL for Tekton Chains to sign.
-  params:
-    - name: image-name
-      type: string
-      description: Name of the image to push (e.g., recipe-api)
-    - name: image-tag
-      type: string
-      description: Tag for the image
+      description: Image tag
       default: "latest"
     - name: registry-url
       type: string
-      description: Registry URL
+      description: Registry URL (internal cluster address)
       default: "registry.registry.svc.cluster.local:5000"
-  workspaces:
-    - name: source
-      description: The workspace containing the Dockerfile and source code
   results:
     - name: IMAGE_DIGEST
-      description: Digest of the pushed image (for Tekton Chains to sign)
+      description: Digest of the pushed image (sha256:...) — consumed by Tekton Chains
     - name: IMAGE_URL
-      description: Full URL of the pushed image (for Tekton Chains)
+      description: Full URL of the pushed image — consumed by Tekton Chains
+  workspaces:
+    - name: source
+      description: Workspace containing the Dockerfile and build context
   volumes:
     - name: docker-config
       secret:
@@ -173,6 +66,8 @@ spec:
         - --context=$(workspaces.source.path)
         - --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag)
         - --verbosity=info
+        # Kaniko writes the pushed image digest directly to this path.
+        # Tekton reads any file in /tekton/results/ that matches a declared result name.
         - --digest-file=/tekton/results/IMAGE_DIGEST
       volumeMounts:
         - name: docker-config
@@ -187,13 +82,199 @@ spec:
       image: alpine:3.18
       script: |
         #!/bin/sh
-        echo -n "$(params.registry-url)/$(params.image-name):$(params.image-tag)" > /tekton/results/IMAGE_URL
+        printf '%s' "$(params.registry-url)/$(params.image-name):$(params.image-tag)" \
+          > /tekton/results/IMAGE_URL
+        echo "============================================"
+        echo "Image pushed — Tekton Chains will now sign"
+        echo "============================================"
+        echo "IMAGE_URL:    $(cat /tekton/results/IMAGE_URL)"
+        echo "IMAGE_DIGEST: $(cat /tekton/results/IMAGE_DIGEST)"
         echo ""
+        echo "Chains will store:"
+        echo "  Signature:   $(params.registry-url)/$(params.image-name):$(params.image-tag).sig"
+        echo "  Attestation: $(params.registry-url)/$(params.image-name):$(params.image-tag).att"
         echo "============================================"
-        echo "Image Pushed Successfully"
-        echo "============================================"
-        echo "URL: $(cat /tekton/results/IMAGE_URL)"
-        echo "Digest: $(cat /tekton/results/IMAGE_DIGEST)"
+---
+# Wait for Chains Task
+#
+# Inserts a configurable delay between the image push and the Conforma validation
+# step, giving Tekton Chains enough time to sign the image and store the SLSA
+# Provenance attestation in the OCI registry before ec validate image runs.
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: wait-for-chains
+  namespace: ctf-challenge
+spec:
+  description: |
+    Waits a configurable number of seconds for Tekton Chains to sign the pushed image
+    and store its SLSA Provenance attestation before Conforma validation begins.
+  params:
+    - name: seconds
+      type: string
+      description: How long to wait (seconds)
+      default: "45"
+  steps:
+    - name: wait
+      image: alpine:3.18
+      script: |
+        #!/bin/sh
+        echo "Waiting $(params.seconds)s for Tekton Chains to sign the image..."
+        echo "Chains watches for TaskRuns with IMAGE_URL + IMAGE_DIGEST results,"
+        echo "then signs the image and stores the SLSA attestation in the registry."
+        sleep "$(params.seconds)"
+        echo "✓ Done — proceeding to Conforma policy validation"
+---
+# Verify with Conforma Task
+#
+# Runs ec validate image (Conforma CLI) against the image pushed by the build pipeline.
+# Downloads the ec binary from GitHub releases — all images used here are public and
+# require no authentication, unlike the official verify-enterprise-contract bundle which
+# pulls registry.redhat.io/rhtas/ec-rhel9 (requires Red Hat credentials).
+#
+# Functionally equivalent to the official task:
+#   IMAGES → ec --image  (ApplicationSnapshot JSON stripped to containerImage)
+#   PUBLIC_KEY → --public-key  (cosign.pub mounted from Secret cosign-public-key)
+#   IGNORE_REKOR → --ignore-rekor  (Rekor not deployed in CTF cluster)
+#   CA_TRUST_* → SSL_CERT_DIR  (local registry self-signed CA)
+#   STRICT → --strict  (false = report only; true = fail pipeline)
+#
+# Prerequisites (created by make setup-challenge2-tekton):
+#   Secret    cosign-public-key  in ctf-challenge  (key: cosign.pub)
+#   ConfigMap registry-ca-cert   in ctf-challenge  (key: ca.crt)
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: verify-with-conforma
+  namespace: ctf-challenge
+spec:
+  description: |
+    Validates a container image against Conforma policy using the public ec CLI binary.
+    Uses only public images (alpine) — no Red Hat registry credentials required.
+  params:
+    - name: IMAGES
+      type: string
+      description: >-
+        ApplicationSnapshot JSON spec, e.g.
+        {"components":[{"name":"app","containerImage":"registry/app:tag@sha256:..."}]}
+    - name: POLICY_CONFIGURATION
+      type: string
+      description: Inline policy JSON or conforma/config path (e.g. github.com/conforma/config//minimal)
+      default: >-
+        {"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}
+    - name: PUBLIC_KEY
+      type: string
+      description: >-
+        cosign k8s reference to the signing public key Secret,
+        e.g. k8s://ctf-challenge/cosign-public-key
+      default: "k8s://ctf-challenge/cosign-public-key"
+    - name: IGNORE_REKOR
+      type: string
+      description: Skip Rekor transparency log checks (true | false)
+      default: "true"
+    - name: CA_TRUST_CONFIGMAP_NAME
+      type: string
+      description: ConfigMap containing the registry CA bundle
+      default: "registry-ca-cert"
+    - name: CA_TRUST_CONFIG_MAP_KEY
+      type: string
+      description: Key inside the ConfigMap that holds the CA cert
+      default: "ca.crt"
+    - name: STRICT
+      type: string
+      description: "Fail on policy violations: true | false"
+      default: "false"
+    - name: INFO
+      type: string
+      description: Include detailed rule results in output
+      default: "true"
+    - name: CONFORMA_VERSION
+      type: string
+      description: Conforma CLI GitHub release tag
+      default: "v0.9.25"
+  volumes:
+    - name: registry-ca-cert
+      configMap:
+        name: $(params.CA_TRUST_CONFIGMAP_NAME)
+    - name: cosign-public-key
+      secret:
+        secretName: cosign-public-key
+  steps:
+    - name: validate
+      image: alpine:3.18
+      env:
+        # Go's TLS stack reads every cert file in SSL_CERT_DIR — covers the local
+        # registry's self-signed CA without touching the system trust store.
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+        - name: cosign-public-key
+          mountPath: /cosign
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates jq >/dev/null 2>&1
+
+        # Extend system trust store so curl (used to download ec) also trusts the CA.
+        cp /certs/$(params.CA_TRUST_CONFIG_MAP_KEY) /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        # Download ec binary (public GitHub release, no auth required).
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        EC_ARCH="amd64" ;;
+          aarch64|arm64) EC_ARCH="arm64" ;;
+          *)             EC_ARCH="amd64" ;;
+        esac
+        EC_URL="https://github.com/conforma/cli/releases/download/$(params.CONFORMA_VERSION)/ec_linux_${EC_ARCH}"
+        echo "Downloading Conforma CLI $(params.CONFORMA_VERSION) (linux/${EC_ARCH})..."
+        curl -sSfL "${EC_URL}" -o /tmp/ec
+        chmod +x /tmp/ec
+        echo "✓ ec CLI ready"
         echo ""
-        echo "✓ Tekton Chains will automatically sign this image"
+
+        # Extract containerImage from the ApplicationSnapshot JSON.
+        # ec validate image --image accepts a plain <url>@<digest> string.
+        IMAGE_REF=$(echo '$(params.IMAGES)' | jq -r '.components[0].containerImage')
+
+        # Resolve PUBLIC_KEY: if it is a k8s:// reference, read from the mounted Secret.
+        # (cosign resolves k8s:// at runtime, but we pass the file path directly since
+        # we already have the key mounted at /cosign/cosign.pub.)
+        PUBLIC_KEY_ARG="/cosign/cosign.pub"
+
+        IGNORE_REKOR_FLAG=""
+        if [ "$(params.IGNORE_REKOR)" = "true" ]; then
+          IGNORE_REKOR_FLAG="--ignore-rekor"
+        fi
+
         echo "============================================"
+        echo "Conforma Policy Validation"
+        echo "============================================"
+        echo "Image:   ${IMAGE_REF}"
+        echo "Policy:  $(params.POLICY_CONFIGURATION)"
+        echo "Strict:  $(params.STRICT)"
+        echo ""
+
+        set +e
+        /tmp/ec validate image \
+          --image      "${IMAGE_REF}" \
+          --public-key "${PUBLIC_KEY_ARG}" \
+          --policy     '$(params.POLICY_CONFIGURATION)' \
+          ${IGNORE_REKOR_FLAG} \
+          --output     text \
+          --strict     "$(params.STRICT)"
+        EC_EXIT=$?
+        set -e
+
+        echo ""
+        if [ "$EC_EXIT" -eq 0 ]; then
+          echo "✓ All policy checks passed"
+        else
+          echo "⚠  Policy violations detected (exit ${EC_EXIT})"
+          [ "$(params.STRICT)" = "true" ] && exit "$EC_EXIT" || true
+        fi

@@ -85,7 +85,8 @@ kubectl get $TASKRUN -n ctf-challenge \
 # Verify signature with cosign (requires cosign CLI)
 cosign verify --insecure-ignore-tlog \
   --key k8s://tekton-chains/signing-secrets \
-  registry.registry.svc.cluster.local:5000/recipe-api:latest
+  --registry-cacert=setup/certs/registry.crt \
+ localhost:30000/recipe-api:latest
 ```
 
 ## Attack Scenario Impact

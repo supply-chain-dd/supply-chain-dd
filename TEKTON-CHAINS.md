@@ -26,10 +26,14 @@ make verify-tektonchains
 
 The setup script:
 1. Installs Tekton Chains v0.26.3 (configurable via `TEKTON_CHAINS_VERSION`)
-2. Configures Chains with AMPEL/Conforma compatible settings:
+2. Generates cosign keypair using `cosign generate-key-pair` and saves the public key to `cosign.pub`
+3. Configures Chains with AMPEL/Conforma compatible settings:
    - **Format**: `in-toto` - Standard attestation format compatible with AMPEL and Conforma
    - **Storage**: `oci` - Stores attestations in OCI registries
    - **Deep Inspection**: `true` - Enables deep inspection of pipeline runs
+   - **Image Signing**: Enabled with cosign signer
+
+**Requirements**: The script requires `cosign` to be installed. See [Cosign installation](https://docs.sigstore.dev/cosign/installation/).
 
 ## Configuration
 
@@ -200,10 +204,16 @@ kubectl get pipelineruns -n ctf-challenge -o jsonpath='{.items[*].metadata.annot
 kubectl get taskruns -n ctf-challenge -l tekton.dev/pipelineTask=push-container-image \
   -o jsonpath='{.items[*].metadata.annotations.chains\.tekton\.dev/signed}'
 
-# View image signature
-cosign verify --insecure-ignore-tlog --key k8s://tekton-chains/signing-secrets \
-  registry.registry.svc.cluster.local:5000/recipe-api:latest
+# Verify image signature (using public key file)
+cosign verify --insecure-ignore-tlog --key cosign.pub \
+  localhost:30000/recipe-api:v1.0 --registry-cacert=setup/certs/registry.crt
+
+# Or verify using Kubernetes secret directly
+cosign verify --insecure-ignore-tlog --key k8s://tekton-chains/signing-secrets --registry-cacert setup/certs/registry.crt \
+  localhost:30000/recipe-api:latest/recipe-api:v1.0
 ```
+
+**Note**: The setup script saves the cosign public key to `cosign.pub` at the repository root for convenient signature verification.
 
 **With Chains-compatible tasks**, the following artifacts are generated:
 - **PipelineRun provenance** - Attestation of the entire pipeline execution
@@ -261,14 +271,66 @@ spec:
 
 ## Integration with Conforma
 
-Conforma can validate compliance using Tekton Chains attestations:
+Conforma (Enterprise Contract) validates that a container image has been properly signed
+and attested by Tekton Chains before it can be deployed. It uses the `ec` CLI to evaluate
+the image's cosign signature and SLSA Provenance attestation against a Rego-based policy.
+
+### Install the ec CLI
 
 ```bash
-# Example: Verify pipeline compliance
-conforma verify \
-  --policy policy.yaml \
-  --attestation <(kubectl get pipelinerun <name> -o json)
+make install-conforma          # downloads ec binary to ~/.local/bin/ec
+make setup-conforma            # also creates an EnterpriseContractPolicy CR on the cluster
+make verify-conforma           # check ec is installed and print a sample validate command
 ```
+
+### Validate an image from the command line
+
+```bash
+# After make setup-tektonchains a cosign key pair is in cosign.pub / signing-secrets.
+# After make trigger-challenge2-build-with-chains the image is signed by Chains.
+
+# ec is a Go binary — SSL_CERT_FILE tells it to trust the local registry's self-signed CA.
+SSL_CERT_FILE=certs/registry.crt \
+ec validate image \
+  --image localhost:30000/recipe-api:v1.0@sha256:<digest> \
+  --public-key cosign.pub \
+  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}' \
+  --ignore-rekor \
+  --output text
+```
+
+### Validate as part of the build pipeline (Challenge 2 / Challenge 3)
+
+The `push-build-pipeline-with-chains` pipeline includes a `verify-enterprise-contract`
+step that runs Conforma automatically after every image push:
+
+```bash
+# Trigger the Chains + Conforma pipeline
+make trigger-challenge2-build-with-chains
+
+# The pipeline stages are:
+#   clone-repo → build-go-app → quality-checks → build-image
+#     → push-container-image-with-chains   (emits IMAGE_URL + IMAGE_DIGEST)
+#        [Tekton Chains signs + attests automatically]
+#     → wait-for-chains                    (waits 45 s for Chains to finish)
+#     → verify-enterprise-contract         (runs ec validate image)
+
+# Monitor progress
+kubectl get pipelineruns -n ctf-challenge -w
+
+# STRICT=false (default): violations are logged but the pipeline continues.
+# STRICT=true: violations fail the task and block the pipeline — useful for challenge3.
+```
+
+### Why the official OCI bundle is not used here
+
+The official Tekton task bundle
+(`quay.io/redhat-appstudio-tekton-catalog/task-verify-enterprise-contract:0.1`)
+pulls its step image from `registry.redhat.io/rhtas/ec-rhel9`, which requires Red Hat
+registry credentials. The CTF cluster uses the functionally-equivalent `verify-with-conforma`
+inline task instead — same parameters, same `ec` binary, only public images required.
+In an OpenShift / RHTAP environment the `taskRef` can be switched to the bundle resolver
+with no other changes.
 
 ## Verification
 
@@ -335,6 +397,174 @@ kubectl logs -n tekton-chains -l app.kubernetes.io/name=controller | grep "Pipel
 kubectl get events -n tekton-chains --sort-by='.lastTimestamp'
 ```
 
+### Missing Signing Keys (Common Issue)
+
+**Symptoms**:
+- Chains controller logs show: `error configuring cosign signer: no valid private key found`
+- Or: `No signer cosign configured for tekton`
+- PipelineRuns marked as `signed: "true"` but no signatures in registry
+
+**Diagnosis**:
+```bash
+# Check if signing secret exists and has keys
+kubectl get secret signing-secrets -n tekton-chains -o jsonpath='{.data}' | jq 'keys'
+# Should show: ["cosign.key", "cosign.password", "cosign.pub"]
+
+# Check controller logs for signing errors
+kubectl logs -n tekton-chains -l app.kubernetes.io/name=controller --tail=50 | grep -i "cosign\|signer\|error"
+```
+
+**Solution**:
+The setup script should create keys automatically, but if they're missing:
+
+```bash
+# Ensure cosign is installed
+if ! command -v cosign &>/dev/null; then
+    echo "Install cosign: https://docs.sigstore.dev/cosign/installation/"
+    exit 1
+fi
+
+# Delete empty secret if it exists
+kubectl delete secret signing-secrets -n tekton-chains 2>/dev/null || true
+
+# Generate cosign keypair (you'll be prompted for a password)
+cosign generate-key-pair k8s://tekton-chains/signing-secrets
+
+# Save public key to repository root
+kubectl get secret signing-secrets -n tekton-chains \
+    -o jsonpath='{.data.cosign\.pub}' | base64 -d > cosign.pub
+
+# Restart Chains controller to pick up keys
+kubectl rollout restart deployment tekton-chains-controller -n tekton-chains
+kubectl rollout status deployment tekton-chains-controller -n tekton-chains
+```
+
+**Verification**:
+```bash
+# Check logs for successful signer initialization
+kubectl logs -n tekton-chains -l app.kubernetes.io/name=controller --tail=20
+
+# Should see no errors about missing keys
+```
+
+### Image Signing Not Working
+
+**Symptoms**:
+- PipelineRuns are signed (provenance generated)
+- But images in registry have no signatures
+- TaskRuns for image push have no IMAGE_DIGEST/IMAGE_URL results
+
+**Diagnosis**:
+```bash
+# Check if tasks output IMAGE_DIGEST and IMAGE_URL results
+kubectl get task push-container-image -n ctf-challenge -o yaml | grep -A 5 "^  results:"
+
+# Check TaskRun results
+TASKRUN=$(kubectl get taskruns -n ctf-challenge \
+  -l tekton.dev/pipelineTask=push-container-image \
+  --sort-by=.metadata.creationTimestamp -o name | tail -1)
+
+kubectl get $TASKRUN -n ctf-challenge -o jsonpath='{.status.taskResults}'
+# Should show IMAGE_DIGEST and IMAGE_URL
+```
+
+**Solution**:
+Standard tasks don't include image results. Use Chains-compatible tasks:
+
+```bash
+# Apply tasks with IMAGE_DIGEST and IMAGE_URL results
+kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks-with-chains.yaml
+
+# Trigger a new build
+make trigger-challenge2-build
+
+# Verify TaskRun has results
+kubectl get taskruns -n ctf-challenge \
+  -l tekton.dev/pipelineTask=push-container-image \
+  --sort-by=.metadata.creationTimestamp -o name | tail -1 | \
+  xargs -I {} kubectl get {} -n ctf-challenge -o jsonpath='{.status.taskResults[*].name}'
+# Should output: IMAGE_DIGEST IMAGE_URL
+```
+
+**What's Different**:
+The Chains-compatible tasks include:
+- `results` section declaring IMAGE_DIGEST and IMAGE_URL
+- Kaniko's `--digest-file` flag to capture image digest
+- Additional step to write IMAGE_URL to results
+
+See [IMAGE-SIGNING-SBOM.md](IMAGE-SIGNING-SBOM.md) for detailed comparison.
+
+### Registry TLS Certificate Errors
+
+**Symptoms**:
+- Chains controller logs show: `tls: failed to verify certificate: x509: certificate signed by unknown authority`
+- Or: `GET https://registry.registry.svc.cluster.local:5000/v2/: tls: failed to verify certificate`
+- Images aren't being signed even though TaskRuns output IMAGE_DIGEST and IMAGE_URL
+
+**Diagnosis**:
+```bash
+# Check Chains controller logs
+kubectl logs -n tekton-chains -l app.kubernetes.io/name=controller --tail=50 | grep -i "tls\|x509\|certificate"
+
+# Check if registry CA cert is mounted
+kubectl get deployment tekton-chains-controller -n tekton-chains \
+  -o jsonpath='{.spec.template.spec.volumes[?(@.name=="registry-ca-cert")].name}'
+# Should output: registry-ca-cert
+```
+
+**Root Cause**:
+The local registry uses a self-signed certificate. Tekton Chains controller doesn't trust it by default.
+
+**Solution**:
+```bash
+# Run the registry trust setup script
+cd setup && ./scripts/setup-tektonchains-registry-trust.sh
+
+# Or manually:
+# 1. Copy registry CA cert to tekton-chains namespace
+kubectl get configmap registry-ca-cert -n ctf-challenge -o yaml | \
+    sed 's/namespace: ctf-challenge/namespace: tekton-chains/' | \
+    kubectl apply -f -
+
+# 2. Patch Tekton Chains deployment
+cat > /tmp/chains-patch.yaml << 'EOF'
+spec:
+  template:
+    spec:
+      volumes:
+      - name: registry-ca-cert
+        configMap:
+          name: registry-ca-cert
+      containers:
+      - name: tekton-chains-controller
+        volumeMounts:
+        - name: registry-ca-cert
+          mountPath: /etc/registry-certs
+          readOnly: true
+        env:
+        - name: SSL_CERT_DIR
+          value: /etc/ssl/certs:/etc/registry-certs
+EOF
+
+kubectl patch deployment tekton-chains-controller -n tekton-chains --patch-file /tmp/chains-patch.yaml
+rm /tmp/chains-patch.yaml
+
+# 3. Wait for restart
+kubectl rollout status deployment tekton-chains-controller -n tekton-chains
+```
+
+**Verification**:
+```bash
+# Check SSL_CERT_DIR is set
+kubectl get deployment tekton-chains-controller -n tekton-chains \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSL_CERT_DIR")].value}'
+# Should output: /etc/ssl/certs:/etc/registry-certs
+
+# Trigger a pipeline and check logs
+kubectl logs -n tekton-chains -l app.kubernetes.io/name=controller --tail=20
+# Should see no TLS errors
+```
+
 ### OCI Storage Issues
 
 ```bash
@@ -362,20 +592,44 @@ make setup-tektonchains
 
 ### Signing Keys
 
-By default, Tekton Chains generates a signing key automatically. For production:
+**Important**: Tekton Chains does NOT automatically generate signing keys. You must create them manually.
 
-1. Generate your own signing key:
+The setup script (`make setup-tektonchains`) creates a cosign keypair using the recommended method from Tekton Chains documentation.
+
+**For Development/Testing** (cosign keys):
 ```bash
+# Ensure cosign is installed
+# https://docs.sigstore.dev/cosign/installation/
+
+# Generate cosign keypair (you'll be prompted for a password)
 cosign generate-key-pair k8s://tekton-chains/signing-secrets
+
+# Save public key to repository
+kubectl get secret signing-secrets -n tekton-chains \
+    -o jsonpath='{.data.cosign\.pub}' | base64 -d > cosign.pub
+
+# Restart controller
+kubectl rollout restart deployment tekton-chains-controller -n tekton-chains
 ```
 
-2. Configure Chains to use it:
+**For Production** (use Fulcio for keyless signing):
 ```bash
+# Enable Fulcio for keyless signing with OIDC identity
 kubectl patch configmap chains-config -n tekton-chains --type merge -p '{
   "data": {
-    "signers.x509.fulcio.enabled": "true"
+    "signers.x509.fulcio.enabled": "true",
+    "signers.x509.fulcio.address": "https://fulcio.sigstore.dev",
+    "signers.x509.fulcio.oidc.issuer": "https://oauth2.sigstore.dev/auth",
+    "transparency.enabled": "true",
+    "transparency.url": "https://rekor.sigstore.dev"
   }
 }'
+```
+
+**Verify Keys Exist**:
+```bash
+kubectl get secret signing-secrets -n tekton-chains -o jsonpath='{.data}' | jq 'keys'
+# Should show: ["cosign.key", "cosign.password", "cosign.pub"]
 ```
 
 ### Transparency Log

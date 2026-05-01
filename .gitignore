@@ -28,3 +28,7 @@ certs/
 
 # Kubescape report
 kubescape-report.txt
+
+# Tekton Chains signing keys (public key for signature verification)
+cosign.pub
+tekton-chains.crt

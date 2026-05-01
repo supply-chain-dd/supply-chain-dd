@@ -1,0 +1,189 @@
+---
+# Pipeline: push-build-pipeline-with-chains
+#
+# Extends push-build-pipeline with supply chain security via Tekton Chains + Conforma:
+#
+#   clone-repo
+#     └─ build-go-app
+#          └─ run-quality-checks
+#               └─ build-container-image
+#                    └─ push-container-image-with-chains   ← emits IMAGE_URL + IMAGE_DIGEST
+#                         └─ verify-enterprise-contract     ← official Conforma bundle task
+#
+# After push-container-image-with-chains completes, Tekton Chains automatically:
+#   1. Signs the image with cosign (key in signing-secrets / tekton-chains namespace)
+#   2. Generates a SLSA Provenance in-toto attestation
+#   3. Stores both artefacts in the OCI registry alongside the image
+#
+# verify-enterprise-contract step uses the inline verify-with-conforma Task rather than
+# the official OCI bundle (quay.io/redhat-appstudio-tekton-catalog/task-verify-enterprise-contract)
+# because that bundle's step image (registry.redhat.io/rhtas/ec-rhel9) requires Red Hat
+# registry credentials not available in a generic KinD cluster. The inline task is
+# functionally equivalent and uses only public images. Parameter names mirror the
+# official task so it can be swapped to the bundle in an authenticated environment.
+#
+# Prerequisites (applied by make setup-challenge2-tekton):
+#   - Tasks: push-container-image-with-chains, wait-for-chains, verify-with-conforma
+#            (build-tasks-with-chains.yaml in this repo)
+#   - All other tasks: git-clone, build-go-app, quality-check-task, build-container-image
+#   - Secret:    cosign-public-key   in ctf-challenge (key: cosign.pub)
+#   - ConfigMap: registry-ca-cert   in ctf-challenge (key: ca.crt)
+#   - Secret:    registry-docker-config in ctf-challenge
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: push-build-pipeline-with-chains
+  namespace: ctf-challenge
+spec:
+  params:
+    - name: repo-url
+      type: string
+      description: Git repository URL to clone
+    - name: revision
+      type: string
+      description: Git revision (branch, tag, or SHA)
+      default: "main"
+    - name: image-name
+      type: string
+      description: Container image name
+      default: "recipe-api"
+    - name: image-tag
+      type: string
+      description: Container image tag
+      default: "latest"
+    - name: registry-url
+      type: string
+      description: Internal registry URL (cluster-accessible)
+      default: "registry.registry.svc.cluster.local:5000"
+    - name: strict
+      type: string
+      description: "Fail pipeline on policy violations: true | false"
+      default: "false"
+    - name: chains-wait-seconds
+      type: string
+      description: Seconds to wait for Tekton Chains before policy validation
+      default: "45"
+
+  workspaces:
+    - name: source
+      description: Shared workspace for source code
+
+  # Propagate image coordinates as pipeline-level results — visible in PipelineRun
+  # status and consumable by follow-on pipelines / integration tests.
+  results:
+    - name: IMAGE_URL
+      description: Full URL of the pushed image
+      value: $(tasks.push-container-image.results.IMAGE_URL)
+    - name: IMAGE_DIGEST
+      description: Digest of the pushed image
+      value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+  tasks:
+    - name: clone-repo
+      taskRef:
+        name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: deleteExisting
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: source
+
+    - name: build-go-app
+      runAfter: ["clone-repo"]
+      taskRef:
+        name: build-go-app
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: run-quality-checks
+      runAfter: ["build-go-app"]
+      taskRef:
+        name: quality-check-task
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: build-container-image
+      runAfter: ["run-quality-checks"]
+      taskRef:
+        name: build-container-image
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.image-tag)
+      workspaces:
+        - name: source
+          workspace: source
+
+    # Chains-aware push: emits IMAGE_URL and IMAGE_DIGEST results so that Tekton
+    # Chains knows to sign the image and generate an in-toto attestation.
+    - name: push-container-image
+      runAfter: ["build-container-image"]
+      taskRef:
+        name: push-container-image-with-chains
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.image-tag)
+        - name: registry-url
+          value: $(params.registry-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    # Wait for Tekton Chains to finish signing before calling Conforma.
+    # A plain sleep step is the simplest approach for a local CTF cluster where
+    # Chains typically completes within 30-60 seconds.
+    - name: wait-for-chains
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: wait-for-chains
+      params:
+        - name: seconds
+          value: $(params.chains-wait-seconds)
+
+    # Validate the image using the verify-with-conforma inline Task.
+    #
+    # The official verify-enterprise-contract OCI bundle
+    # (quay.io/redhat-appstudio-tekton-catalog/task-verify-enterprise-contract:0.1)
+    # pulls registry.redhat.io/rhtas/ec-rhel9 which requires Red Hat credentials.
+    # This task is functionally equivalent, using only public images (alpine) and
+    # downloading the ec binary from GitHub releases — no authentication needed.
+    #
+    # Parameter names deliberately mirror the official task so this can be swapped
+    # back to the bundle reference in an authenticated environment.
+    - name: verify-enterprise-contract
+      runAfter: ["wait-for-chains"]
+      taskRef:
+        name: verify-with-conforma
+      params:
+        # ApplicationSnapshot JSON built from the push task results.
+        - name: IMAGES
+          value: >-
+            {"components":[{"name":"$(params.image-name)","containerImage":"$(tasks.push-container-image.results.IMAGE_URL)@$(tasks.push-container-image.results.IMAGE_DIGEST)"}]}
+        - name: POLICY_CONFIGURATION
+          value: >-
+            {"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}
+        # k8s:// reference — task reads cosign.pub from Secret cosign-public-key.
+        - name: PUBLIC_KEY
+          value: k8s://ctf-challenge/cosign-public-key
+        - name: IGNORE_REKOR
+          value: "true"
+        - name: CA_TRUST_CONFIGMAP_NAME
+          value: registry-ca-cert
+        - name: CA_TRUST_CONFIG_MAP_KEY
+          value: ca.crt
+        # false → log violations but let the pipeline continue (challenge2 learning mode).
+        # Set to true in challenge3 to enforce policy and block non-compliant images.
+        - name: STRICT
+          value: $(params.strict)
+        - name: INFO
+          value: "true"

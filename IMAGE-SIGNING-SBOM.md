@@ -149,8 +149,9 @@ kubectl get $TASKRUN -n ctf-challenge \
 # Verify using Tekton Chains signing key
 cosign verify \
   --insecure-ignore-tlog \
+  --registry-cacert=setup/certs/registry.crt \
   --key k8s://tekton-chains/signing-secrets \
-  registry.registry.svc.cluster.local:5000/recipe-api:latest
+  localhost:30000/recipe-api:latest
 
 # Expected output:
 # Verification for registry.registry.svc.cluster.local:5000/recipe-api:latest --
@@ -217,10 +218,17 @@ spec:
 ```
 
 **Key Changes**:
-1. Added `results` section declaring `IMAGE_DIGEST` and `IMAGE_URL`
+1. Added `results` section declaring `IMAGE_DIGEST` and `IMAGE_URL` **only to push task**
 2. Kaniko writes digest to `/tekton/results/IMAGE_DIGEST` via `--digest-file` flag
 3. New step writes full image URL to `/tekton/results/IMAGE_URL`
 4. Tekton Chains detects these results and triggers signing
+
+**Important**: The `build-container-image` task does NOT output IMAGE results because:
+- It uses `--no-push` (image never goes to registry)
+- Only saves image as local tarball
+- If it output IMAGE_URL without registry prefix, Chains would try to pull from Docker Hub → UNAUTHORIZED error
+
+Only tasks that **push to a registry** should output IMAGE results.
 
 ---
 

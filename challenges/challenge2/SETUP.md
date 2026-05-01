@@ -69,6 +69,42 @@ make trigger-challenge2-build
 tkn pipelinerun logs -f -n ctf-challenge
 ```
 
+### Step 3b (Optional): Trigger Supply-Chain-Aware Build
+
+This step runs `push-build-pipeline-with-chains`, which adds Tekton Chains image signing and
+Conforma policy validation on top of the standard build. It is optional for Challenge 2 but
+required for Challenge 3.
+
+**Prerequisites:**
+```bash
+# Install Tekton Chains (if not already done)
+make setup-tektonchains
+
+# Re-run challenge2 setup to create the cosign-public-key Secret and deploy
+# the Chains-aware tasks + pipeline
+make setup-challenge2-tekton
+```
+
+**Trigger:**
+```bash
+make trigger-challenge2-build-with-chains
+
+# Monitor progress (the verify-enterprise-contract step takes ~60s)
+tkn pipelinerun logs -f -n ctf-challenge
+```
+
+The pipeline stages are:
+```
+clone-repo → build-go-app → run-quality-checks → build-container-image
+  → push-container-image-with-chains   ← Tekton Chains signs the image here
+  → wait-for-chains                    ← waits ~45 s for Chains to finish
+  → verify-enterprise-contract         ← Conforma validates signature + SLSA provenance
+```
+
+In Challenge 2 the pipeline runs with `strict=false` (non-strict mode): Conforma reports policy
+violations but does not fail the pipeline. This lets participants observe the attestation flow
+without blocking the build. Challenge 3 sets `strict=true` to enforce policy.
+
 **Option C: Build and Push Manually** (if pipeline fails)
 ```bash
 cd challenges/victim-repo-sample

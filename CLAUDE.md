@@ -96,12 +96,15 @@ Each challenge must contain:
 │   │   ├── SETUP.md
 │   │   ├── SECURITY-GUIDE.md
 │   │   ├── tekton/
-│   │   │   ├── manual-pipelinerun.yaml
+│   │   │   ├── manual-pipelinerun.yaml              # Manual trigger (standard pipeline)
+│   │   │   ├── manual-pipelinerun-with-chains.yaml  # Manual trigger (Chains+Conforma pipeline)
 │   │   │   ├── pipelines/
-│   │   │   │   └── push-build-pipeline.yaml
+│   │   │   │   ├── push-build-pipeline.yaml          # Standard build pipeline
+│   │   │   │   └── push-build-pipeline-with-chains.yaml # Chains+Conforma pipeline
 │   │   │   ├── registry-docker-config-secret.yaml
 │   │   │   ├── tasks/
-│   │   │   │   ├── build-tasks.yaml
+│   │   │   │   ├── build-tasks.yaml                 # Standard build/push tasks
+│   │   │   │   ├── build-tasks-with-chains.yaml     # Chains-aware tasks + verify-with-conforma
 │   │   │   │   ├── quality-check-task.yaml
 │   │   │   │   └── supporting-tasks.yaml
 │   │   │   └── triggers/
@@ -246,41 +249,50 @@ CLUSTER_NAME=my-ctf GITEA_VERSION=10.5.0 make setup
 ## Makefile Targets
 
 The Makefile provides a clean interface for common operations:
+
 **CLI Tools:**
-- `check-cli-tools`  -      Check if required CLI tools are installed
-- `install-tkn`      -      Install Tekton CLI as kubectl plugin
-- `install-kubescape`-      Install Kubescape CLI as kubectl plugin
+- `check-cli-tools`   - Check if required CLI tools are installed
+- `install-tkn`       - Install Tekton CLI as kubectl plugin
+- `install-kubescape` - Install Kubescape CLI as kubectl plugin
+- `install-conforma`  - Install Conforma (`ec`) CLI from GitHub releases
 
 **Environment Setup:**
-- `setup`                      -   Complete setup (KinD cluster + Gitea + tekton + registry + verification)
-- `setup-kind`                 -   Create KinD cluster
-- `setup-gitea`                -   Install Gitea via Helm
-- `setup-tekton`               -   Install Tekton Pipelines and Triggers
-- `setup-tektonchains`         -   Install and configure Tekton Chains for supply chain security
-- `setup-registry`             -   Setup local Docker registry with authentication
-- `configure-registry-tls`     -   Configure TLS trust for the registry (interactive)
-- `setup-ctf-challenge`        -   Install Tekton CTF challenge resources (VULNERABLE version)
-- `setup-ctf-challenge-secure` -   Install Tekton CTF challenge with SECURE configuration
+- `setup`                      - Complete setup (KinD cluster + Gitea + tekton + registry + verification)
+- `setup-kind`                 - Create KinD cluster
+- `setup-gitea`                - Install Gitea via Helm
+- `setup-tekton`               - Install Tekton Pipelines and Triggers (also enables OCI bundles resolver)
+- `setup-tektonchains`         - Install and configure Tekton Chains for supply chain security
+- `setup-registry`             - Setup local Docker registry with authentication
+- `configure-registry-tls`     - Configure TLS trust for the registry (interactive)
+- `setup-ctf-challenge`        - Install Tekton CTF challenge resources (VULNERABLE version)
+- `setup-ctf-challenge-secure` - Install Tekton CTF challenge with SECURE configuration
+- `setup-challenge2-tekton`    - Deploy challenge2 Tekton resources including Chains-aware pipeline
 
 **Security Tools:**
-- `setup-security-tools`       -   Deploy all security tools (Kyverno + Kubescape)
-- `setup-kyverno`              -   Deploy Kyverno policy engine
-- `setup-kubescape`            -   Deploy Kubescape security scanner
+- `setup-security-tools` - Deploy all security tools (Kyverno + Kubescape)
+- `setup-kyverno`        - Deploy Kyverno policy engine
+- `setup-kubescape`      - Deploy Kubescape security scanner
+- `setup-conforma`       - Install ec CLI and verify cosign key setup
+
+**Challenge Triggers:**
+- `trigger-challenge2-build`             - Run the standard push-build-pipeline (no signing)
+- `trigger-challenge2-build-with-chains` - Run push-build-pipeline-with-chains (Tekton Chains + Conforma)
 
 **Security Operations:**
-- `security-scan`              -   Run all security scans (static analysis + runtime checks)
-- `apply-prevention-policies`  -   Apply Kyverno policies and network policies
-- `create-security-policies`   -   Create security policy files (Kyverno, NetworkPolicy, RBAC)
-- `verify-security`            -   Verify security tools and policies are working
+- `security-scan`            - Run all security scans (static analysis + runtime checks)
+- `apply-prevention-policies`- Apply Kyverno policies and network policies
+- `create-security-policies` - Create security policy files (Kyverno, NetworkPolicy, RBAC)
+- `verify-security`          - Verify security tools and policies are working
 
 **Verification:**
-- `status`                     -  Show environment status
-- `verify-ctf`                 -  Verify Tekton CTF challenge installation
-- `verify-registry`            -  Verify registry is working correctly
-- `verify-tektonchains`        -  Verify Tekton Chains installation and configuration
+- `status`               - Show environment status
+- `verify-ctf`           - Verify Tekton CTF challenge installation
+- `verify-registry`      - Verify registry is working correctly
+- `verify-tektonchains`  - Verify Tekton Chains installation and configuration
+- `verify-conforma`      - Verify Conforma (ec CLI) installation and policy resources
 
 **Cleanup:**
-- `clean`                      - Cleanup environment (delete cluster and resources)
+- `clean` - Cleanup environment (delete cluster and resources)
 
 ## Kubernetes Context
 
@@ -416,6 +428,7 @@ Required tools:
 - **kubectl** (Kubernetes CLI) - Required
 - **kind** (Kubernetes in Docker) - Required
 - **helm** (Kubernetes package manager) - Required for Gitea
+- **cosign** (Container signing tool) - Required for Tekton Chains (https://docs.sigstore.dev/cosign/installation/)
 - **podman** or **docker** (container runtime) - Required for registry htpasswd generation
 - **make** (build automation) - Required
 - **bash** (script execution) - Required
@@ -423,6 +436,7 @@ Required tools:
 Optional tools:
 - **htpasswd** (apache2-utils) - Can be used instead of podman/docker for registry auth
 - **curl** (for testing)
+- **jq** (JSON processor) - Useful for debugging
 
 All scripts assume bash and use `set -euo pipefail` for safety.
 
