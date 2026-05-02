@@ -19,6 +19,11 @@ spec:
       description: Clean out workspace before cloning
       type: string
       default: "true"
+  results:
+    - name: commit
+      description: The precise commit SHA that was checked out
+    - name: url
+      description: The repository URL that was cloned
   workspaces:
     - name: output
       description: The workspace to clone into
@@ -41,10 +46,17 @@ spec:
         cd $(workspaces.output.path)/repo
         git checkout $(params.revision)
 
+        COMMIT_SHA=$(git rev-parse HEAD)
+
         echo "Clone completed successfully"
         echo "Repository: $(params.url)"
         echo "Revision: $(params.revision)"
-        echo "Commit: $(git rev-parse HEAD)"
+        echo "Commit: ${COMMIT_SHA}"
+
+        # Write results for Conforma policy validation (url + commit)
+        # and Tekton Chains provenance materials (CHAINS-GIT_* type hints).
+        printf '%s' "${COMMIT_SHA}" > /tekton/results/commit
+        printf '%s' "$(params.url)" > /tekton/results/url
 
         # Move contents up one level for easier access
         mv $(workspaces.output.path)/repo/* $(workspaces.output.path)/ 2>/dev/null || true

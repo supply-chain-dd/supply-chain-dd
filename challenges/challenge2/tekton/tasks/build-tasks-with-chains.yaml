@@ -11,8 +11,7 @@
 #   2. Generates a SLSA Provenance in-toto attestation (stored as <image>.att)
 #
 # Tekton Chains then automatically signs the image and generates a SLSA Provenance
-# attestation. The pipeline validates these using the official verify-enterprise-contract
-# Tekton Task, fetched from its OCI bundle via the bundles resolver.
+# attestation stored alongside the image in the OCI registry.
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -95,11 +94,6 @@ spec:
         echo "  Attestation: $(params.registry-url)/$(params.image-name):$(params.image-tag).att"
         echo "============================================"
 ---
-# Wait for Chains Task
-#
-# Inserts a configurable delay between the image push and the Conforma validation
-# step, giving Tekton Chains enough time to sign the image and store the SLSA
-# Provenance attestation in the OCI registry before ec validate image runs.
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -108,7 +102,7 @@ metadata:
 spec:
   description: |
     Waits a configurable number of seconds for Tekton Chains to sign the pushed image
-    and store its SLSA Provenance attestation before Conforma validation begins.
+    and store its SLSA Provenance attestation in the OCI registry.
   params:
     - name: seconds
       type: string
@@ -127,7 +121,15 @@ spec:
 ---
 # Verify with Conforma Task
 #
-# Runs ec validate image (Conforma CLI) against the image pushed by the build pipeline.
+# NOT used by push-build-pipeline-with-chains — kept as a reusable task
+# definition for ad-hoc or future pipeline use.
+#
+# Tekton Chains generates PipelineRun attestations only AFTER the pipeline
+# completes, so running ec validate image inside the pipeline will always
+# fail attestation_type.pipelinerun_attestation_found and
+# slsa_source_correlated.* rules. Run ec from the command line instead.
+#
+# Runs ec validate image (Conforma CLI) against an image.
 # Downloads the ec binary from GitHub releases — all images used here are public and
 # require no authentication, unlike the official verify-enterprise-contract bundle which
 # pulls registry.redhat.io/rhtas/ec-rhel9 (requires Red Hat credentials).
@@ -188,6 +190,13 @@ spec:
       type: string
       description: Include detailed rule results in output
       default: "true"
+    - name: EXTRA_RULE_DATA
+      type: string
+      description: >-
+        Extra rule data for the policy evaluator. Format: key=value.
+        Multiple entries can be passed via repeated --extra-rule-data flags.
+      default: >-
+        allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","localhost:30000","docker.io","gcr.io","golang"]
     - name: CONFORMA_VERSION
       type: string
       description: Conforma CLI GitHub release tag
@@ -260,11 +269,18 @@ spec:
         echo "Strict:  $(params.STRICT)"
         echo ""
 
+        # pflag StringSlice parses values as CSV — bare quotes and commas
+        # in JSON values cause parse errors. CSV-escape: wrap in double-quotes,
+        # double any inner double-quotes.
+        EXTRA_RULE_DATA=$(printf '%s' '$(params.EXTRA_RULE_DATA)' | sed 's/"/""/g')
+        EXTRA_RULE_DATA="\"${EXTRA_RULE_DATA}\""
+
         set +e
         /tmp/ec validate image \
           --image      "${IMAGE_REF}" \
           --public-key "${PUBLIC_KEY_ARG}" \
           --policy     '$(params.POLICY_CONFIGURATION)' \
+          --extra-rule-data "${EXTRA_RULE_DATA}" \
           ${IGNORE_REKOR_FLAG} \
           --output     text \
           --strict     "$(params.STRICT)"
@@ -278,3 +294,186 @@ spec:
           echo "⚠  Policy violations detected (exit ${EC_EXIT})"
           [ "$(params.STRICT)" = "true" ] && exit "$EC_EXIT" || true
         fi
+---
+# Generate and Attest SBOM Task
+#
+# Generates an SPDX JSON SBOM using Trivy, then attaches it to the container
+# image as an in-toto attestation using cosign. This satisfies Conforma's
+# sbom.found policy rule, which requires at least one SBOM attestation with
+# predicateType "https://spdx.dev/Document" or "https://cyclonedx.org/bom".
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: generate-and-attest-sbom
+  namespace: ctf-challenge
+spec:
+  description: |
+    Generates an SPDX JSON SBOM for a container image using Trivy, then
+    attaches it as an in-toto attestation using cosign attest. The SBOM
+    is discoverable by Conforma's sbom.found policy rule.
+  params:
+    - name: IMAGE_URL
+      type: string
+      description: Full URL of the image (e.g. registry.registry.svc.cluster.local:5000/recipe-api:v1.0)
+    - name: IMAGE_DIGEST
+      type: string
+      description: Image digest (sha256:...)
+    - name: TRIVY_VERSION
+      type: string
+      description: Trivy CLI version (without v prefix)
+      default: "0.70.0"
+    - name: COSIGN_VERSION
+      type: string
+      description: Cosign CLI version to download
+      default: "v2.4.1"
+  volumes:
+    - name: sbom-data
+      emptyDir: {}
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+        items:
+          - key: config.json
+            path: config.json
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
+    - name: cosign-signing-key
+      secret:
+        secretName: cosign-signing-secret
+  steps:
+    - name: generate-sbom
+      image: alpine:3.18
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker-config
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: sbom-data
+          mountPath: /sbom
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates jq >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        TRIVY_ARCH="64bit" ;;
+          aarch64|arm64) TRIVY_ARCH="ARM64" ;;
+          *)             TRIVY_ARCH="64bit" ;;
+        esac
+
+        TRIVY_URL="https://github.com/aquasecurity/trivy/releases/download/v$(params.TRIVY_VERSION)/trivy_$(params.TRIVY_VERSION)_Linux-${TRIVY_ARCH}.tar.gz"
+        echo "Downloading Trivy $(params.TRIVY_VERSION) (linux/${TRIVY_ARCH})..."
+        curl -sSfL "${TRIVY_URL}" | tar xz -C /tmp trivy
+        chmod +x /tmp/trivy
+        echo "Trivy ready"
+        echo ""
+
+        IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+        echo "============================================"
+        echo "Generating SPDX JSON SBOM with Trivy"
+        echo "============================================"
+        echo "Image: ${IMAGE_REF}"
+        echo ""
+
+        /tmp/trivy image \
+          --format spdx-json \
+          --output /sbom/sbom-raw.json \
+          --skip-db-update \
+          --skip-java-db-update \
+          --insecure \
+          "${IMAGE_REF}"
+
+        # Trivy uses hyphens (e.g. "OPERATING-SYSTEM") where SPDX 2.3
+        # requires underscores ("OPERATING_SYSTEM").
+        jq '.packages |= map(
+          if .primaryPackagePurpose
+          then .primaryPackagePurpose |= gsub("-"; "_")
+          else . end
+        )' /sbom/sbom-raw.json > /sbom/sbom-spdx.json
+        rm /sbom/sbom-raw.json
+
+        echo ""
+        echo "SBOM size: $(wc -c < /sbom/sbom-spdx.json) bytes"
+        echo "============================================"
+
+    - name: attest-sbom
+      image: alpine:3.18
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker-config
+        - name: SSL_CERT_DIR
+          value: /certs
+        - name: COSIGN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cosign-signing-secret
+              key: cosign.password
+      volumeMounts:
+        - name: sbom-data
+          mountPath: /sbom
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+        - name: cosign-signing-key
+          mountPath: /cosign-key
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        COSIGN_ARCH="amd64" ;;
+          aarch64|arm64) COSIGN_ARCH="arm64" ;;
+          *)             COSIGN_ARCH="amd64" ;;
+        esac
+
+        COSIGN_URL="https://github.com/sigstore/cosign/releases/download/$(params.COSIGN_VERSION)/cosign-linux-${COSIGN_ARCH}"
+        echo "Downloading cosign $(params.COSIGN_VERSION) (linux/${COSIGN_ARCH})..."
+        curl -sSfL "${COSIGN_URL}" -o /tmp/cosign
+        chmod +x /tmp/cosign
+        echo "cosign ready"
+        echo ""
+
+        IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+        echo "============================================"
+        echo "Attesting SBOM to image"
+        echo "============================================"
+        echo "Image:     ${IMAGE_REF}"
+        echo "SBOM file: /sbom/sbom-spdx.json"
+        echo "Type:      spdxjson (predicateType: https://spdx.dev/Document)"
+        echo ""
+
+        /tmp/cosign attest \
+          --key /cosign-key/cosign.key \
+          --type spdxjson \
+          --predicate /sbom/sbom-spdx.json \
+          --tlog-upload=false \
+          "${IMAGE_REF}"
+
+        echo ""
+        echo "SBOM attestation attached successfully"
+        echo "============================================"

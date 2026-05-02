@@ -4,55 +4,43 @@
 
 **Q: Can Tekton Chains generate signatures and SBOMs for images from push-build-pipeline?**
 
-**A: YES, but requires task updates.** 
+**A: YES — use the Chains-compatible pipeline.**
 
-The current configuration enables signing, but the tasks need to output `IMAGE_DIGEST` and `IMAGE_URL` results for Chains to detect and sign the images.
+The `push-build-pipeline-with-chains` pipeline pushes the image with `IMAGE_DIGEST` and `IMAGE_URL` results so Tekton Chains signs it automatically.
+The pipeline generates an SPDX JSON SBOM with Trivy (no Tekton Chains envolved) and attaches it as an in-toto attestation using cosign.
 
 ---
 
 ## Current State
 
-### ✅ What Works Now (After `make setup-tektonchains`)
+### What Works (After `make setup-challenge2-tekton`)
 
-1. **PipelineRun Attestations** - Automatically generated for all pipeline runs
-   - Format: in-toto (AMPEL/Conforma compatible) 
-   - Storage: OCI registry
-   - Includes full execution provenance
+1. **Image Signing** — Tekton Chains detects the `IMAGE_URL` + `IMAGE_DIGEST` results and signs the image with cosign
+2. **SLSA Provenance** — Chains generates an in-toto SLSA Provenance attestation (stored as `<image>.att`)
+3. **SBOM Attestation** — The `generate-and-attest-sbom` task creates an SPDX JSON SBOM with Trivy and attaches it via `cosign attest --type spdxjson`
+4. **PipelineRun / TaskRun Attestations** — Chains generates in-toto provenance for both
 
-2. **TaskRun Attestations** - Generated for individual tasks
-   - Same format and storage as PipelineRuns
-   - Documents what each task did
+### Conforma Policy Validation
 
-3. **Configuration Enabled**:
-   - `artifacts.oci.format: simplesigning` ✅
-   - `artifacts.oci.storage: oci` ✅
-   - `artifacts.oci.signer: x509` ✅
-
-### ❌ What Doesn't Work Yet
-
-1. **Image Signing** - Not working with current tasks
-   - **Why**: Tasks don't output `IMAGE_DIGEST` or `IMAGE_URL` results
-   - **Impact**: Chains can't detect which images to sign
-
-2. **SBOM Generation** - Not configured
-   - **Why**: Requires additional configuration and tooling
-   - **Impact**: No software bill of materials generated
+Conforma (`ec validate image`) is **not run inside the pipeline** because Tekton Chains
+generates PipelineRun attestations only AFTER the pipeline completes. Rules like
+`attestation_type.pipelinerun_attestation_found` and `slsa_source_correlated.*` cannot
+be satisfied from within the pipeline. Run `ec` from the command line after the pipeline
+finishes — see [TEKTON-CHAINS.md](TEKTON-CHAINS.md) for examples.
 
 ---
 
-## How to Enable Full Support
-
-### Option 1: Use Enhanced Tasks (Recommended)
+## How to Use
 
 ```bash
 # 1. Install Tekton Chains (if not done)
 make setup-tektonchains
 
-# 2. Apply Chains-compatible tasks
-kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks-with-chains.yaml
+# 2. Deploy challenge 2 resources (tasks, secrets, pipeline)
+make setup-challenge2-tekton
 
-# 3. Trigger pipeline
-make trigger-challenge2-build
+# 3. Trigger the Chains-compatible pipeline
+make trigger-challenge2-build-with-chains
 
 # 4. Verify image was signed
 kubectl get taskruns -n ctf-challenge \
@@ -61,31 +49,10 @@ kubectl get taskruns -n ctf-challenge \
 ```
 
 **What you get**:
-- ✅ PipelineRun provenance
-- ✅ TaskRun provenance
-- ✅ **Image signature**
-- ✅ IMAGE_DIGEST and IMAGE_URL in results
-- ⚠️ SBOM (requires additional config - see below)
-
-### Option 2: Enable SBOM Generation
-
-```bash
-# Configure Chains for SBOM
-kubectl patch configmap chains-config -n tekton-chains --type merge -p '{
-  "data": {
-    "artifacts.oci.format": "simplesigning",
-    "artifacts.sbom.format": "cyclonedx",
-    "artifacts.sbom.enabled": "true"
-  }
-}'
-
-# Restart controller
-kubectl rollout restart deployment tekton-chains-controller -n tekton-chains
-kubectl rollout status deployment tekton-chains-controller -n tekton-chains
-
-# Now run pipeline with Chains-compatible tasks
-make trigger-challenge2-build
-```
+- Image signature (`.sig` tag in registry)
+- SLSA Provenance attestation (`.att` tag in registry)
+- SBOM attestation (cosign in-toto, predicateType `https://spdx.dev/Document`)
+- PipelineRun + TaskRun provenance
 
 ---
 
@@ -93,20 +60,20 @@ make trigger-challenge2-build
 
 ### Artifacts Generated
 
-When using `build-tasks-with-chains.yaml`:
+When using `push-build-pipeline-with-chains`:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ OCI Registry: registry.registry.svc.cluster.local:5000      │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  📦 recipe-api:latest                (Container Image)      │
-│  ├─ sha256:abc123...                 (Image Manifest)       │
-│  ├─ 🔏 sha256:abc123.sig             (Image Signature)      │
-│  ├─ 📄 sha256:abc123.att             (SBOM Attestation)     │
-│  └─ 📜 sha256:abc123.provenance      (Build Provenance)     │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+| OCI Registry: registry.registry.svc.cluster.local:5000      |
++-------------------------------------------------------------+
+|                                                              |
+|  recipe-api:v1.0                     (Container Image)       |
+|  +- sha256:abc123...                 (Image Manifest)        |
+|  +- sha256:abc123.sig                (Image Signature)       |
+|  +- sha256:abc123.att                (SLSA Provenance +      |
+|  |                                    SBOM Attestation)       |
+|                                                              |
++-------------------------------------------------------------+
 ```
 
 ### Signature Format
@@ -143,33 +110,28 @@ kubectl get $TASKRUN -n ctf-challenge \
 ### Verify Signature with Cosign
 
 ```bash
-# Install cosign (if needed)
-# See: https://docs.sigstore.dev/cosign/installation/
-
 # Verify using Tekton Chains signing key
 cosign verify \
   --insecure-ignore-tlog \
-  --registry-cacert=setup/certs/registry.crt \
-  --key k8s://tekton-chains/signing-secrets \
-  localhost:30000/recipe-api:latest
+  --key cosign.pub \
+  --registry-cacert=certs/registry.crt \
+  localhost:30000/recipe-api:v1.0
 
-# Expected output:
-# Verification for registry.registry.svc.cluster.local:5000/recipe-api:latest --
-# The following checks were performed on each of these signatures:
-#   - The cosign claims were validated
-#   - The signatures were verified against the specified public key
-```
+# Verify SBOM attestation
+cosign verify-attestation \
+  --insecure-ignore-tlog \
+  --key cosign.pub \
+  --type spdxjson \
+  --registry-cacert=certs/registry.crt \
+  localhost:30000/recipe-api:v1.0
 
-### View SBOM (if enabled)
-
-```bash
-# Download SBOM attestation
-cosign download attestation \
-  registry.registry.svc.cluster.local:5000/recipe-api:latest \
-  | jq -r '.payload' | base64 -d | jq
-
-# Or use syft directly
-syft registry.registry.svc.cluster.local:5000/recipe-api:latest -o json
+# Verify SLSA provenance attestation
+cosign verify-attestation \
+  --insecure-ignore-tlog \
+  --key cosign.pub \
+  --type https://slsa.dev/provenance/v0.2 \
+  --registry-cacert=certs/registry.crt \
+  localhost:30000/recipe-api:v1.0
 ```
 
 ---
@@ -201,17 +163,17 @@ metadata:
   name: push-container-image
 spec:
   results:
-    - name: IMAGE_DIGEST          # ← Added
+    - name: IMAGE_DIGEST          # Added
       description: Digest of pushed image
-    - name: IMAGE_URL             # ← Added
+    - name: IMAGE_URL             # Added
       description: Full URL of image
   steps:
     - name: push-image
       args:
         - --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag)
-        - --digest-file=/tekton/results/IMAGE_DIGEST  # ← Added
+        - --digest-file=/tekton/results/IMAGE_DIGEST  # Added
     
-    - name: write-image-url       # ← Added
+    - name: write-image-url       # Added
       script: |
         echo -n "$(params.registry-url)/$(params.image-name):$(params.image-tag)" \
           > /tekton/results/IMAGE_URL
@@ -226,49 +188,25 @@ spec:
 **Important**: The `build-container-image` task does NOT output IMAGE results because:
 - It uses `--no-push` (image never goes to registry)
 - Only saves image as local tarball
-- If it output IMAGE_URL without registry prefix, Chains would try to pull from Docker Hub → UNAUTHORIZED error
+- If it output IMAGE_URL without registry prefix, Chains would try to pull from Docker Hub
 
 Only tasks that **push to a registry** should output IMAGE results.
 
 ---
 
-## Comparison: Standard vs Chains-Compatible Tasks
+## Comparison: Standard vs Chains-Compatible Pipeline
 
-| Capability | build-tasks.yaml | build-tasks-with-chains.yaml |
-|-----------|------------------|------------------------------|
-| **Build image** | ✅ | ✅ |
-| **Push to registry** | ✅ | ✅ |
-| **PipelineRun provenance** | ✅ | ✅ |
-| **TaskRun provenance** | ⚠️ Generic only | ✅ Full |
-| **Image signature** | ❌ | ✅ |
-| **SBOM** | ❌ | ✅ (if configured) |
-| **IMAGE_DIGEST result** | ❌ | ✅ |
-| **IMAGE_URL result** | ❌ | ✅ |
-| **Cosign verification** | ❌ | ✅ |
-| **AMPEL policy enforcement** | ⚠️ Limited | ✅ Full |
-
----
-
-## Integration with AMPEL
-
-With image signing enabled, you can enforce policies like:
-
-```yaml
-apiVersion: policy.ampel.dev/v1
-kind: Policy
-metadata:
-  name: require-signed-images
-spec:
-  checks:
-    - name: verify-image-signature
-      condition: |
-        image.signatures.exists(sig => 
-          sig.issuer == "tekton-chains" &&
-          sig.verified == true
-        )
-      severity: CRITICAL
-      message: "All deployed images must be signed by Tekton Chains"
-```
+| Capability | push-build-pipeline | push-build-pipeline-with-chains |
+|-----------|---------------------|--------------------------------|
+| **Build image** | Yes | Yes |
+| **Push to registry** | Yes | Yes |
+| **PipelineRun provenance** | Yes (if Chains installed) | Yes |
+| **TaskRun provenance** | Generic only | Full |
+| **Image signature** | No | Yes |
+| **SBOM (SPDX JSON)** | No | Yes (Trivy + cosign attest) |
+| **IMAGE_DIGEST result** | No | Yes |
+| **IMAGE_URL result** | No | Yes |
+| **Cosign verification** | No | Yes |
 
 ---
 
@@ -280,56 +218,32 @@ A: No, the container layer leak attack works with both versions. The Chains-comp
 **Q: Will signed images contain leaked secrets?**  
 A: Yes! Signing verifies **authenticity**, not **security**. A properly signed image can still have vulnerabilities or leaked secrets.
 
-**Q: Can I use both task versions?**  
-A: Yes, but not simultaneously. Apply one version at a time:
+**Q: Can I use both pipeline versions?**  
+A: Yes, but not simultaneously. Use the appropriate Make target:
 ```bash
-# Switch to Chains version
-kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks-with-chains.yaml
+# Standard pipeline (no supply chain security)
+make trigger-challenge2-build
 
-# Switch back to standard
-kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks.yaml
+# Chains-compatible pipeline (signing + SBOM)
+make trigger-challenge2-build-with-chains
 ```
 
+**Q: Why isn't Conforma run inside the pipeline?**  
+A: Tekton Chains generates PipelineRun attestations only after the pipeline completes. Policy rules like `attestation_type.pipelinerun_attestation_found` and `slsa_source_correlated.*` cannot be satisfied from within the pipeline. Run `ec validate image` from the command line after the pipeline finishes.
+
 **Q: What about SBOMs for the base image (golang:1.25-alpine)?**  
-A: Tekton Chains only signs/generates SBOMs for images **built by the pipeline**, not pulled base images. For base image verification, use tools like:
-- Cosign to verify base image signatures
-- Syft to generate SBOMs for base images
-- Grype to scan for vulnerabilities
+A: Tekton Chains only signs images **built by the pipeline**, not pulled base images. For base image verification, use tools like Cosign, Syft, or Grype.
 
 ---
 
 ## Summary
 
-### Current Setup (After `make setup-tektonchains`)
-✅ PipelineRun attestations  
-✅ TaskRun attestations  
-✅ OCI storage  
-✅ in-toto format (AMPEL/Conforma compatible)  
-❌ Image signing (needs task update)  
-❌ SBOM generation (needs configuration)
+### After `make setup-challenge2-tekton` + `make trigger-challenge2-build-with-chains`
 
-### To Enable Full Support
-```bash
-# 1. Setup Chains
-make setup-tektonchains
-
-# 2. Apply enhanced tasks
-kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks-with-chains.yaml
-
-# 3. (Optional) Enable SBOM
-kubectl patch configmap chains-config -n tekton-chains --type merge -p '{
-  "data": {"artifacts.sbom.enabled": "true"}
-}'
-kubectl rollout restart deployment tekton-chains-controller -n tekton-chains
-
-# 4. Run pipeline
-make trigger-challenge2-build
-
-# 5. Verify
-kubectl get taskruns -n ctf-challenge \
-  -l tekton.dev/pipelineTask=push-container-image \
-  -o jsonpath='{.items[*].metadata.annotations.chains\.tekton\.dev/signed}'
-```
+- Image signature (cosign, `.sig` tag)
+- SLSA Provenance attestation (Tekton Chains, `.att` tag)
+- SBOM attestation (Trivy SPDX JSON + cosign attest)
+- PipelineRun + TaskRun provenance (in-toto format)
 
 ### Documentation
 - Full details: [TEKTON-CHAINS.md](TEKTON-CHAINS.md)

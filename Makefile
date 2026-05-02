@@ -768,15 +768,30 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 		echo "     verify-enterprise-contract will fail until the key is present."; \
 	fi
 	@echo ""
+	@echo "Creating cosign signing key Secret for SBOM attestation task..."
+	@if kubectl get secret signing-secrets -n tekton-chains >/dev/null 2>&1; then \
+		COSIGN_KEY=$$(kubectl get secret signing-secrets -n tekton-chains -o jsonpath='{.data.cosign\.key}' | base64 -d); \
+		COSIGN_PASSWORD=$$(kubectl get secret signing-secrets -n tekton-chains -o jsonpath='{.data.cosign\.password}' | base64 -d); \
+		kubectl create secret generic cosign-signing-secret \
+			--from-literal=cosign.key="$$COSIGN_KEY" \
+			--from-literal=cosign.password="$$COSIGN_PASSWORD" \
+			-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -; \
+		echo "  ✓ cosign-signing-secret created in ctf-challenge namespace"; \
+	else \
+		echo "  ⚠  signing-secrets not found in tekton-chains namespace."; \
+		echo "     Run 'make setup-tektonchains' first."; \
+		echo "     generate-and-attest-sbom task will fail until the key is present."; \
+	fi
+	@echo ""
 	@echo "✓ Challenge 2 Tekton resources installed successfully"
 	@echo ""
 	@echo "Pipelines available:"
 	@echo "  push-build-pipeline             — original build + push"
-	@echo "  push-build-pipeline-with-chains — build + push + Conforma policy validation"
+	@echo "  push-build-pipeline-with-chains — build + push + sign + SBOM"
 	@echo ""
 	@echo "Next steps:"
 	@echo "  1. Trigger original pipeline:      make trigger-challenge2-build"
-	@echo "  2. Trigger Chains+Conforma pipeline: make trigger-challenge2-build-with-chains"
+	@echo "  2. Trigger Chains+SBOM pipeline:    make trigger-challenge2-build-with-chains"
 	@echo "  3. Monitor pipeline runs:          kubectl get pipelineruns -n ctf-challenge"
 	@if command -v kubectl-tkn >/dev/null 2>&1; then \
 		echo "  4. View logs: kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
@@ -827,9 +842,9 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	@echo ""
 	@echo "Image will be pushed to: registry.registry.svc.cluster.local:5000/recipe-api:latest"
 
-trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (build + push + Conforma validation)
+trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (build + push + sign + SBOM)
 	@echo "========================================"
-	@echo "Triggering Challenge 2 Build Pipeline (with Chains + Conforma)"
+	@echo "Triggering Challenge 2 Build Pipeline (with Chains + SBOM)"
 	@echo "========================================"
 	@echo ""
 	@if ! kubectl get pipeline push-build-pipeline-with-chains -n ctf-challenge >/dev/null 2>&1; then \
@@ -857,7 +872,7 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 	@echo "    4. build-container-image       — kaniko build"
 	@echo "    5. push-container-image        — push + emit IMAGE_URL/IMAGE_DIGEST"
 	@echo "       [Tekton Chains auto-signs image and creates SLSA attestation]"
-	@echo "    6. verify-with-conforma        — validate signature + attestation"
+	@echo "    6. generate-and-attest-sbom   — Trivy SPDX SBOM + cosign attest"
 	@echo ""
 	@echo "  Monitor with:"
 	@echo "    kubectl get pipelineruns -n ctf-challenge -w"

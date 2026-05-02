@@ -299,38 +299,38 @@ ec validate image \
   --output text
 ```
 
-### Validate as part of the build pipeline (Challenge 2 / Challenge 3)
+### Validate AFTER the build pipeline (other pipeline or command line) (Challenge 2 / Challenge 3)
 
-The `push-build-pipeline-with-chains` pipeline includes a `verify-enterprise-contract`
-step that runs Conforma automatically after every image push:
+The `push-build-pipeline-with-chains` pipeline builds, pushes, signs and attests the
+image but does **not** run Conforma validation inside the pipeline. This is because
+Tekton Chains generates PipelineRun attestations only AFTER the pipeline completes —
+rules like `attestation_type.pipelinerun_attestation_found` and
+`slsa_source_correlated.*` cannot be satisfied from within the pipeline.
 
 ```bash
-# Trigger the Chains + Conforma pipeline
+# Trigger the Chains pipeline
 make trigger-challenge2-build-with-chains
 
 # The pipeline stages are:
-#   clone-repo → build-go-app → quality-checks → build-image
+#   git-clone                              (emits url + commit which are used to publish CHAINS-GIT_* results at pipeline run level. CHAINS-GIT-* are used by Tekton Chains during provenance generation)
+#     → build-go-app → quality-checks → build-image
 #     → push-container-image-with-chains   (emits IMAGE_URL + IMAGE_DIGEST)
-#        [Tekton Chains signs + attests automatically]
-#     → wait-for-chains                    (waits 45 s for Chains to finish)
-#     → verify-enterprise-contract         (runs ec validate image)
+#        [Tekton Chains signs + attests asynchronously]
+#     → generate-and-attest-sbom           (Trivy SPDX SBOM + cosign attest)
 
 # Monitor progress
 kubectl get pipelineruns -n ctf-challenge -w
 
-# STRICT=false (default): violations are logged but the pipeline continues.
-# STRICT=true: violations fail the task and block the pipeline — useful for challenge3.
+# After the pipeline finishes, validate from the command line:
+SSL_CERT_FILE=certs/registry.crt \
+ec validate image \
+  --image localhost:30000/recipe-api:v1.0@sha256:<digest> \
+  --public-key cosign.pub \
+  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
+  --extra-rule-data 'allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","localhost:30000","docker.io","gcr.io","golang"]' \
+  --ignore-rekor \
+  --output text
 ```
-
-### Why the official OCI bundle is not used here
-
-The official Tekton task bundle
-(`quay.io/redhat-appstudio-tekton-catalog/task-verify-enterprise-contract:0.1`)
-pulls its step image from `registry.redhat.io/rhtas/ec-rhel9`, which requires Red Hat
-registry credentials. The CTF cluster uses the functionally-equivalent `verify-with-conforma`
-inline task instead — same parameters, same `ec` binary, only public images required.
-In an OpenShift / RHTAP environment the `taskRef` can be switched to the bundle resolver
-with no other changes.
 
 ## Verification
 
