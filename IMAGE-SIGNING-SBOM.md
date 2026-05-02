@@ -114,7 +114,7 @@ kubectl get $TASKRUN -n ctf-challenge \
 cosign verify \
   --insecure-ignore-tlog \
   --key cosign.pub \
-  --registry-cacert=certs/registry.crt \
+  --registry-cacert=setup/certs/registry.crt \
   localhost:30000/recipe-api:v1.0
 
 # Verify SBOM attestation
@@ -122,7 +122,7 @@ cosign verify-attestation \
   --insecure-ignore-tlog \
   --key cosign.pub \
   --type spdxjson \
-  --registry-cacert=certs/registry.crt \
+  --registry-cacert=setup/certs/registry.crt \
   localhost:30000/recipe-api:v1.0
 
 # Verify SLSA provenance attestation
@@ -130,7 +130,7 @@ cosign verify-attestation \
   --insecure-ignore-tlog \
   --key cosign.pub \
   --type https://slsa.dev/provenance/v0.2 \
-  --registry-cacert=certs/registry.crt \
+  --registry-cacert=setup/certs/registry.crt \
   localhost:30000/recipe-api:v1.0
 ```
 

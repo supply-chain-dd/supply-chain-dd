@@ -290,12 +290,19 @@ make verify-conforma           # check ec is installed and print a sample valida
 # After make trigger-challenge2-build-with-chains the image is signed by Chains.
 
 # ec is a Go binary — SSL_CERT_FILE tells it to trust the local registry's self-signed CA.
-SSL_CERT_FILE=certs/registry.crt \
+# Use --images (not --image) with an ApplicationSnapshot spec so the source
+# git URL and revision are passed to Conforma for slsa_source_correlated checks.
+SSL_CERT_FILE=setup/certs/registry.crt \
 ec validate image \
-  --image localhost:30000/recipe-api:v1.0@sha256:<digest> \
+  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git","revision":"9d81c465f358fef7efd791966e482e1eece4ff78"}}}]}' \
   --public-key cosign.pub \
-  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}' \
+  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
   --ignore-rekor \
+  --extra-rule-data allowed_registry_prefixes=registry.registry.svc.cluster.local:5000 \
+  --extra-rule-data allowed_registry_prefixes=localhost:30000 \
+  --extra-rule-data allowed_registry_prefixes=docker.io \
+  --extra-rule-data allowed_registry_prefixes=gcr.io \
+  --extra-rule-data allowed_registry_prefixes=golang \
   --output text
 ```
 
@@ -322,13 +329,17 @@ make trigger-challenge2-build-with-chains
 kubectl get pipelineruns -n ctf-challenge -w
 
 # After the pipeline finishes, validate from the command line:
-SSL_CERT_FILE=certs/registry.crt \
+SSL_CERT_FILE=setup/certs/registry.crt \
 ec validate image \
-  --image localhost:30000/recipe-api:v1.0@sha256:<digest> \
+  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git","revision":"9d81c465f358fef7efd791966e482e1eece4ff78"}}}]}' \
   --public-key cosign.pub \
   --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
-  --extra-rule-data 'allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","localhost:30000","docker.io","gcr.io","golang"]' \
   --ignore-rekor \
+  --extra-rule-data allowed_registry_prefixes=registry.registry.svc.cluster.local:5000 \
+  --extra-rule-data allowed_registry_prefixes=localhost:30000 \
+  --extra-rule-data allowed_registry_prefixes=docker.io \
+  --extra-rule-data allowed_registry_prefixes=gcr.io \
+  --extra-rule-data allowed_registry_prefixes=golang \
   --output text
 ```
 
