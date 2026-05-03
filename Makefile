@@ -184,7 +184,7 @@ help: ## Display this help message
 	@echo "Supply Chain CTF Environment - Available Commands:"
 	@echo ""
 	@echo "🚀 Quick Start (Deep Dive Demo):"
-	@echo "  \033[36mmake setup-demo\033[0m              Complete automated setup for Challenges 1 & 2"
+	@echo "  \033[36mmake setup-demo\033[0m              Complete automated setup for Challenges 1-4"
 	@echo "  \033[36mmake verify-demo-readiness\033[0m   Verify all prerequisites are met"
 	@echo "  See DEMO-SETUP.md for detailed instructions"
 	@echo ""
@@ -710,6 +710,8 @@ build-recipe-api: ## Build the recipe-api container image
 		mv /tmp/recipe-api-build/_git /tmp/recipe-api-build/.git; \
 		echo "  ✓ Git history restored from _git"; \
 	fi
+	@echo "  Rewriting Dockerfile FROM to use host-accessible registry..."
+	@sed -i 's|registry.registry.svc.cluster.local:5000|localhost:$(REGISTRY_NODE_PORT)|g' /tmp/recipe-api-build/Dockerfile
 	@echo "  Building image with leaked git history..."
 	@cd /tmp/recipe-api-build && \
 		$(CONTAINER_RUNTIME) build -t localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
@@ -893,29 +895,41 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 	fi
 
 # ============================================================
-# Deep Dive Demo Setup (Challenges 1 & 2)
+# Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks verify-demo-readiness trigger-challenge2-build ## Complete automated setup for deep dive demo (Challenges 1 & 2)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+	@echo ""
+	@echo "Restoring kubectl context to CTF cluster..."
+	@kubectl config use-context kind-$(CLUSTER_NAME)
 	@echo ""
 	@echo "=========================================="
 	@echo "✓ Deep Dive Demo Environment Ready!"
 	@echo "=========================================="
 	@echo ""
 	@echo "Access Information:"
-	@echo "  Gitea:    http://localhost:$(GITEA_HTTP_PORT)"
-	@echo "  Registry: https://localhost:$(REGISTRY_NODE_PORT)"
-	@echo "  Username: ctf-admin"
-	@echo "  Password: CTFSecurePass123!"
+	@echo "  CTF Cluster:"
+	@echo "    Gitea:    http://localhost:$(GITEA_HTTP_PORT)"
+	@echo "    Registry: https://localhost:$(REGISTRY_NODE_PORT)"
+	@echo "    Username: ctf-admin"
+	@echo "    Password: CTFSecurePass123!"
+	@echo ""
+	@echo "  Production Cluster (Challenge 4):"
+	@echo "    Gitea:    http://localhost:$(PRODUCTION_GITEA_HTTP_PORT)"
+	@echo "    ArgoCD:   https://localhost:30443"
+	@echo "    Username: ctf-admin / admin (ArgoCD)"
+	@echo "    Password: CTFSecurePass123! / admin123 (ArgoCD)"
 	@echo ""
 	@echo "Challenges Ready:"
 	@echo "  • Challenge 1: PR Quality Check Attack"
 	@echo "  • Challenge 2: Container Layer Leak Attack"
+	@echo "  • Challenge 3: Base Image Poisoning Attack"
+	@echo "  • Challenge 4: GitOps Pipeline Compromise"
 	@echo ""
 	@echo "Start the Demo:"
 	@echo "  1. Open Gitea: http://localhost:$(GITEA_HTTP_PORT)"
 	@echo "  2. Create a pull request in recipe-api repository"
-	@echo "  3. Follow attack guide: challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
+	@echo "  3. Follow attack guides in challenges/challengeN/CTF-CHALLENGE-GUIDE.md"
 	@echo "  4. Monitor pipelines: kubectl get pipelineruns -n ctf-challenge -w"
 	@echo ""
 
@@ -979,7 +993,7 @@ verify-challenge3: ## Verify Challenge 3 setup
 	@kubectl get pods,svc -n registry 2>/dev/null || { echo "  ❌ Registry not running (run: make setup-registry)"; exit 1; }
 	@echo ""
 	@echo "Base Image in Registry:"
-	@if curl --cacert certs/registry.crt -s -u $(REGISTRY_USER):$(REGISTRY_PASS) \
+	@if curl --cacert setup/certs/registry.crt -s -u $(REGISTRY_USER):$(REGISTRY_PASS) \
 		https://localhost:$(REGISTRY_NODE_PORT)/v2/golang/tags/list 2>/dev/null | grep -q "1.25-alpine"; then \
 		echo "  ✓ golang:1.25-alpine exists in registry"; \
 	else \
@@ -988,7 +1002,7 @@ verify-challenge3: ## Verify Challenge 3 setup
 	fi
 	@echo ""
 	@echo "Victim Dockerfile Configuration:"
-	@if grep -q "FROM localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine" challenges/victim-repo-sample/Dockerfile; then \
+	@if grep -q "FROM.*golang:1.25-alpine" challenges/victim-repo-sample/Dockerfile; then \
 		echo "  ✓ Dockerfile uses local registry base image"; \
 	else \
 		echo "  ❌ Dockerfile not configured for challenge3"; \
