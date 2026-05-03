@@ -12,6 +12,16 @@ The server will start on `http://localhost:8080`
 
 ## API Endpoints
 
+### Health Check
+```bash
+curl http://localhost:8080/health
+```
+
+### Readiness Check
+```bash
+curl http://localhost:8080/ready
+```
+
 ### Get All Recipes
 ```bash
 curl http://localhost:8080/recipes

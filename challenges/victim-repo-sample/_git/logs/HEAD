@@ -1,2 +1,3 @@
 0000000000000000000000000000000000000000 236e20b5a76e1f22c5c5ff8e222f69da2071c1ee sherine-k <skhoury@redhat.com> 1777278744 +0200	commit (initial): Initial commit: Recipe API v1.0
 236e20b5a76e1f22c5c5ff8e222f69da2071c1ee 9d81c465f358fef7efd791966e482e1eece4ff78 sherine-k <skhoury@redhat.com> 1777278820 +0200	commit: Security fix: Remove accidentally committed production secrets
+9d81c465f358fef7efd791966e482e1eece4ff78 aa4b83c27e81a4d2b69595eb24398b1a97d46819 sherine-k <skhoury@redhat.com> 1777800087 +0200	commit: Add health and readiness endpoints

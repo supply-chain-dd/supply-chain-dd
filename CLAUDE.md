@@ -470,8 +470,9 @@ git show <commit-hash>
 **Git History Structure:**
 - Commit 1 (`236e20b`): Initial commit: Recipe API v1.0
 - Commit 2 (`9d81c46`): Security fix: Remove accidentally committed production secrets
+- Commit 3 (`aa4b83c`): Add health and readiness endpoints
 
-These commit IDs are referenced in challenge documentation and should be kept consistent when updating the repository.
+Commit 1 and 2 IDs are referenced in challenge documentation and should be kept consistent when updating the repository.
 
 ## Documentation Update Requirements
 

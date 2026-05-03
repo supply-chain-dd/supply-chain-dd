@@ -1,1 +1,1 @@
-Security fix: Remove accidentally committed production secrets
+Add health and readiness endpoints
