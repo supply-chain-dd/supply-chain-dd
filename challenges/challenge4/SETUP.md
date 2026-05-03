@@ -104,7 +104,7 @@ make setup-production-cluster
 This creates:
 - Cluster name: `ctf-production-cluster`
 - Context: `kind-ctf-production-cluster`
-- NodePorts: 30080 (HTTP), 30443 (HTTPS) for ArgoCD access, 30004 (Gitea HTTP), 30005 (Gitea SSH)
+- NodePorts: 30080 (ArgoCD HTTP), 30443 (ArgoCD HTTPS), 30004 (Gitea HTTP), 30005 (Gitea SSH), 30081 (recipe-api)
 
 **Verify**:
 ```bash

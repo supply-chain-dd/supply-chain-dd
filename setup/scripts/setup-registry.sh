@@ -47,6 +47,7 @@ OU = Security
 CN = localhost
 
 [req_ext]
+basicConstraints = critical,CA:TRUE
 subjectAltName = @alt_names
 
 [alt_names]

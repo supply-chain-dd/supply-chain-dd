@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Verify Deep Dive Demo Readiness
-# Checks all prerequisites for challenges 1 and 2
+# Checks all prerequisites for challenges 1-4
 #
 
 set -euo pipefail
@@ -10,6 +10,9 @@ CLUSTER_NAME="${CLUSTER_NAME:-ctf-cluster}"
 GITEA_HTTP_PORT="${GITEA_HTTP_PORT:-30002}"
 GITEA_URL="http://localhost:$GITEA_HTTP_PORT"
 REGISTRY_NODE_PORT="${REGISTRY_NODE_PORT:-30000}"
+PRODUCTION_CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-ctf-production-cluster}"
+PRODUCTION_GITEA_HTTP_PORT="${PRODUCTION_GITEA_HTTP_PORT:-30004}"
+PRODUCTION_GITEA_URL="http://localhost:$PRODUCTION_GITEA_HTTP_PORT"
 
 echo "=========================================="
 echo "Deep Dive Demo Readiness Check"
@@ -32,6 +35,11 @@ check_item() {
         return 1
     fi
 }
+
+# Switch to CTF cluster context before checking
+echo "Switching to CTF cluster context (kind-$CLUSTER_NAME)..."
+kubectl config use-context "kind-$CLUSTER_NAME" > /dev/null 2>&1 || true
+echo ""
 
 # 1. Cluster and Context
 echo "[1] Cluster and Context"
@@ -111,6 +119,22 @@ REGISTRY_PASS="CTFRegistryPass123!"
 
 check_item "recipe-api image exists" "curl --cacert certs/registry.crt -s -u $REGISTRY_USER:$REGISTRY_PASS https://localhost:$REGISTRY_NODE_PORT/v2/recipe-api/tags/list 2>/dev/null | jq -e '.tags' > /dev/null" || echo "  ⚠  (Will be created during demo)"
 
+# 8. Challenge 3 Prerequisites
+echo ""
+echo "[8] Challenge 3: Base Image Poisoning"
+check_item "golang:1.25-alpine in registry" "curl --cacert certs/registry.crt -s -u $REGISTRY_USER:$REGISTRY_PASS https://localhost:$REGISTRY_NODE_PORT/v2/golang/tags/list 2>/dev/null | grep -q '1.25-alpine'" || EXIT_CODE=1
+
+# 9. Challenge 4 Resources
+echo ""
+echo "[9] Challenge 4: GitOps Pipeline Compromise"
+check_item "Production cluster exists" "kind get clusters | grep -q '$PRODUCTION_CLUSTER_NAME'" || EXIT_CODE=1
+check_item "Production Gitea is running" "kubectl --context kind-$PRODUCTION_CLUSTER_NAME get pods -n gitea -l app.kubernetes.io/name=gitea 2>/dev/null | grep -q Running" || EXIT_CODE=1
+check_item "Production Gitea is accessible" "curl -f -s -o /dev/null $PRODUCTION_GITEA_URL" || EXIT_CODE=1
+check_item "ArgoCD is running" "kubectl --context kind-$PRODUCTION_CLUSTER_NAME get pods -n argocd -l app.kubernetes.io/name=argocd-server 2>/dev/null | grep -q Running" || EXIT_CODE=1
+check_item "production-manifests repo exists" "curl -s -u $GITEA_USER:$GITEA_PASS $PRODUCTION_GITEA_URL/api/v1/repos/$GITEA_USER/production-manifests | jq -e '.id' > /dev/null" || EXIT_CODE=1
+check_item "ArgoCD application deployed" "kubectl --context kind-$PRODUCTION_CLUSTER_NAME get application recipe-api-production -n argocd > /dev/null" || EXIT_CODE=1
+check_item "Production namespace exists" "kubectl --context kind-$PRODUCTION_CLUSTER_NAME get namespace production > /dev/null" || EXIT_CODE=1
+
 echo ""
 echo "=========================================="
 if [ $EXIT_CODE -eq 0 ]; then
@@ -118,15 +142,22 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "=========================================="
     echo ""
     echo "Access Information:"
-    echo "  Gitea:    $GITEA_URL"
-    echo "  Registry: https://localhost:$REGISTRY_NODE_PORT"
-    echo "  Username: ctf-admin"
-    echo "  Password: CTFSecurePass123!"
+    echo "  CTF Cluster:"
+    echo "    Gitea:    $GITEA_URL"
+    echo "    Registry: https://localhost:$REGISTRY_NODE_PORT"
+    echo "    Username: ctf-admin"
+    echo "    Password: CTFSecurePass123!"
+    echo ""
+    echo "  Production Cluster (Challenge 4):"
+    echo "    Gitea:    $PRODUCTION_GITEA_URL"
+    echo "    ArgoCD:   https://localhost:30443"
+    echo "    Username: ctf-admin / admin (ArgoCD)"
+    echo "    Password: CTFSecurePass123! / admin123 (ArgoCD)"
     echo ""
     echo "Next Steps:"
     echo "  1. Start Challenge 1: Create a PR in Gitea"
     echo "  2. Watch pipeline: kubectl get pipelineruns -n ctf-challenge -w"
-    echo "  3. Follow attack guide: challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
+    echo "  3. Follow attack guides: challenges/challengeN/CTF-CHALLENGE-GUIDE.md"
 else
     echo "❌ Some Prerequisites Missing"
     echo "=========================================="

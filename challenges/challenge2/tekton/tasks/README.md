@@ -14,9 +14,9 @@ Contains the basic build pipeline tasks:
 
 **Use this for**: Running the standard `push-build-pipeline` to learn about the container layer leak attack without supply chain security features.
 
-### `build-tasks-with-chains.yaml` (Chains + Conforma)
+### `build-tasks-with-chains.yaml` (Chains + SBOM)
 
-Contains three tasks that extend the standard pipeline with supply chain security:
+Contains tasks that extend the standard pipeline with supply chain security:
 
 #### `push-container-image-with-chains`
 Extends `push-container-image` with two Tekton task results:
@@ -29,38 +29,53 @@ Tekton Chains watches for completed TaskRuns that emit **both** of these results
 
 **Important design**: The `build-container-image` task does NOT output IMAGE results because it uses `--no-push` (tarball only). If it did, Tekton Chains would attempt to pull an unregistered image and fail.
 
-#### `wait-for-chains`
-Inserts a configurable delay (default 45 s) between the image push and the Conforma validation step. Tekton Chains signs images asynchronously after TaskRun completion; this task gives Chains time to finish before the policy validator runs.
+#### `generate-and-attest-sbom`
+Generates an SPDX JSON SBOM for the pushed container image using Trivy, then
+attaches it as an in-toto attestation using cosign. The attestation has
+predicateType `https://spdx.dev/Document`.
 
-#### `verify-with-conforma`
-Validates the pushed image against Conforma (Enterprise Contract) policy using the `ec` CLI:
-- Downloads `ec` binary from GitHub releases (public, no authentication required)
-- Parses the `IMAGES` ApplicationSnapshot JSON to extract the container image reference
-- Runs `ec validate image` with the cosign public key and SLSA policy checks
-- In **non-strict mode** (`STRICT=false`): reports violations but lets the pipeline continue — useful for learning/exploration (Challenge 2)
-- In **strict mode** (`STRICT=true`): fails the pipeline on any policy violation — used in Challenge 3
+- **Step 1 (generate-sbom)**: Runs `trivy image --format spdx-json` against the
+  pushed image. Normalizes Trivy's output to comply with SPDX 2.3 (fixes
+  hyphenated enum values like `OPERATING-SYSTEM` → `OPERATING_SYSTEM`).
+- **Step 2 (attest-sbom)**: Downloads cosign v2, then runs `cosign attest --type spdxjson`
+  to attach the SBOM as a signed in-toto attestation.
 
-Parameter names deliberately mirror the official `verify-enterprise-contract` task from
-`quay.io/redhat-appstudio-tekton-catalog/task-verify-enterprise-contract` so this task can be
-swapped to the official bundle in an environment with Red Hat registry credentials.
+The SBOM file is shared between steps via an emptyDir volume.
 
-**Why not the official OCI bundle?**
-The official bundle's step image (`registry.redhat.io/rhtas/ec-rhel9`) requires Red Hat registry
-credentials that are not available on a bare KinD cluster. This inline task is functionally
-equivalent and uses only public images (`alpine:3.18`).
+Prerequisites:
+- `cosign-signing-secret` Secret in ctf-challenge (cosign.key + cosign.password — created by `make setup-challenge2-tekton`)
+- `registry-docker-config` Secret (for registry authentication)
+- `registry-ca-cert` ConfigMap (for TLS trust)
+
+#### `wait-for-chains` (not used by the current pipeline)
+Inserts a configurable delay (default 45 s) after the image push. Available for
+pipelines that need to wait for Chains to finish signing before proceeding to a
+verification step.
+
+#### `verify-with-conforma` (not used by the current pipeline)
+Validates a container image against Conforma (Enterprise Contract) policy using the `ec` CLI.
+Not included in the pipeline because Tekton Chains generates PipelineRun attestations only
+after the pipeline completes — rules like `attestation_type.pipelinerun_attestation_found`
+cannot be satisfied from within the pipeline. Run `ec` from the command line instead.
+
+### `supporting-tasks.yaml`
+
+The `git-clone` task emits four results consumed by the chains pipeline:
+- `url` + `commit` — used by Conforma's `provenance_materials.git_clone_task_found` rule
+- `CHAINS-GIT_URL` + `CHAINS-GIT_COMMIT` — Tekton Chains type hints that populate the
+  SLSA provenance `materials[]` section with `{"uri":"git+<url>","digest":{"sha1":"<sha>"}}`
 
 ## Pipeline this supports
 
 `build-tasks-with-chains.yaml` is consumed by `push-build-pipeline-with-chains`:
 
 ```
-clone-repo
-  └─ build-go-app
-       └─ run-quality-checks
-            └─ build-container-image
-                 └─ push-container-image-with-chains   ← emits IMAGE_URL + IMAGE_DIGEST
-                      └─ wait-for-chains               ← sleep while Chains signs
-                           └─ verify-enterprise-contract ← ec validate image
+git-clone                                       <- emits url + commit + CHAINS-GIT_* results
+  +-- build-go-app
+       +-- run-quality-checks
+            +-- build-container-image
+                 +-- push-container-image-with-chains   <- emits IMAGE_URL + IMAGE_DIGEST
+                      +-- generate-and-attest-sbom      <- Trivy SBOM + cosign attest
 ```
 
 ## Switching Between Versions
@@ -71,32 +86,40 @@ kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks.yaml
 make trigger-challenge2-build
 ```
 
-### Chains + Conforma pipeline
+### Chains + SBOM pipeline
 ```bash
 # Prerequisites
 make setup-tektonchains        # Install and configure Tekton Chains
-make setup-challenge2-tekton   # Creates cosign-public-key Secret and deploys tasks
+make setup-challenge2-tekton   # Creates secrets and deploys tasks
 
 # Trigger
 make trigger-challenge2-build-with-chains
 
 # Monitor
 tkn pipelinerun logs -f -n ctf-challenge
+
+# After the pipeline finishes, validate with Conforma:
+SSL_CERT_FILE=certs/registry.crt \
+ec validate image \
+  --image localhost:30000/recipe-api:v1.0@sha256:<digest> \
+  --public-key cosign.pub \
+  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
+  --ignore-rekor --output text
 ```
 
 ## Differences Summary
 
 | Feature | build-tasks.yaml | build-tasks-with-chains.yaml |
 |---------|-----------------|------------------------------|
-| Container build | ✅ | ✅ |
-| Registry push | ✅ | ✅ |
-| PipelineRun provenance | ✅ (if Chains installed) | ✅ (if Chains installed) |
-| TaskRun provenance | ❌ | ✅ (if Chains installed) |
-| Image signing | ❌ | ✅ (if Chains installed) |
-| IMAGE_DIGEST result | ❌ | ✅ |
-| IMAGE_URL result | ❌ | ✅ |
-| Conforma policy validation | ❌ | ✅ |
-| STRICT enforcement | ❌ | Configurable (false = log, true = fail) |
+| Container build | Yes | Yes |
+| Registry push | Yes | Yes |
+| PipelineRun provenance | Yes (if Chains installed) | Yes (if Chains installed) |
+| TaskRun provenance | No | Yes (if Chains installed) |
+| Image signing | No | Yes (if Chains installed) |
+| IMAGE_DIGEST result | No | Yes |
+| IMAGE_URL result | No | Yes |
+| SBOM generation (Trivy) | No | Yes (SPDX JSON) |
+| SBOM attestation (cosign) | No | Yes |
 
 ## Verifying Signatures
 
@@ -119,17 +142,15 @@ kubectl get $TASKRUN -n ctf-challenge \
 # Verify cosign signature from the host (requires cosign CLI)
 cosign verify --insecure-ignore-tlog \
   --key cosign.pub \
-  --insecure-skip-tlog-verify \
-  --ca-cert certs/registry.crt \
+  --registry-cacert certs/registry.crt \
   localhost:30000/recipe-api:v1.0
 
-# Validate with ec CLI from the host
-ec validate image \
-  --image localhost:30000/recipe-api:v1.0@<digest> \
-  --public-key cosign.pub \
-  --policy '{"sources":[{"name":"minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}' \
-  --ignore-rekor \
-  --output text
+# Verify SBOM attestation
+cosign verify-attestation --insecure-ignore-tlog \
+  --key cosign.pub \
+  --type spdxjson \
+  --registry-cacert certs/registry.crt \
+  localhost:30000/recipe-api:v1.0
 ```
 
 ## Attack Scenario Impact
@@ -139,7 +160,7 @@ ec validate image \
 **Chains-Compatible Tasks**: The attack still works, but:
 - The image is cryptographically signed, creating an audit trail
 - The SLSA Provenance attestation records exactly what was built and how
+- The SBOM documents every package in the image
 - Detection tools can verify that the signed image contains leaked secrets
-- The Conforma validation step will detect the secrets (once a secrets policy is added)
 
 This illustrates an important supply chain security principle: **signatures verify authenticity, not security**. A properly signed image can still contain vulnerabilities or leaked secrets. Provenance tells you *where* an image came from, not *what's inside it*.

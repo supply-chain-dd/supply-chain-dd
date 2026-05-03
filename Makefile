@@ -163,12 +163,17 @@ verify-conforma: ## Verify Conforma (ec) CLI installation and signing key
 		|| echo "  ⚠  cosign-public-key Secret not found (run: make setup-challenge2-tekton)"
 	@echo ""
 	@echo "Example validation command:"
-	@echo "  SSL_CERT_FILE=certs/registry.crt \\"
+	@echo "  SSL_CERT_FILE=setup/certs/registry.crt \\"
 	@echo "  ec validate image \\"
-	@echo "    --image localhost:30000/<image>:<tag>@<digest> \\"
+	@echo "    --images '{\"components\":[{\"name\":\"recipe-api\",\"containerImage\":\"localhost:30000/recipe-api:v1.0\",\"source\":{\"git\":{\"url\":\"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git\",\"revision\":\"9d81c465f358fef7efd791966e482e1eece4ff78\"}}}]}' \\"
 	@echo "    --public-key cosign.pub \\"
-	@echo "    --policy '{\"sources\":[{\"name\":\"ctf-minimal\",\"policy\":[\"github.com/conforma/policy//policy/lib\",\"github.com/conforma/policy//policy/release\"],\"config\":{\"include\":[\"@minimal\"],\"exclude\":[]}}]}' \\"
+	@echo "    --policy '{\"sources\":[{\"name\":\"ctf-minimal\",\"policy\":[\"github.com/conforma/policy//policy/lib\",\"github.com/conforma/policy//policy/release\"],\"config\":{\"include\":[\"@minimal\"],\"exclude\":[\"base_image_registries.base_image_info_found\",\"cve.cve_results_found\"]}}]}' \\"
 	@echo "    --ignore-rekor \\"
+	@echo "    --extra-rule-data allowed_registry_prefixes=registry.registry.svc.cluster.local:5000 \\"
+	@echo "    --extra-rule-data allowed_registry_prefixes=localhost:30000 \\"
+	@echo "    --extra-rule-data allowed_registry_prefixes=docker.io \\"
+	@echo "    --extra-rule-data allowed_registry_prefixes=gcr.io \\"
+	@echo "    --extra-rule-data allowed_registry_prefixes=golang \\"
 	@echo "    --output text"
 
 # ============================================================
@@ -179,7 +184,7 @@ help: ## Display this help message
 	@echo "Supply Chain CTF Environment - Available Commands:"
 	@echo ""
 	@echo "🚀 Quick Start (Deep Dive Demo):"
-	@echo "  \033[36mmake setup-demo\033[0m              Complete automated setup for Challenges 1 & 2"
+	@echo "  \033[36mmake setup-demo\033[0m              Complete automated setup for Challenges 1-4"
 	@echo "  \033[36mmake verify-demo-readiness\033[0m   Verify all prerequisites are met"
 	@echo "  See DEMO-SETUP.md for detailed instructions"
 	@echo ""
@@ -705,6 +710,8 @@ build-recipe-api: ## Build the recipe-api container image
 		mv /tmp/recipe-api-build/_git /tmp/recipe-api-build/.git; \
 		echo "  ✓ Git history restored from _git"; \
 	fi
+	@echo "  Rewriting Dockerfile FROM to use host-accessible registry..."
+	@sed -i 's|registry.registry.svc.cluster.local:5000|localhost:$(REGISTRY_NODE_PORT)|g' /tmp/recipe-api-build/Dockerfile
 	@echo "  Building image with leaked git history..."
 	@cd /tmp/recipe-api-build && \
 		$(CONTAINER_RUNTIME) build -t localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
@@ -768,15 +775,30 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 		echo "     verify-enterprise-contract will fail until the key is present."; \
 	fi
 	@echo ""
+	@echo "Creating cosign signing key Secret for SBOM attestation task..."
+	@if kubectl get secret signing-secrets -n tekton-chains >/dev/null 2>&1; then \
+		COSIGN_KEY=$$(kubectl get secret signing-secrets -n tekton-chains -o jsonpath='{.data.cosign\.key}' | base64 -d); \
+		COSIGN_PASSWORD=$$(kubectl get secret signing-secrets -n tekton-chains -o jsonpath='{.data.cosign\.password}' | base64 -d); \
+		kubectl create secret generic cosign-signing-secret \
+			--from-literal=cosign.key="$$COSIGN_KEY" \
+			--from-literal=cosign.password="$$COSIGN_PASSWORD" \
+			-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -; \
+		echo "  ✓ cosign-signing-secret created in ctf-challenge namespace"; \
+	else \
+		echo "  ⚠  signing-secrets not found in tekton-chains namespace."; \
+		echo "     Run 'make setup-tektonchains' first."; \
+		echo "     generate-and-attest-sbom task will fail until the key is present."; \
+	fi
+	@echo ""
 	@echo "✓ Challenge 2 Tekton resources installed successfully"
 	@echo ""
 	@echo "Pipelines available:"
 	@echo "  push-build-pipeline             — original build + push"
-	@echo "  push-build-pipeline-with-chains — build + push + Conforma policy validation"
+	@echo "  push-build-pipeline-with-chains — build + push + sign + SBOM"
 	@echo ""
 	@echo "Next steps:"
 	@echo "  1. Trigger original pipeline:      make trigger-challenge2-build"
-	@echo "  2. Trigger Chains+Conforma pipeline: make trigger-challenge2-build-with-chains"
+	@echo "  2. Trigger Chains+SBOM pipeline:    make trigger-challenge2-build-with-chains"
 	@echo "  3. Monitor pipeline runs:          kubectl get pipelineruns -n ctf-challenge"
 	@if command -v kubectl-tkn >/dev/null 2>&1; then \
 		echo "  4. View logs: kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
@@ -827,9 +849,9 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	@echo ""
 	@echo "Image will be pushed to: registry.registry.svc.cluster.local:5000/recipe-api:latest"
 
-trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (build + push + Conforma validation)
+trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (build + push + sign + SBOM)
 	@echo "========================================"
-	@echo "Triggering Challenge 2 Build Pipeline (with Chains + Conforma)"
+	@echo "Triggering Challenge 2 Build Pipeline (with Chains + SBOM)"
 	@echo "========================================"
 	@echo ""
 	@if ! kubectl get pipeline push-build-pipeline-with-chains -n ctf-challenge >/dev/null 2>&1; then \
@@ -857,7 +879,7 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 	@echo "    4. build-container-image       — kaniko build"
 	@echo "    5. push-container-image        — push + emit IMAGE_URL/IMAGE_DIGEST"
 	@echo "       [Tekton Chains auto-signs image and creates SLSA attestation]"
-	@echo "    6. verify-with-conforma        — validate signature + attestation"
+	@echo "    6. generate-and-attest-sbom   — Trivy SPDX SBOM + cosign attest"
 	@echo ""
 	@echo "  Monitor with:"
 	@echo "    kubectl get pipelineruns -n ctf-challenge -w"
@@ -873,29 +895,41 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 	fi
 
 # ============================================================
-# Deep Dive Demo Setup (Challenges 1 & 2)
+# Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks verify-demo-readiness trigger-challenge2-build ## Complete automated setup for deep dive demo (Challenges 1 & 2)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+	@echo ""
+	@echo "Restoring kubectl context to CTF cluster..."
+	@kubectl config use-context kind-$(CLUSTER_NAME)
 	@echo ""
 	@echo "=========================================="
 	@echo "✓ Deep Dive Demo Environment Ready!"
 	@echo "=========================================="
 	@echo ""
 	@echo "Access Information:"
-	@echo "  Gitea:    http://localhost:$(GITEA_HTTP_PORT)"
-	@echo "  Registry: https://localhost:$(REGISTRY_NODE_PORT)"
-	@echo "  Username: ctf-admin"
-	@echo "  Password: CTFSecurePass123!"
+	@echo "  CTF Cluster:"
+	@echo "    Gitea:    http://localhost:$(GITEA_HTTP_PORT)"
+	@echo "    Registry: https://localhost:$(REGISTRY_NODE_PORT)"
+	@echo "    Username: ctf-admin"
+	@echo "    Password: CTFSecurePass123!"
+	@echo ""
+	@echo "  Production Cluster (Challenge 4):"
+	@echo "    Gitea:    http://localhost:$(PRODUCTION_GITEA_HTTP_PORT)"
+	@echo "    ArgoCD:   https://localhost:30443"
+	@echo "    Username: ctf-admin / admin (ArgoCD)"
+	@echo "    Password: CTFSecurePass123! / admin123 (ArgoCD)"
 	@echo ""
 	@echo "Challenges Ready:"
 	@echo "  • Challenge 1: PR Quality Check Attack"
 	@echo "  • Challenge 2: Container Layer Leak Attack"
+	@echo "  • Challenge 3: Base Image Poisoning Attack"
+	@echo "  • Challenge 4: GitOps Pipeline Compromise"
 	@echo ""
 	@echo "Start the Demo:"
 	@echo "  1. Open Gitea: http://localhost:$(GITEA_HTTP_PORT)"
 	@echo "  2. Create a pull request in recipe-api repository"
-	@echo "  3. Follow attack guide: challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
+	@echo "  3. Follow attack guides in challenges/challengeN/CTF-CHALLENGE-GUIDE.md"
 	@echo "  4. Monitor pipelines: kubectl get pipelineruns -n ctf-challenge -w"
 	@echo ""
 
@@ -959,7 +993,7 @@ verify-challenge3: ## Verify Challenge 3 setup
 	@kubectl get pods,svc -n registry 2>/dev/null || { echo "  ❌ Registry not running (run: make setup-registry)"; exit 1; }
 	@echo ""
 	@echo "Base Image in Registry:"
-	@if curl --cacert certs/registry.crt -s -u $(REGISTRY_USER):$(REGISTRY_PASS) \
+	@if curl --cacert setup/certs/registry.crt -s -u $(REGISTRY_USER):$(REGISTRY_PASS) \
 		https://localhost:$(REGISTRY_NODE_PORT)/v2/golang/tags/list 2>/dev/null | grep -q "1.25-alpine"; then \
 		echo "  ✓ golang:1.25-alpine exists in registry"; \
 	else \
@@ -968,7 +1002,7 @@ verify-challenge3: ## Verify Challenge 3 setup
 	fi
 	@echo ""
 	@echo "Victim Dockerfile Configuration:"
-	@if grep -q "FROM localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine" challenges/victim-repo-sample/Dockerfile; then \
+	@if grep -q "FROM.*golang:1.25-alpine" challenges/victim-repo-sample/Dockerfile; then \
 		echo "  ✓ Dockerfile uses local registry base image"; \
 	else \
 		echo "  ❌ Dockerfile not configured for challenge3"; \

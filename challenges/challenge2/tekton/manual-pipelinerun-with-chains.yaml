@@ -1,9 +1,9 @@
 ---
-# Manual PipelineRun for Challenge 2 — Chains + Conforma variant
+# Manual PipelineRun for Challenge 2 — Chains variant
 # Triggers push-build-pipeline-with-chains, which:
 #   1. Builds and pushes the image (emitting IMAGE_URL + IMAGE_DIGEST)
 #   2. Lets Tekton Chains sign the image and generate a SLSA Provenance attestation
-#   3. Validates the image with the Conforma CLI (ec validate image)
+#   3. Generates an SPDX JSON SBOM and attests it with cosign
 apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
@@ -25,11 +25,6 @@ spec:
       value: recipe-api
     - name: image-tag
       value: v1.0
-    - name: strict
-      value: "false"
-    # Increase if Tekton Chains is slow to sign on your hardware
-    - name: chains-wait-seconds
-      value: "45"
   workspaces:
     - name: source
       volumeClaimTemplate:

@@ -48,6 +48,9 @@ nodes:
       - containerPort: 30005
         hostPort: 30005
         protocol: TCP
+      - containerPort: 30081
+        hostPort: 30081
+        protocol: TCP
 EOF
 
 # Create the cluster
