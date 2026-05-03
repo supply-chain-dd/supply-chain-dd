@@ -36,6 +36,11 @@ check_item() {
     fi
 }
 
+# Switch to CTF cluster context before checking
+echo "Switching to CTF cluster context (kind-$CLUSTER_NAME)..."
+kubectl config use-context "kind-$CLUSTER_NAME" > /dev/null 2>&1 || true
+echo ""
+
 # 1. Cluster and Context
 echo "[1] Cluster and Context"
 check_item "KinD cluster exists" "kind get clusters | grep -q '$CLUSTER_NAME'" || EXIT_CODE=1
