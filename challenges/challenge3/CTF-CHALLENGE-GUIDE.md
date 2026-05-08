@@ -217,6 +217,14 @@ FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}
 
 ## Step 6: Verify Malware Execution in Production
 
+At the moment, the recipe-api container images cannot be synched from the ctf-cluster kind cluster (and its internal registry) to the production ctf-production-cluster kind cluster.
+
+You can achieve that manually:
+```
+podman save localhost:30000/recipe-api:v1.0 -o recipe-api.tar
+kind load image-archive recipe-api.tar --name ctf-production-cluster
+```
+
 If the recipe-api is deployed to the cluster:
 
 ```bash
