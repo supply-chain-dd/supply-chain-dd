@@ -2492,7 +2492,6 @@ spec:
     - name: human-approval
       condition: len(attestation.predicate.approvers) >= 2
 ```
-```
 
 ### 5. Add to docs/references.md
 
