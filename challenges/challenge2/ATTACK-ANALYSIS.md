@@ -16,13 +16,11 @@ All components for Attack #2 are now in place and tested.
 
 #### 2. Git Repository with Secrets
 - **Commits**:
-  - `236e20b` - Initial commit: Recipe API v1.0 (contains `.env.production` with secrets)
-    - Database credentials
-    - API keys (Stripe, SendGrid)
-    - Session secrets
+  - `26e05de` - Initial commit: Recipe API v1.0 (contains `.env.production` with secrets)
     - **Registry credentials**: `ctf-admin` / `CTFRegistryPass123!`
+    - **ArgoCD production deployment credentials** (server, auth token, app name, namespace)
     - **FLAG**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}`
-  - `9d81c46` - Security fix: Remove accidentally committed production secrets
+  - `ed9f32e` - Security fix: Remove accidentally committed production secrets
 
 #### 3. Updated Attack #1 Flag
 - **Old**: `FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}`
@@ -61,7 +59,7 @@ Attack #1 (Tekton PWN)
          ↓
    Extract git history
          ↓
-   git show 236e20b:.env.production
+   git show 26e05de:.env.production
          ↓
    Capture FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}
          ↓

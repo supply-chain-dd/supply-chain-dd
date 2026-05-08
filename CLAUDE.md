@@ -468,9 +468,9 @@ git show <commit-hash>
 - Build targets in Makefile: Handle the conversion when building images
 
 **Git History Structure:**
-- Commit 1 (`236e20b`): Initial commit: Recipe API v1.0
-- Commit 2 (`9d81c46`): Security fix: Remove accidentally committed production secrets
-- Commit 3 (`aa4b83c`): Add health and readiness endpoints
+- Commit 1 (`26e05de`): Initial commit: Recipe API v1.0
+- Commit 2 (`ed9f32e`): Security fix: Remove accidentally committed production secrets
+- Commit 3 (`f604902`): Add health and readiness endpoints
 
 Commit 1 and 2 IDs are referenced in challenge documentation and should be kept consistent when updating the repository.
 

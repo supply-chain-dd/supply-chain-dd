@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/sherine-k/supply-chain-dd/internal/recipe"
+	"gitea/recipe-api/internal/recipe"
 )
 
 func main() {

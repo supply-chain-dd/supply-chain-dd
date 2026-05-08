@@ -1,3 +1,3 @@
-module gitea/victim-repo-sample/scripts/quality-check
+module gitea/recipe-api/scripts/quality-check
 
 go 1.25.4

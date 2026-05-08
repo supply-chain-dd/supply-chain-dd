@@ -422,7 +422,7 @@ Participants will learn:
 **Stuck?** Check the [ATTACK2-EXPLOITATION-GUIDE.md](./ATTACK2-EXPLOITATION-GUIDE.md) for detailed walkthroughs.
 
 **Questions?** Review the git history structure:
-- Commit 1 (`236e20b`): Initial commit with the Recipe API v1.0
-- Commit 2 (`9d81c46`): Security fix - removed accidentally committed production secrets
+- Commit 1 (`26e05de`): Initial commit with the Recipe API v1.0
+- Commit 2 (`ed9f32e`): Security fix - removed accidentally committed production secrets
 
 The secrets are in Commit 1!
