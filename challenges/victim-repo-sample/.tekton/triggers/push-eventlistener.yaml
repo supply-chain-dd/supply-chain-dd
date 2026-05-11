@@ -80,7 +80,7 @@ spec:
           git.repo: $(tt.params.repo-name)
           git.ref: $(tt.params.ref)
       spec:
-        serviceAccountName: pr-pipeline-readonly
+        serviceAccountName: challenge2-pipeline
         pipelineRef:
           name: push-build-pipeline
         params:

@@ -1,3 +1,3 @@
-module github.com/sherine-k/supply-chain-dd
+module gitea/recipe-api
 
 go 1.25.4

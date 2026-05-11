@@ -13,6 +13,8 @@ Ensure you have the following installed:
 - **helm**: Kubernetes package manager (https://helm.sh/)
 - **cosign**: Container signing tool (https://docs.sigstore.dev/cosign/installation/) - Required for Tekton Chains
 - **make**: Build automation tool
+- **scorecard**: CLI to run scorecard locally
+- **tkn**: CLI to query tekton resources on the cluster
 
 ### Setup
 

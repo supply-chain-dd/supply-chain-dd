@@ -10,7 +10,7 @@ metadata:
     tekton.dev/pipeline: push-build-pipeline
     trigger-type: manual
 spec:
-  serviceAccountName: pr-pipeline-readonly
+  serviceAccountName: challenge2-pipeline
   pipelineRef:
     name: push-build-pipeline
   params:

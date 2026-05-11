@@ -294,7 +294,7 @@ make verify-conforma           # check ec is installed and print a sample valida
 # git URL and revision are passed to Conforma for slsa_source_correlated checks.
 SSL_CERT_FILE=setup/certs/registry.crt \
 ec validate image \
-  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git","revision":"9d81c465f358fef7efd791966e482e1eece4ff78"}}}]}' \
+  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git","revision":"ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e"}}}]}' \
   --public-key cosign.pub \
   --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
   --ignore-rekor \
@@ -331,7 +331,7 @@ kubectl get pipelineruns -n ctf-challenge -w
 # After the pipeline finishes, validate from the command line:
 SSL_CERT_FILE=setup/certs/registry.crt \
 ec validate image \
-  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git","revision":"9d81c465f358fef7efd791966e482e1eece4ff78"}}}]}' \
+  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git","revision":"ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e"}}}]}' \
   --public-key cosign.pub \
   --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
   --ignore-rekor \

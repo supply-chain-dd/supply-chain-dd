@@ -288,7 +288,7 @@ This is intentional - the demo requires showing the manual attack steps!
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                 CTF Cluster (ctf-cluster)                    │
+│                 CTF Cluster (ctf-cluster)                   │
 │                                                             │
 │  ┌────────────┐      ┌──────────────┐     ┌─────────────┐   │
 │  │   Gitea    │────▶│   Tekton     │───▶│  Registry   │   │
@@ -308,7 +308,7 @@ This is intentional - the demo requires showing the manual attack steps!
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│            Production Cluster (ctf-production-cluster)       │
+│            Production Cluster (ctf-production-cluster)      │
 │                                                             │
 │  ┌────────────┐      ┌──────────────┐     ┌─────────────┐   │
 │  │ Gitea      │◀────│   ArgoCD     │───▶│ Production  │   │
@@ -323,6 +323,67 @@ This is intentional - the demo requires showing the manual attack steps!
 │  Challenge 4: Attacker uses leaked ArgoCD token to inject   │
 │  malicious manifests via production Gitea                   │
 └─────────────────────────────────────────────────────────────┘
+```
+
+### Mermaid Diagram
+
+```mermaid
+graph TB
+    subgraph ctfCluster["CI Cluster <br>(ctf-cluster)"]
+        direction LR
+        subgraph giteaCI["gitea Namespace"]
+            direction LR
+            giteaSvcCI[Gitea Service<br/>nodePort: 30002]
+            giteaDeployCI[Gitea Deployment]
+            recipeRepo[recipe-api Repository]
+            webhook1[Webhook: PR]
+            webhook2[Webhook: build-push]
+            recipeRepo --> webhook1
+            recipeRepo --> webhook2
+            giteaSvcCI -.-> giteaDeployCI
+        end
+        subgraph tektonNS["tekton-pipelines Namespace"]
+           pipelineCtrl[Pipelines Controller]
+           eventsCtrl[Events Controller]
+           triggersCtrl[Triggers Controller]
+        end
+        subgraph ctfChallenge["ctf-challenge Namespace"]
+            direction LR
+            PRPipeline[pr-quality-check pipeline]
+            PushPipeline[build-push pipeline]
+            EL["Tasks<br>EventListeners<br/>ServiceAccounts<br/>Secrets"]
+
+        end
+        subgraph registryNS["Registry Namespace"]
+            registrySvc[Container Registry Service]
+        end
+        tektonNS ~~~ ctfChallenge
+        giteaCI ~~~ ctfChallenge
+        ctfChallenge ~~~ registryNS
+        webhook1 --> PRPipeline
+        webhook2 --> PushPipeline
+        PushPipeline <--> registrySvc
+    end
+    subgraph ctfProdCluster["Prod Cluster <br>(ctf-production-cluster)"]
+    direction TB
+         subgraph ProdGitea["gitea Namespace"]
+            direction LR
+            giteaSvcProd[Gitea Service<br/>nodePort: 30004]
+            giteaDeployProd[Gitea Deployment]
+            manifestsRepo[production-manifests Repository]
+        end
+        subgraph argocdNS["ArgoCD Namespace"]
+            argoCDCtrl[ArgoCD Controller]
+        end        
+        subgraph ProdNS["Production Namespace"]
+            deployment["recipe-api<br/>deployment"]
+        end
+
+        argocdNS -->|sync| manifestsRepo
+        argocdNS -->|deploy| ProdNS
+        registrySvc -.->|pulls images| argoCDCtrl
+    end
+    ctfCluster ~~~ ctfProdCluster
 ```
 
 ## Next Steps

@@ -5,12 +5,13 @@
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build trigger-challenge2-build-with-chains
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3
 .PHONY: setup-production-cluster setup-production-gitea seed-production-repo load-image-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
-.PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness
+.PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard
 
 CLUSTER_NAME ?= ctf-cluster
 GITEA_HELM_VERSION ?= v12.5.0
 TEKTON_PIPELINE_VERSION ?= v0.53.0
 TEKTON_CHAINS_VERSION ?= v0.26.3
+TEKTON_DASHBOARD_VERSION ?= v0.67.0
 CONFORMA_VERSION ?= v0.9.25
 KYVERNO_VERSION ?= v3.7.1
 KUBESCAPE_VERSION ?= latest
@@ -192,7 +193,7 @@ help: ## Display this help message
 	@grep -E '^(check-cli-tools|install-tkn|install-kubescape|install-conforma):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Environment Setup:"
-	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-tektonchains|setup-registry|configure-registry-tls|seed-victim-repo|setup-ctf-challenge|setup-ctf-challenge-secure|setup-gitea-webhooks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-tekton-dashboard|setup-tektonchains|setup-registry|configure-registry-tls|seed-victim-repo|setup-ctf-challenge|setup-ctf-challenge-secure|setup-gitea-webhooks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Tools:"
 	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape|setup-conforma):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -257,6 +258,9 @@ setup-tekton: ## Install Tekton Pipelines and Triggers
 		echo "   make install-tkn"; \
 		echo ""; \
 	fi
+
+setup-tekton-dashboard: ## Install Tekton Dashboard (web UI)
+	@cd setup && ./scripts/setup-tekton-dashboard.sh
 
 setup-tektonchains: ## Install and configure Tekton Chains for supply chain security
 	@cd setup && ./scripts/setup-tektonchains.sh
@@ -402,9 +406,13 @@ status: ## Show environment status
 	@echo "Registry:"
 	@kubectl get pods,svc -n registry 2>/dev/null || echo "  Registry not running (run: make setup-registry)"
 	@echo ""
+	@echo "Tekton Dashboard:"
+	@kubectl get pods -n tekton-pipelines -l app.kubernetes.io/part-of=tekton-dashboard 2>/dev/null || echo "  Tekton Dashboard not installed (run: make setup-tekton-dashboard)"
+	@echo ""
 	@echo "Access URLs:"
-	@echo "  Gitea:    http://localhost:30002"
-	@echo "  Registry: https://localhost:$(REGISTRY_NODE_PORT)"
+	@echo "  Gitea:            http://localhost:30002"
+	@echo "  Tekton Dashboard: http://localhost:30001"
+	@echo "  Registry:         https://localhost:$(REGISTRY_NODE_PORT)"
 
 verify-ctf: ## Verify Tekton CTF challenge installation
 	@echo "Verifying Tekton CTF Challenge..."
@@ -548,8 +556,19 @@ setup-kubescape: ## Deploy Kubescape security scanner
 	@helm upgrade --install kubescape kubescape/kubescape-operator \
 		--namespace kubescape \
 		--set clusterName=$(CLUSTER_NAME) \
-		--set capabilities.continuousScan=enable \
-		--wait --timeout=5m
+	        --set kubescape.resources.requests.memory=800Mi \
+                --set kubescape.resources.limits.memory=1500Mi \
+                --set kubescape.resources.requests.cpu=500m \
+                --set kubescape.resources.limits.cpu=1000m
+	#	--set capabilities.continuousScan=enable \
+	#	--set capabilities.runtimeObservability=disable \
+	#	--set capabilities.runtimeDetection=disable \
+	#	--set capabilities.malwareDetection=disable \
+	#	--set capabilities.nodeProfileService=disable \
+	#	--set capabilities.networkPolicyService=disable \
+	#	--set capabilities.networkEventsStreaming=disable \
+	#	--set capabilities.nodeSbomGeneration=disable \
+	#	--wait --timeout=5m
 	@echo ""
 	@echo "Waiting for Kubescape to be ready..."
 	@kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kubescape -n kubescape --timeout=300s 2>/dev/null || echo "  Note: Some Kubescape components may still be initializing"
@@ -898,7 +917,7 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 # Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
 	@echo ""
 	@echo "Restoring kubectl context to CTF cluster..."
 	@kubectl config use-context kind-$(CLUSTER_NAME)
@@ -909,8 +928,9 @@ setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-ctf-ch
 	@echo ""
 	@echo "Access Information:"
 	@echo "  CTF Cluster:"
-	@echo "    Gitea:    http://localhost:$(GITEA_HTTP_PORT)"
-	@echo "    Registry: https://localhost:$(REGISTRY_NODE_PORT)"
+	@echo "    Gitea:            http://localhost:$(GITEA_HTTP_PORT)"
+	@echo "    Tekton Dashboard: http://localhost:30001"
+	@echo "    Registry:         https://localhost:$(REGISTRY_NODE_PORT)"
 	@echo "    Username: ctf-admin"
 	@echo "    Password: CTFSecurePass123!"
 	@echo ""
