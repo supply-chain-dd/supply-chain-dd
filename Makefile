@@ -548,8 +548,19 @@ setup-kubescape: ## Deploy Kubescape security scanner
 	@helm upgrade --install kubescape kubescape/kubescape-operator \
 		--namespace kubescape \
 		--set clusterName=$(CLUSTER_NAME) \
-		--set capabilities.continuousScan=enable \
-		--wait --timeout=5m
+	        --set kubescape.resources.requests.memory=800Mi \
+                --set kubescape.resources.limits.memory=1500Mi \
+                --set kubescape.resources.requests.cpu=500m \
+                --set kubescape.resources.limits.cpu=1000m
+	#	--set capabilities.continuousScan=enable \
+	#	--set capabilities.runtimeObservability=disable \
+	#	--set capabilities.runtimeDetection=disable \
+	#	--set capabilities.malwareDetection=disable \
+	#	--set capabilities.nodeProfileService=disable \
+	#	--set capabilities.networkPolicyService=disable \
+	#	--set capabilities.networkEventsStreaming=disable \
+	#	--set capabilities.nodeSbomGeneration=disable \
+	#	--wait --timeout=5m
 	@echo ""
 	@echo "Waiting for Kubescape to be ready..."
 	@kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kubescape -n kubescape --timeout=300s 2>/dev/null || echo "  Note: Some Kubescape components may still be initializing"
@@ -898,7 +909,7 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 # Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
 	@echo ""
 	@echo "Restoring kubectl context to CTF cluster..."
 	@kubectl config use-context kind-$(CLUSTER_NAME)
