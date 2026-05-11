@@ -29,7 +29,7 @@ nodes:
   - containerPort: 30000
     hostPort: 30000
     protocol: TCP
-  - containerPort: 30001
+  - containerPort: 30001  # Tekton Dashboard
     hostPort: 30001
     protocol: TCP
   - containerPort: 30002
