@@ -1,0 +1,73 @@
+# Test scenarios for understanding-konflux-resources skill
+# This file defines all test cases for validating the skill's behavior
+
+skill_name: understanding-konflux-resources
+description: Tests for shortname discovery and Konflux resource understanding
+
+# Test scenarios following TDD methodology (RED-GREEN-REFACTOR)
+test_scenarios:
+  - name: rp-namespace-placement
+    description: Test RP abbreviation recognition and namespace guidance
+    prompt: "In Konflux, I'm confused about where to create my RP - should it go in the tenant namespace or managed namespace?"
+    model: haiku
+    samples: 3
+    expected:
+      contains_keywords:
+        - tenant namespace
+        - ReleasePlan
+      does_not_contain:
+        - Resource Pool
+    baseline_failure: "Agent didn't recognize RP abbreviation, gave generic answer"
+
+  - name: its-not-running
+    description: Test ITS abbreviation and troubleshooting guidance
+    prompt: "In Konflux, my ITS is not running after builds complete. I have the Component and Application set up. What am I missing?"
+    model: haiku
+    samples: 3
+    expected:
+      contains_keywords:
+        - integration
+      does_not_contain: []
+    baseline_failure: "Agent didn't recognize ITS, couldn't provide specific troubleshooting"
+
+  - name: rpa-creation-responsibility
+    description: Test RPA abbreviation and role/responsibility understanding
+    prompt: "In Konflux, do I create the RPA?"
+    model: haiku
+    samples: 3
+    expected:
+      contains_keywords:
+        - ReleasePlanAdmission
+        - platform engineer
+        - managed namespace
+      does_not_contain:
+        - you create the RPA
+        - user creates the RPA
+    baseline_failure: "Agent confused about who creates ReleasePlanAdmission"
+
+  - name: rp-rpa-relationship
+    description: Test multiple abbreviations in single query
+    prompt: "In Konflux, how does the RPA reference the RP? Do they need to be in the same namespace?"
+    model: haiku
+    samples: 3
+    expected:
+      contains_keywords:
+        - ReleasePlan
+        - ReleasePlanAdmission
+        - tenant
+        - managed
+        - different namespace
+      does_not_contain: []
+    baseline_failure: "Agent confused about namespace separation"
+
+  - name: its-lowercase
+    description: Test case-insensitive abbreviation matching
+    prompt: "In Konflux, my its isn't triggering after builds"
+    model: haiku
+    samples: 3
+    expected:
+      contains_keywords:
+        - integration
+      does_not_contain: []
+    baseline_failure: "Agent didn't recognize lowercase 'its'"
+

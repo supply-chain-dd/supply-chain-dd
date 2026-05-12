@@ -1,0 +1,19 @@
+# skill_digest: e80c8209ad23b68350bd657d2e171ecdd9cf826b295b86a83aa85c585139552d
+Based on the skill output, let me directly answer your question about ReleasePlan (RP) namespace placement:
+
+You should create your ReleasePlan (RP) in the **tenant namespace**. 
+
+Key points:
+- ReleasePlan goes in YOUR tenant namespace (the workspace you control)
+- ReleasePlanAdmission (RPA) goes in the managed namespace (controlled by platform team)
+- The ReleasePlan references your Application
+- The ReleasePlanAdmission will reference your ReleasePlan and contain release credentials
+
+A common mistake is thinking the ReleasePlan should go in the managed namespace for security. This is incorrect. The tenant namespace is where you create the ReleasePlan, which defines the release action for your Application.
+
+Workflow:
+1. You create ReleasePlan in tenant namespace
+2. Platform Engineer creates corresponding ReleasePlanAdmission in managed namespace
+3. When ready to release, you create a Release CR that references the ReleasePlan and a Snapshot
+
+Would you like me to elaborate on any part of this explanation?
