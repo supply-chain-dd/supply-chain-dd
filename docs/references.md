@@ -1,6 +1,7 @@
 # References
 
 ## on supply chain security
+* [SLSA L3 E2E] https://github.com/arewm/slsa-konflux-example/blob/main/blog-draft-slsa-e2e-with-konflux.md
 * [AMPEL](https://slsa.dev/blog/2025/10/slsa-e2e-with-ampel)
 * [conforma](https://conforma.dev/docs/user-guide/)
 * https://slides.arewm.com/presentations/2026-03-23-from-mild-to-wild/ 

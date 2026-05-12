@@ -13,10 +13,6 @@ p "1. Vérification de Kyverno"
 pe "kubectl get pods -n kyverno"
 pe "kubectl get clusterpolicy"
 
-p "═══════════════════════════════════════════════════════"
-p "  Les 2 politiques de sécurité"
-p "═══════════════════════════════════════════════════════"
-
 p "2. Application des politiques Kyverno"
 pe "kubectl apply -f security/kyverno-policies/restrict-tekton-serviceaccounts.yaml"
 pe "kubectl apply -f security/kyverno-policies/block-dangerous-commands.yaml"
@@ -29,9 +25,9 @@ p "Politique 2 : block-dangerous-task-commands (mode Audit)"
 p "→ Détecte les commandes dangereuses (go run, curl|bash, scripts repo)"
 pe "kubectl get clusterpolicy block-dangerous-task-commands -o yaml"
 
-p "═══════════════════════════════════════════════════════"
-p "  Tests d'admission"
-p "═══════════════════════════════════════════════════════"
+
+p " Tests d'admission"
+
 
 p "3. Test : PipelineRun SANS serviceAccountName → BLOQUÉ par Kyverno"
 
@@ -99,17 +95,16 @@ pe "kubectl create -f /tmp/kyverno-demo-secure.yaml 2>&1 || true"
 p "Attente de la fin du PipelineRun..."
 kubectl wait --for=condition=Succeeded pipelinerun/test-secure-pr -n ctf-challenge --timeout=120s 2>/dev/null || true
 
-p "═══════════════════════════════════════════════════════"
-p "  Rapports de politique Kyverno"
-p "═══════════════════════════════════════════════════════"
 
 p "5. PolicyReports générés par la politique Audit (block-dangerous-task-commands)"
 pe "kubectl get policyreport -n ctf-challenge"
 
-p "Détail des violations détectées (go run, scripts dangereux) :"
-pe "kubectl get policyreport -n ctf-challenge -o yaml"
+p "Détail des violations pour le PipelineRun test-secure-pr :"
+pe "kubectl get policyreport -n ctf-challenge -o json | jq '.items[].results[]? | select(.resources[]?.name // \"\" | contains(\"test-secure-pr\")) | {rule, result, resource: .resources[].name, message}'"
 
 p "Nettoyage"
+p "Suppression des politiques Kyverno avant de supprimer le PipelineRun"
+pe "kubectl delete clusterpolicy restrict-tekton-pr-pipelines block-dangerous-task-commands 2>/dev/null || true"
 pe "kubectl delete pipelinerun test-secure-pr -n ctf-challenge 2>/dev/null || true"
 
 p "✅"

