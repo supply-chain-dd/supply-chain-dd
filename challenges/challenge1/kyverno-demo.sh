@@ -13,14 +13,27 @@ p "1. Vérification de Kyverno"
 pe "kubectl get pods -n kyverno"
 pe "kubectl get clusterpolicy"
 
+p "═══════════════════════════════════════════════════════"
+p "  Les 2 politiques de sécurité"
+p "═══════════════════════════════════════════════════════"
+
 p "2. Application des politiques Kyverno"
-pe "kubectl apply -f security/kyverno-policies/"
-pe "kubectl get clusterpolicy"
+pe "kubectl apply -f security/kyverno-policies/restrict-tekton-serviceaccounts.yaml"
+pe "kubectl apply -f security/kyverno-policies/block-dangerous-commands.yaml"
 
-p "Politique principale (mode Enforce) :"
-pe "kubectl get clusterpolicy restrict-tekton-pr-pipelines -o yaml | head -50"
+p "Politique 1 : restrict-tekton-pr-pipelines (mode Enforce)"
+p "→ Bloque la création de PipelineRun/TaskRun avec un SA non autorisé"
+pe "kubectl get clusterpolicy restrict-tekton-pr-pipelines -o yaml"
 
-p "3. Test : PipelineRun SANS serviceAccountName → BLOQUÉ"
+p "Politique 2 : block-dangerous-task-commands (mode Audit)"
+p "→ Détecte les commandes dangereuses (go run, curl|bash, scripts repo)"
+pe "kubectl get clusterpolicy block-dangerous-task-commands -o yaml"
+
+p "═══════════════════════════════════════════════════════"
+p "  Tests d'admission"
+p "═══════════════════════════════════════════════════════"
+
+p "3. Test : PipelineRun SANS serviceAccountName → BLOQUÉ par Kyverno"
 
 cat > /tmp/kyverno-demo-vulnerable.yaml <<'YAML'
 apiVersion: tekton.dev/v1beta1
@@ -52,7 +65,6 @@ YAML
 pe "kubectl create -f /tmp/kyverno-demo-vulnerable.yaml 2>&1 || true"
 
 p "4. Test : PipelineRun avec pr-pipeline-readonly → AUTORISÉ"
-pe "kubectl apply -f security/rbac/minimal-serviceaccounts.yaml"
 
 cat > /tmp/kyverno-demo-secure.yaml <<'YAML'
 apiVersion: tekton.dev/v1beta1
@@ -84,11 +96,20 @@ YAML
 
 pe "kubectl create -f /tmp/kyverno-demo-secure.yaml 2>&1 || true"
 
-p "5. Rapports de politique Kyverno"
-pe "kubectl get policyreport -A 2>/dev/null || echo 'Pas de rapports disponibles'"
+p "Attente de la fin du PipelineRun..."
+kubectl wait --for=condition=Succeeded pipelinerun/test-secure-pr -n ctf-challenge --timeout=120s 2>/dev/null || true
+
+p "═══════════════════════════════════════════════════════"
+p "  Rapports de politique Kyverno"
+p "═══════════════════════════════════════════════════════"
+
+p "5. PolicyReports générés par la politique Audit (block-dangerous-task-commands)"
+pe "kubectl get policyreport -n ctf-challenge"
+
+p "Détail des violations détectées (go run, scripts dangereux) :"
+pe "kubectl get policyreport -n ctf-challenge -o yaml"
 
 p "Nettoyage"
 pe "kubectl delete pipelinerun test-secure-pr -n ctf-challenge 2>/dev/null || true"
 
-p "Prochaine étape : Network Policies + RBAC → ./network-policy-demo.sh"
 p "✅"
