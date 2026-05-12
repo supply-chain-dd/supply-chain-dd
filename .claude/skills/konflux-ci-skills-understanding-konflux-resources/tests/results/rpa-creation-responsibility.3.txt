@@ -1,0 +1,17 @@
+# skill_digest: e80c8209ad23b68350bd657d2e171ecdd9cf826b295b86a83aa85c585139552d
+To directly answer your question: No, you do not create the ReleasePlanAdmission (RPA). 
+
+As explained in the skill document, the ReleasePlanAdmission (RPA) is:
+- Created by the Platform Engineer
+- Goes in the managed namespace (NOT your tenant namespace)
+- Defines the release pipeline and contains credentials
+
+You (as a developer/application owner) are responsible for creating:
+- The ReleasePlan (RP) in your tenant namespace
+- The Application
+- The Components
+- The IntegrationTestScenarios (if needed)
+
+The Platform Engineer will create the corresponding ReleasePlanAdmission (RPA) in the managed namespace to complete the release setup. This separation ensures that sensitive release credentials are kept in a controlled, restricted namespace while allowing you to define your release plans.
+
+Would you like me to elaborate on the specific roles and how ReleasePlan and ReleasePlanAdmission work together?

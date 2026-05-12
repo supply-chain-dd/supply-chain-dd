@@ -1,0 +1,14 @@
+# skill_digest: e80c8209ad23b68350bd657d2e171ecdd9cf826b295b86a83aa85c585139552d
+I've outlined several potential reasons why your integration tests might not be triggering after builds. To help diagnose this more precisely, I'll need some additional information from you:
+
+1. Can you confirm the specific trigger conditions for your integration tests?
+2. Have there been any recent changes to your Konflux pipeline configuration?
+3. Are you able to share the relevant configuration files (with sensitive information redacted)?
+4. What specific error messages or logs have you seen?
+
+Some quick things you can check:
+- Verify the pipeline configuration in your `.konflux.yaml` or similar files
+- Check the Konflux dashboard for any error messages or skipped test indications
+- Use `tkn pipeline list` and `tkn pipelinerun list` to see recent pipeline runs
+
+Would you like me to help you investigate further by walking you through some diagnostic steps?

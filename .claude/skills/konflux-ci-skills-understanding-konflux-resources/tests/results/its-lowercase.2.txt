@@ -1,0 +1,21 @@
+# skill_digest: e80c8209ad23b68350bd657d2e171ecdd9cf826b295b86a83aa85c585139552d
+To help diagnose the issue, I'll need some more information from you:
+
+1. Can you confirm the following details:
+   - Are you using the Konflux web interface or CLI?
+   - Have integration tests worked before, or is this a new setup?
+   - Do you see any error messages or logs indicating why tests aren't triggering?
+
+2. Please check and provide:
+   - The contents of your `.tekton` directory (if it exists)
+   - Your build configuration in the Konflux console
+   - Any recent build logs or pipeline run history
+
+Some common reasons why integration tests might not trigger:
+- Misconfigured pipeline definitions
+- Missing test stage in the build pipeline
+- Incorrect trigger conditions
+- Permissions or configuration issues
+- Tests marked as optional or skipped
+
+Could you provide more context about your specific Konflux setup and the integration test configuration? The more details you can share, the better I can help you diagnose and resolve the issue.
