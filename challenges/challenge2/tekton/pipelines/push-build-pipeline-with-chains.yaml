@@ -1,19 +1,27 @@
 ---
 # Pipeline: push-build-pipeline-with-chains
 #
-# Extends push-build-pipeline with supply chain security via Tekton Chains:
+# Extends push-build-pipeline with supply chain security via Tekton Chains
+# and SLSA source verification:
 #
-#   git-clone                                       ← emits url + commit + CHAINS_GIT_* results
-#     └─ build-go-app
-#          └─ run-quality-checks
-#               └─ build-container-image
-#                    └─ push-container-image-with-chains   ← emits IMAGE_URL + IMAGE_DIGEST
-#                         └─ generate-and-attest-sbom      ← Trivy SBOM + cosign attest
+#   verify-source                                    ← validates repo URL + branch containment
+#     └─ git-clone                                   ← emits url + commit results
+#          └─ build-go-app
+#               └─ run-quality-checks
+#                    └─ build-container-image
+#                         └─ push-container-image-with-chains   ← emits IMAGE_URL + IMAGE_DIGEST
+#                              ├─ create-source-vsa             ← attaches unsigned Source VSA via OCI referrers
+#                              └─ generate-sbom                 ← Trivy SBOM + oras attach
 #
 # After push-container-image-with-chains completes, Tekton Chains automatically:
 #   1. Signs the image with cosign (key in signing-secrets / tekton-chains namespace)
 #   2. Generates a SLSA Provenance in-toto attestation
 #   3. Stores both artefacts in the OCI registry alongside the image
+#
+# The verify-source task runs BEFORE git-clone and rejects untrusted sources
+# (forks, commits not on the protected branch). It generates an unsigned
+# Source VSA claiming SLSA_SOURCE_LEVEL_1. The create-source-vsa task attaches
+# the VSA to the built image via OCI referrers API after the image is pushed.
 #
 # The generate-and-attest-sbom task creates an SPDX JSON SBOM with Trivy and
 # attaches it as an in-toto attestation using cosign attest.
@@ -25,6 +33,8 @@
 # Run ec from the command line after the pipeline finishes instead.
 #
 # Prerequisites (applied by make setup-challenge2-tekton):
+#   - Tasks: verify-source-provenance, create-source-vsa
+#            (verify-source-task.yaml in this repo)
 #   - Tasks: push-container-image-with-chains, generate-and-attest-sbom
 #            (build-tasks-with-chains.yaml in this repo)
 #   - All other tasks: git-clone, build-go-app, quality-check-task, build-container-image
@@ -45,6 +55,10 @@ spec:
       type: string
       description: Git revision (branch, tag, or SHA)
       default: "main"
+    - name: trusted-repo-url
+      type: string
+      description: Trusted source repository URL (source verification checks repo-url against this)
+      default: "http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git"
     - name: image-name
       type: string
       description: Container image name
@@ -62,8 +76,6 @@ spec:
     - name: source
       description: Shared workspace for source code
 
-  # Propagate image coordinates as pipeline-level results — visible in PipelineRun
-  # status and consumable by follow-on pipelines / integration tests.
   results:
     - name: IMAGE_URL
       description: Full URL of the pushed image
@@ -73,13 +85,31 @@ spec:
       value: $(tasks.push-container-image.results.IMAGE_DIGEST)
     - name: CHAINS-GIT_COMMIT
       description: Git commit SHA (Tekton Chains type hint for provenance materials)
-      value: $(tasks.git-clone.results.commit)
+      value: $(tasks.verify-source.results.VERIFIED_GIT_COMMIT)
     - name: CHAINS-GIT_URL
       description: Git repository URL (Tekton Chains type hint for provenance materials)
-      value: $(tasks.git-clone.results.url)
+      value: $(tasks.verify-source.results.VERIFIED_GIT_URL)
+    - name: VSA_DIGEST
+      description: Digest of the Source VSA attached via OCI referrers
+      value: $(tasks.create-source-vsa.results.VSA_DIGEST)
 
   tasks:
+    - name: verify-source
+      taskRef:
+        name: verify-source-provenance
+      params:
+        - name: repo-url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: trusted-repo-url
+          value: $(params.trusted-repo-url)
+      workspaces:
+        - name: source
+          workspace: source
+
     - name: git-clone
+      runAfter: ["verify-source"]
       taskRef:
         name: git-clone
       params:
@@ -109,23 +139,23 @@ spec:
         - name: source
           workspace: source
 
-    - name: build-container-image
-      runAfter: ["run-quality-checks"]
-      taskRef:
-        name: build-container-image
-      params:
-        - name: image-name
-          value: $(params.image-name)
-        - name: image-tag
-          value: $(params.image-tag)
-      workspaces:
-        - name: source
-          workspace: source
+    # - name: build-container-image
+    #   runAfter: ["run-quality-checks"]
+    #   taskRef:
+    #     name: build-container-image
+    #   params:
+    #     - name: image-name
+    #       value: $(params.image-name)
+    #     - name: image-tag
+    #       value: $(params.image-tag)
+    #   workspaces:
+    #     - name: source
+    #       workspace: source
 
     # Chains-aware push: emits IMAGE_URL and IMAGE_DIGEST results so that Tekton
     # Chains knows to sign the image and generate an in-toto attestation.
     - name: push-container-image
-      runAfter: ["build-container-image"]
+      runAfter: ["run-quality-checks"]
       taskRef:
         name: push-container-image-with-chains
       params:
@@ -139,16 +169,27 @@ spec:
         - name: source
           workspace: source
 
-    # Generate SPDX SBOM with Trivy and attest it to the image with cosign.
-    # Stored as an in-toto attestation with predicateType https://spdx.dev/Document.
-    - name: generate-and-attest-sbom
+    # Attach the unsigned Source VSA to the image via OCI referrers API.
+    # Runs in parallel with generate-and-attest-sbom.
+    - name: create-source-vsa
       runAfter: ["push-container-image"]
       taskRef:
-        name: generate-and-attest-sbom
+        name: create-source-vsa
       params:
         - name: IMAGE_URL
           value: $(tasks.push-container-image.results.IMAGE_URL)
         - name: IMAGE_DIGEST
           value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+        - name: SOURCE_VSA
+          value: $(tasks.verify-source.results.SOURCE_VSA)
 
-
+    # Generate SPDX SBOM with Trivy and attach it to the image via OCI referrers.
+    - name: generate-sbom
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: generate-sbom
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)

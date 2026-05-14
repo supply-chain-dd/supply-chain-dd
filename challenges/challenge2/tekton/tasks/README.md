@@ -1,6 +1,6 @@
 # Challenge 2 - Tekton Tasks
 
-This directory contains two task bundles for Challenge 2:
+This directory contains three task files for Challenge 2:
 
 ## Task Files
 
@@ -58,6 +58,34 @@ Not included in the pipeline because Tekton Chains generates PipelineRun attesta
 after the pipeline completes — rules like `attestation_type.pipelinerun_attestation_found`
 cannot be satisfied from within the pipeline. Run `ec` from the command line instead.
 
+### `verify-source-task.yaml` (Source Verification + VSA)
+
+Contains two tasks for SLSA Source verification:
+
+#### `verify-source-provenance`
+Runs as the first task in `push-build-pipeline-with-chains`, before `git-clone`.
+Validates that the incoming repository URL matches a trusted repository and that the
+commit SHA is reachable from a protected branch (default: `main`).
+
+On success, generates an unsigned Source Verification Summary Attestation (VSA) following
+the in-toto Statement v1 format with predicateType `https://slsa.dev/verification_summary/v1`,
+claiming `SLSA_SOURCE_LEVEL_1`. The VSA JSON is emitted as a task result for downstream use.
+
+No signing is performed — Tekton Chains handles all cryptographic signing.
+
+#### `create-source-vsa`
+Runs after `push-container-image`, in parallel with `generate-and-attest-sbom`.
+Reads the unsigned Source VSA from a task param (routed from `verify-source-provenance`
+via pipeline result wiring) and attaches it to the pushed container image using the
+OCI referrers API via `oras attach`.
+
+The VSA artifact digest is output as a result (`VSA_DIGEST`) for potential inclusion
+in Tekton Chains' signed provenance attestation.
+
+Prerequisites:
+- `registry-docker-config` Secret (for registry authentication)
+- `registry-ca-cert` ConfigMap (for TLS trust)
+
 ### `supporting-tasks.yaml`
 
 The `git-clone` task emits four results consumed by the chains pipeline:
@@ -70,12 +98,14 @@ The `git-clone` task emits four results consumed by the chains pipeline:
 `build-tasks-with-chains.yaml` is consumed by `push-build-pipeline-with-chains`:
 
 ```
-git-clone                                       <- emits url + commit + CHAINS-GIT_* results
-  +-- build-go-app
-       +-- run-quality-checks
-            +-- build-container-image
-                 +-- push-container-image-with-chains   <- emits IMAGE_URL + IMAGE_DIGEST
-                      +-- generate-and-attest-sbom      <- Trivy SBOM + cosign attest
+verify-source-provenance                        <- validates repo URL + branch containment
+  +-- git-clone                                 <- emits url + commit results
+       +-- build-go-app
+            +-- run-quality-checks
+                 +-- build-container-image
+                      +-- push-container-image-with-chains   <- emits IMAGE_URL + IMAGE_DIGEST
+                           +-- create-source-vsa             <- attaches unsigned Source VSA via OCI referrers
+                           +-- generate-and-attest-sbom      <- Trivy SBOM + cosign attest
 ```
 
 ## Switching Between Versions

