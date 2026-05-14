@@ -460,7 +460,7 @@ spec:
           --artifact-type "application/spdx+json" \
           --registry-config /docker-config/config.json \
           "$IMAGE_REF" \
-          sbom-spdx.json:application/spdx+json)
+            sbom-spdx.json:application/spdx+json)
 
         echo "$ATTACH_OUTPUT"
 
