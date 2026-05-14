@@ -11,6 +11,7 @@
 #                    └─ build-container-image
 #                         └─ push-container-image-with-chains   ← emits IMAGE_URL + IMAGE_DIGEST
 #                              ├─ create-source-vsa             ← attaches unsigned Source VSA via OCI referrers
+#                              ├─ scan-image                      ← Trivy vuln+secret scan → oras attach
 #                              └─ generate-sbom                 ← Trivy SBOM + oras attach
 #
 # After push-container-image-with-chains completes, Tekton Chains automatically:
@@ -22,9 +23,13 @@
 # (forks, commits not on the protected branch). It generates an unsigned
 # Source VSA claiming SLSA_SOURCE_LEVEL_1. The create-source-vsa task attaches
 # the VSA to the built image via OCI referrers API after the image is pushed.
+# The scan-image task scans the image with Trivy for vulnerabilities and
+# secrets, then attaches the results as an unsigned OCI artifact via oras.
 #
-# The generate-and-attest-sbom task creates an SPDX JSON SBOM with Trivy and
-# attaches it as an in-toto attestation using cosign attest.
+# The generate-sbom task creates an SPDX JSON SBOM with Trivy and
+# attaches it as an unsigned OCI artifact via oras.
+#
+# Both tasks run in parallel after push-container-image-with-chains.
 #
 # Note: Conforma (ec validate image) is not run inside the pipeline because
 # Tekton Chains only generates PipelineRun attestations AFTER the pipeline
@@ -35,7 +40,7 @@
 # Prerequisites (applied by make setup-challenge2-tekton):
 #   - Tasks: verify-source-provenance, create-source-vsa
 #            (verify-source-task.yaml in this repo)
-#   - Tasks: push-container-image-with-chains, generate-and-attest-sbom
+#   - Tasks: push-container-image-with-chains, generate-sbom, scan-image,
 #            (build-tasks-with-chains.yaml in this repo)
 #   - All other tasks: git-clone, build-go-app, quality-check-task, build-container-image
 #   - Secret:    cosign-signing-secret in ctf-challenge (cosign.key + cosign.password)
@@ -188,6 +193,21 @@ spec:
       runAfter: ["push-container-image"]
       taskRef:
         name: generate-sbom
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    # Scan image for vulnerabilities and secrets with Trivy, attach results via oras.
+    # The scan results referrer digest is emitted as a Tekton Chains type-hinted
+    # result (SCAN_RESULTS-ARTIFACT_URI/DIGEST) so Chains records it in the
+    # SLSA provenance as a subject.
+    # Runs in parallel with generate-and-attest-sbom.
+    - name: scan-image
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: scan-image
       params:
         - name: IMAGE_URL
           value: $(tasks.push-container-image.results.IMAGE_URL)
