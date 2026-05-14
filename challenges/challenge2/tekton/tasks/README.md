@@ -29,21 +29,19 @@ Tekton Chains watches for completed TaskRuns that emit **both** of these results
 
 **Important design**: The `build-container-image` task does NOT output IMAGE results because it uses `--no-push` (tarball only). If it did, Tekton Chains would attempt to pull an unregistered image and fail.
 
-#### `generate-and-attest-sbom`
+#### `generate-sbom`
 Generates an SPDX JSON SBOM for the pushed container image using Trivy, then
-attaches it as an in-toto attestation using cosign. The attestation has
-predicateType `https://spdx.dev/Document`.
+attaches it to the image via OCI referrers API using oras.
 
 - **Step 1 (generate-sbom)**: Runs `trivy image --format spdx-json` against the
   pushed image. Normalizes Trivy's output to comply with SPDX 2.3 (fixes
   hyphenated enum values like `OPERATING-SYSTEM` → `OPERATING_SYSTEM`).
-- **Step 2 (attest-sbom)**: Downloads cosign v2, then runs `cosign attest --type spdxjson`
-  to attach the SBOM as a signed in-toto attestation.
+- **Step 2 (attach-sbom)**: Downloads oras, then runs `oras attach` with artifact
+  type `application/spdx+json` to attach the SBOM as an OCI referrer.
 
 The SBOM file is shared between steps via an emptyDir volume.
 
 Prerequisites:
-- `cosign-signing-secret` Secret in ctf-challenge (cosign.key + cosign.password — created by `make setup-challenge2-tekton`)
 - `registry-docker-config` Secret (for registry authentication)
 - `registry-ca-cert` ConfigMap (for TLS trust)
 
@@ -74,7 +72,7 @@ claiming `SLSA_SOURCE_LEVEL_1`. The VSA JSON is emitted as a task result for dow
 No signing is performed — Tekton Chains handles all cryptographic signing.
 
 #### `create-source-vsa`
-Runs after `push-container-image`, in parallel with `generate-and-attest-sbom`.
+Runs after `push-container-image`, in parallel with `generate-sbom`.
 Reads the unsigned Source VSA from a task param (routed from `verify-source-provenance`
 via pipeline result wiring) and attaches it to the pushed container image using the
 OCI referrers API via `oras attach`.
@@ -105,7 +103,7 @@ verify-source-provenance                        <- validates repo URL + branch c
                  +-- build-container-image
                       +-- push-container-image-with-chains   <- emits IMAGE_URL + IMAGE_DIGEST
                            +-- create-source-vsa             <- attaches unsigned Source VSA via OCI referrers
-                           +-- generate-and-attest-sbom      <- Trivy SBOM + cosign attest
+                           +-- generate-sbom                 <- Trivy SBOM + oras attach
 ```
 
 ## Switching Between Versions
@@ -149,7 +147,9 @@ ec validate image \
 | IMAGE_DIGEST result | No | Yes |
 | IMAGE_URL result | No | Yes |
 | SBOM generation (Trivy) | No | Yes (SPDX JSON) |
-| SBOM attestation (cosign) | No | Yes |
+| SBOM attachment (oras, OCI referrer) | No | Yes |
+| Source verification (SLSA) | No | Yes (verify-source-provenance) |
+| Source VSA (OCI referrer) | No | Yes (create-source-vsa) |
 
 ## Verifying Signatures
 
@@ -175,12 +175,10 @@ cosign verify --insecure-ignore-tlog \
   --registry-cacert certs/registry.crt \
   localhost:30000/recipe-api:v1.0
 
-# Verify SBOM attestation
-cosign verify-attestation --insecure-ignore-tlog \
-  --key cosign.pub \
-  --type spdxjson \
-  --registry-cacert certs/registry.crt \
-  localhost:30000/recipe-api:v1.0
+# List OCI referrers (SBOM + Source VSA)
+oras discover localhost:30000/recipe-api:v1.0 \
+  --registry-config ~/.docker/config.json \
+  --ca-file certs/registry.crt
 ```
 
 ## Attack Scenario Impact
@@ -188,9 +186,11 @@ cosign verify-attestation --insecure-ignore-tlog \
 **Standard Tasks**: The container layer leak attack works as designed — the `.git` directory is present in image layers and exposes secrets.
 
 **Chains-Compatible Tasks**: The attack still works, but:
+- The source is verified against a trusted repository before building
 - The image is cryptographically signed, creating an audit trail
 - The SLSA Provenance attestation records exactly what was built and how
 - The SBOM documents every package in the image
+- A Source VSA records source verification status as an OCI referrer
 - Detection tools can verify that the signed image contains leaked secrets
 
 This illustrates an important supply chain security principle: **signatures verify authenticity, not security**. A properly signed image can still contain vulnerabilities or leaked secrets. Provenance tells you *where* an image came from, not *what's inside it*.

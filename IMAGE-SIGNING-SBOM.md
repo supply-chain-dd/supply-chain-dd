@@ -7,7 +7,7 @@
 **A: YES — use the Chains-compatible pipeline.**
 
 The `push-build-pipeline-with-chains` pipeline pushes the image with `IMAGE_DIGEST` and `IMAGE_URL` results so Tekton Chains signs it automatically.
-The pipeline generates an SPDX JSON SBOM with Trivy (no Tekton Chains envolved) and attaches it as an in-toto attestation using cosign.
+The pipeline generates an SPDX JSON SBOM with Trivy and attaches it to the image via OCI referrers API using oras. Source verification is performed before the build, and a Source VSA is also attached as an OCI referrer.
 
 ---
 
@@ -15,10 +15,12 @@ The pipeline generates an SPDX JSON SBOM with Trivy (no Tekton Chains envolved) 
 
 ### What Works (After `make setup-challenge2-tekton`)
 
-1. **Image Signing** — Tekton Chains detects the `IMAGE_URL` + `IMAGE_DIGEST` results and signs the image with cosign
-2. **SLSA Provenance** — Chains generates an in-toto SLSA Provenance attestation (stored as `<image>.att`)
-3. **SBOM Attestation** — The `generate-and-attest-sbom` task creates an SPDX JSON SBOM with Trivy and attaches it via `cosign attest --type spdxjson`
-4. **PipelineRun / TaskRun Attestations** — Chains generates in-toto provenance for both
+1. **Source Verification** — The `verify-source-provenance` task validates the repo URL and branch containment before building, generating an unsigned Source VSA (SLSA_SOURCE_LEVEL_1)
+2. **Image Signing** — Tekton Chains detects the `IMAGE_URL` + `IMAGE_DIGEST` results and signs the image with cosign
+3. **SLSA Provenance** — Chains generates an in-toto SLSA Provenance attestation (stored as `<image>.att`)
+4. **SBOM** — The `generate-sbom` task creates an SPDX JSON SBOM with Trivy and attaches it via OCI referrers API using oras
+5. **Source VSA** — The `create-source-vsa` task attaches the unsigned Source VSA to the image via OCI referrers API using oras
+6. **PipelineRun / TaskRun Attestations** — Chains generates in-toto provenance for both
 
 ### Conforma Policy Validation
 
@@ -49,9 +51,11 @@ kubectl get taskruns -n ctf-challenge \
 ```
 
 **What you get**:
+- Source verification (repo URL + branch containment check)
 - Image signature (`.sig` tag in registry)
 - SLSA Provenance attestation (`.att` tag in registry)
-- SBOM attestation (cosign in-toto, predicateType `https://spdx.dev/Document`)
+- SBOM (SPDX JSON, attached as OCI referrer via oras)
+- Source VSA (unsigned, attached as OCI referrer via oras)
 - PipelineRun + TaskRun provenance
 
 ---
@@ -70,8 +74,9 @@ When using `push-build-pipeline-with-chains`:
 |  recipe-api:v1.0                     (Container Image)       |
 |  +- sha256:abc123...                 (Image Manifest)        |
 |  +- sha256:abc123.sig                (Image Signature)       |
-|  +- sha256:abc123.att                (SLSA Provenance +      |
-|  |                                    SBOM Attestation)       |
+|  +- sha256:abc123.att                (SLSA Provenance)       |
+|  +- [OCI referrer]                   (SPDX SBOM via oras)    |
+|  +- [OCI referrer]                   (Source VSA via oras)    |
 |                                                              |
 +-------------------------------------------------------------+
 ```
@@ -117,13 +122,10 @@ cosign verify \
   --registry-cacert=setup/certs/registry.crt \
   localhost:30000/recipe-api:v1.0
 
-# Verify SBOM attestation
-cosign verify-attestation \
-  --insecure-ignore-tlog \
-  --key cosign.pub \
-  --type spdxjson \
-  --registry-cacert=setup/certs/registry.crt \
-  localhost:30000/recipe-api:v1.0
+# List OCI referrers (SBOM + Source VSA)
+oras discover localhost:30000/recipe-api:v1.0 \
+  --registry-config ~/.docker/config.json \
+  --ca-file setup/certs/registry.crt
 
 # Verify SLSA provenance attestation
 cosign verify-attestation \
@@ -203,7 +205,9 @@ Only tasks that **push to a registry** should output IMAGE results.
 | **PipelineRun provenance** | Yes (if Chains installed) | Yes |
 | **TaskRun provenance** | Generic only | Full |
 | **Image signature** | No | Yes |
-| **SBOM (SPDX JSON)** | No | Yes (Trivy + cosign attest) |
+| **SBOM (SPDX JSON)** | No | Yes (Trivy + oras attach) |
+| **Source verification** | No | Yes (SLSA_SOURCE_LEVEL_1) |
+| **Source VSA** | No | Yes (oras attach, OCI referrer) |
 | **IMAGE_DIGEST result** | No | Yes |
 | **IMAGE_URL result** | No | Yes |
 | **Cosign verification** | No | Yes |
@@ -240,9 +244,11 @@ A: Tekton Chains only signs images **built by the pipeline**, not pulled base im
 
 ### After `make setup-challenge2-tekton` + `make trigger-challenge2-build-with-chains`
 
+- Source verification (repo URL + branch containment)
 - Image signature (cosign, `.sig` tag)
 - SLSA Provenance attestation (Tekton Chains, `.att` tag)
-- SBOM attestation (Trivy SPDX JSON + cosign attest)
+- SBOM (Trivy SPDX JSON, attached as OCI referrer via oras)
+- Source VSA (unsigned, attached as OCI referrer via oras)
 - PipelineRun + TaskRun provenance (in-toto format)
 
 ### Documentation

@@ -104,7 +104,8 @@ Each challenge must contain:
 │   │   │   ├── registry-docker-config-secret.yaml
 │   │   │   ├── tasks/
 │   │   │   │   ├── build-tasks.yaml                 # Standard build/push tasks
-│   │   │   │   ├── build-tasks-with-chains.yaml     # Chains-aware tasks + verify-with-conforma
+│   │   │   │   ├── build-tasks-with-chains.yaml     # Chains-aware tasks + SBOM generation
+│   │   │   │   ├── verify-source-task.yaml          # Source verification + VSA tasks
 │   │   │   │   ├── quality-check-task.yaml
 │   │   │   │   └── supporting-tasks.yaml
 │   │   │   └── triggers/

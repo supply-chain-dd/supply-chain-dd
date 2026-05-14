@@ -319,11 +319,13 @@ rules like `attestation_type.pipelinerun_attestation_found` and
 make trigger-challenge2-build-with-chains
 
 # The pipeline stages are:
-#   git-clone                              (emits url + commit which are used to publish CHAINS-GIT_* results at pipeline run level. CHAINS-GIT-* are used by Tekton Chains during provenance generation)
-#     → build-go-app → quality-checks → build-image
+#   verify-source-provenance               (validates repo URL + branch containment, generates Source VSA)
+#     → git-clone                          (emits url + commit)
+#     → build-go-app → quality-checks
 #     → push-container-image-with-chains   (emits IMAGE_URL + IMAGE_DIGEST)
 #        [Tekton Chains signs + attests asynchronously]
-#     → generate-and-attest-sbom           (Trivy SPDX SBOM + cosign attest)
+#        → create-source-vsa              (attaches unsigned Source VSA via OCI referrers)
+#        → generate-sbom                  (Trivy SPDX SBOM + oras attach)
 
 # Monitor progress
 kubectl get pipelineruns -n ctf-challenge -w
