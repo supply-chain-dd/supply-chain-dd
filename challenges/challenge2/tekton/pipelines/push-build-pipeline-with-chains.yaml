@@ -198,6 +198,8 @@ spec:
           value: $(tasks.push-container-image.results.IMAGE_URL)
         - name: IMAGE_DIGEST
           value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+        - name: SOURCE_VSA
+          value: $(tasks.verify-source.results.SOURCE_VSA)
 
     # Scan image for vulnerabilities and secrets with Trivy, attach results via oras.
     # The scan results referrer digest is emitted as a Tekton Chains type-hinted
