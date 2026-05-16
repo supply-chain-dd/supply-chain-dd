@@ -65,8 +65,7 @@ spec:
         - --context=$(workspaces.source.path)
         - --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag)
         - --verbosity=info
-        # Kaniko writes the pushed image digest directly to this path.
-        # Tekton reads any file in /tekton/results/ that matches a declared result name.
+        - --ignore-path=/product_uuid
         - --digest-file=/tekton/results/IMAGE_DIGEST
       volumeMounts:
         - name: docker-config
