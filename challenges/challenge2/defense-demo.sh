@@ -43,7 +43,7 @@ p "=== DEMO DÉFENSE : Challenge 2 — Fuite de secrets dans les couches d'image
 # ============================================================================
 
 
-p "  PHASE 1 — Corriger le Dockerfile et ajouter un .dockerignore"
+p "  PHASE 1 — Analyser et corriger le code source"
 
 
 
@@ -52,22 +52,31 @@ p "2. Le Dockerfile actuel est vulnérable (COPY . . + rm -rf .git)"
 pe "cat Dockerfile"
 
 
-p "3. Remplacer par un Dockerfile multi-stage"
+p "3. Politique Rego custom pour détecter le pattern dangereux"
+p "→ Seul un scan de misconfiguration du Dockerfile peut détecter le pattern dangereux"
+pe "cat ${SCRIPT_DIR}/trivy-policies/copy_git_leak.rego"
+
+p ""
+p "4. Exécuter le scan de misconfiguration sur le Dockerfile vulnérable"
+pe "trivy config --config-check ${SCRIPT_DIR}/trivy-policies/ --namespaces user Dockerfile"
+
+
+p "5. Remplacer par un Dockerfile multi-stage"
 cp "${SCRIPT_DIR}/tekton-patched/Dockerfile" Dockerfile
 pe "cat Dockerfile"
 # p "→ Stage builder : compile le binaire. Stage runtime : copie uniquement le binaire."
 
 
-p "4. Ajouter un .dockerignore allowlist"
+p "6. Ajouter un .dockerignore allowlist"
 cp "${SCRIPT_DIR}/tekton-patched/.dockerignore" .dockerignore
 pe "cat .dockerignore"
 
 
-p "5. Résumé des modifications"
+p "7. Résumé des modifications"
 pe "git status"
 
 
-p "6. Commit et push"
+p "8. Commit et push"
 pe "git add Dockerfile .dockerignore"
 pe "git commit -m 'fix: multi-stage build + .dockerignore'"
 
@@ -82,7 +91,7 @@ p "⚠  Pousser directement sur main est une pratique dangereuse en production."
 p "→ Les changements doivent passer par une Pull Request avec review obligatoire."
 
 
-p "7. Protéger la branche main via l'API Gitea"
+p "9. Protéger la branche main via l'API Gitea"
 pe "curl -s -X POST '${GITEA_URL}/api/v1/repos/${GITEA_USER}/recipe-api/branch_protections' \
   -u '${GITEA_USER}:${GITEA_PASS}' \
   -H 'Content-Type: application/json' \
@@ -104,16 +113,7 @@ pe "trivy image --scanners secret --insecure localhost:30000/recipe-api:v1.0"
 p "→ 0 secrets détectés — Trivy ne voit pas les secrets supprimés dans les couches supérieures"
 
 p ""
-p "2. Seul un scan de misconfiguration du Dockerfile peut détecter le pattern dangereux"
-p "→ Politique Rego custom :"
-pe "cat ${SCRIPT_DIR}/trivy-policies/copy_git_leak.rego"
-
-p ""
-p "3. Exécuter le scan de misconfiguration sur le Dockerfile vulnérable"
-pe "trivy config --config-check ${SCRIPT_DIR}/trivy-policies/ --namespaces user ${WORK_DIR}/recipe-api/Dockerfile"
-
-p ""
-p "4. Récupérer le digest et supprimer l'image vulnérable"
+p "2. Récupérer le digest et supprimer l'image vulnérable"
 pe "DIGEST=\$(skopeo inspect docker://localhost:30000/recipe-api:v1.0 | jq -r .Digest)"
 pe "echo \"Digest: \${DIGEST}\""
 
