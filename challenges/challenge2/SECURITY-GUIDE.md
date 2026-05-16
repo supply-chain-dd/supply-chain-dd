@@ -393,6 +393,39 @@ trivy config \
   Dockerfile
 ```
 
+### R2.6 unning Hadolint locally
+
+hadolint is not installed on the host. Run it via container:
+
+```bash
+# On the patched Dockerfile
+podman run --rm -i docker.io/hadolint/hadolint < challenges/challenge2/tekton-patched/Dockerfile
+
+# On the vulnerable Dockerfile
+podman run --rm -i docker.io/hadolint/hadolint < challenges/victim-repo-sample/Dockerfile
+
+# JSON output for scripting
+podman run --rm -i docker.io/hadolint/hadolint hadolint --format json - < <Dockerfile>
+```
+
+Image used: `docker.io/hadolint/hadolint` (latest) or pinned `docker.io/hadolint/hadolint:v2.12.0-alpine` (~5MB).
+
+#### Findings on CTF Dockerfiles (verified 2026-05-16)
+
+**Both vulnerable and patched Dockerfiles produce the same single finding:**
+
+- **DL3018** (warning): "Pin versions in apk add. Instead of `apk add <package>` use `apk add <package>=<version>`"
+  - Triggered by `RUN apk --no-cache add ca-certificates`
+  - Alpine 3.20 version: `ca-certificates=20260413-r0`
+
+**What hadolint does NOT detect:**
+
+- The `COPY . . + rm -rf .git` supply chain anti-pattern (the core Challenge 2 vulnerability)
+- hadolint checks Dockerfile syntax and best practices, not supply chain security patterns
+- The custom Trivy Rego policy (`trivy-policies/copy_git_leak.rego`) is needed to catch this — it flags both `COPY . .` (copies .git into layer) and `RUN rm -rf .git` (ineffective deletion) as CRITICAL
+
+**Why:** hadolint was evaluated for the defense demo but dropped — it adds complexity without catching anything the Rego policy doesn't already cover better. The DL3018 fix (version pinning) is a minor style improvement, not security-relevant for the demo narrative.
+
 ---
 
 ## Phase 3: Attestation and Provenance
