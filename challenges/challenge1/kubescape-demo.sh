@@ -95,7 +95,7 @@ YAML
 pe "kubectl create -f /tmp/kubescape-demo-pipelinerun.yaml"
 
 pe "kubectl wait --for=condition=Succeeded pipelinerun/pr-quality-check-secure-test -n ctf-challenge --timeout=120s 2>/dev/null || true"
-pe "tkn pr logs pipelinerun/pr-quality-check-secure-test"
+pe "tkn pr logs pr-quality-check-secure-test"
 
 p "8. Scan du pod quality-check de la pipeline SÉCURISÉE"
 SECURE_POD=$(kubectl get pods -n ctf-challenge -l tekton.dev/pipelineTask=run-quality-checks -o name 2>/dev/null | head -1)

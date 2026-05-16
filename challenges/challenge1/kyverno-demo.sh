@@ -92,8 +92,8 @@ YAML
 pe "kubectl create -f /tmp/kyverno-demo-allowed.yaml 2>&1 || true"
 p "→ Création autorisée avec le SA pr-pipeline-readonly"
 
-p "Nettoyage"
-pe "kubectl delete clusterpolicy restrict-tekton-pr-pipelines block-dangerous-task-commands 2>/dev/null || true"
-pe "kubectl delete pipelinerun test-allowed-pr -n ctf-challenge 2>/dev/null || true"
+# Nettoyage
+kubectl delete clusterpolicy restrict-tekton-pr-pipelines block-dangerous-task-commands 2>/dev/null || true
+kubectl delete pipelinerun test-allowed-pr -n ctf-challenge 2>/dev/null || true
 
 p "✅"

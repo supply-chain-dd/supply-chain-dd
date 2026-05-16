@@ -81,6 +81,7 @@ spec:
         - --destination=$(params.image-name):$(params.image-tag)
         - --no-push
         - --tar-path=/workspace/source/image.tar
+        - --ignore-path=/product_uuid
       volumeMounts:
         - name: registry-ca-cert
           mountPath: /kaniko/ssl/certs/additional-ca-cert-bundle.crt
@@ -154,6 +155,7 @@ spec:
         - --context=$(workspaces.source.path)
         - --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag)
         - --verbosity=info
+        - --ignore-path=/product_uuid
       volumeMounts:
         - name: docker-config
           mountPath: /kaniko/.docker/

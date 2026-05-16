@@ -1,0 +1,32 @@
+---
+# Manual PipelineRun for push-build-pipeline-secure
+# Triggers the secured pipeline with source verification and image scanning.
+# Uses image tag v2.0 to distinguish from the vulnerable v1.0.
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: secure-build-run-
+  namespace: ctf-challenge
+spec:
+  pipelineRef:
+    name: push-build-pipeline-secure
+  params:
+    - name: repo-url
+      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
+    - name: revision
+      value: main
+    - name: trusted-repo-url
+      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
+    - name: image-name
+      value: recipe-api
+    - name: image-tag
+      value: v2.0
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi

@@ -150,6 +150,63 @@ Kaniko, used in this CTF's pipeline, was archived by Google in June 2025 and nev
 
 See [`tekton-patched/Dockerfile`](tekton-patched/Dockerfile) for a version that applies all three defenses. Compare it against the [vulnerable Dockerfile](../victim-repo-sample/Dockerfile) to understand the difference.
 
+### 1.5 Remediation: Cleaning Secrets from Git History with `git-filter-repo`
+
+When secrets have already been committed to a repository, prevention alone is not enough — the secrets persist in git history even after deletion. [`git-filter-repo`](https://github.com/newren/git-filter-repo) rewrites the entire repository history to permanently remove sensitive files.
+
+**Why not `git rm` or `BFG Repo-Cleaner`?**
+
+- `git rm` only removes the file from the working tree and creates a new commit. The file remains in all previous commits.
+- `BFG Repo-Cleaner` is no longer maintained. `git-filter-repo` is the recommended replacement (endorsed by the Git project itself).
+
+**Usage:**
+
+```bash
+# 1. Clone a fresh copy (filter-repo requires a full clone)
+git clone http://gitea-server/org/repo.git
+cd repo
+
+# 2. Back up before rewriting (irreversible operation)
+cd .. && tar -czf repo-backup.tar.gz repo && cd repo
+
+# 3. Remove the sensitive file from ALL commits
+git filter-repo --sensitive-data-removal --invert-paths --path .env.production
+
+# 4. Verify the file is gone from history
+git log --all --full-history -- .env.production
+# (should return nothing)
+
+# 5. Verify the secret content is gone
+git log --all --full-history -S 'ARGOCD_AUTH_TOKEN' --oneline
+# (should return nothing)
+
+# 6. Force push the rewritten history
+git push --force --mirror origin
+```
+
+**Flags explained:**
+
+| Flag | Purpose |
+|------|---------|
+| `--sensitive-data-removal` | Optimized mode for credential cleanup — fetches all refs from origin first and provides follow-up instructions |
+| `--invert-paths` | Invert the path selection (remove matching paths instead of keeping them) |
+| `--path <file>` | Target file to remove from history |
+
+**After the rewrite:**
+
+- All commit hashes change (history is rewritten from the first affected commit onward)
+- All collaborators must **re-clone** the repository — rebasing on rewritten history causes conflicts
+- Contact server administrators to purge dangling objects and force garbage collection
+- **Rebuild and re-push all container images** built from the old history — they still contain the secrets in their layers
+
+**Interactive demo:**
+
+```bash
+./filter-repo-demo.sh
+```
+
+See also: [Red Hat LeakTK guide for git-filter-repo](https://source.redhat.com/departments/strategy_and_operations/it/it_information_security/leaktk/leaktk_guides/git_filter_repo)
+
 ---
 
 ## Phase 2: Scanning Built Images for Secrets and Vulnerabilities
@@ -630,6 +687,7 @@ ec validate image \
 | **Prevention** | `.dockerignore` | Excludes secrets from build context | Build time |
 | **Prevention** | Multi-stage Dockerfile | Isolates build env from runtime image | Build time |
 | **Prevention** | `--mount=type=secret` | Injects secrets without layer persistence | Build time |
+| **Remediation** | `git-filter-repo` | Rewrites git history to permanently remove leaked secrets | Post-incident |
 | **Detection** | Trivy (`--scanners secret`) | Scans image for secrets in final filesystem | Post-build |
 | **Detection** | Trivy (`--scanners vuln`) | Scans for known CVEs | Post-build |
 | **Transparency** | Trivy SBOM | Lists all packages for auditing | Post-build |
@@ -653,5 +711,6 @@ ec validate image \
 - **Kyverno**: https://kyverno.io/docs/
 - **Hadolint**: https://github.com/hadolint/hadolint
 - **dive**: https://github.com/wagoodman/dive
+- **git-filter-repo**: https://github.com/newren/git-filter-repo
 
 For the complete attack analysis, see [ATTACK-ANALYSIS.md](ATTACK-ANALYSIS.md).

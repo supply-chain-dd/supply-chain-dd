@@ -1,0 +1,9 @@
+# Allowlist pattern: ignore everything, include only what the build needs.
+# This prevents .git, .env, credentials, and other sensitive files from
+# entering the Docker build context — even if COPY . . is used.
+*
+!main.go
+!go.mod
+!go.sum
+!internal/
+!scripts/quality-check/

@@ -1,0 +1,160 @@
+---
+# Pipeline: push-build-pipeline-secure
+#
+# Secured version of push-build-pipeline that adds:
+#   1. Source verification (verify-source-provenance) before cloning
+#   2. Image scanning (scan-image) after push
+#   3. Source VSA attachment (create-source-vsa) after push
+#
+# Flow:
+#   verify-source → git-clone → build-go-app → quality-checks → push-container-image
+#                                                                    ├── scan-image
+#                                                                    └── create-source-vsa
+#
+# The push task emits IMAGE_URL and IMAGE_DIGEST results, which scan-image
+# and create-source-vsa consume. This does NOT require Tekton Chains — the
+# results are used directly by downstream tasks. If Chains is installed, it
+# will additionally sign the image and generate SLSA Provenance.
+#
+# Prerequisites (applied by make setup-challenge2-tekton):
+#   - Tasks: verify-source-provenance, create-source-vsa (verify-source-task.yaml)
+#   - Tasks: push-container-image-with-chains, scan-image (build-tasks-with-chains.yaml)
+#   - Tasks: git-clone, build-go-app, quality-check-task (supporting-tasks.yaml, build-tasks.yaml)
+#   - Secret:    registry-docker-config in ctf-challenge
+#   - ConfigMap: registry-ca-cert       in ctf-challenge
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: push-build-pipeline-secure
+  namespace: ctf-challenge
+spec:
+  description: |
+    Secured build pipeline with source verification and image scanning.
+    Builds, pushes, scans the image, and attaches a Source VSA.
+  params:
+    - name: repo-url
+      type: string
+      description: The git repository URL
+    - name: revision
+      type: string
+      description: The git revision (branch, tag, or SHA)
+      default: "main"
+    - name: trusted-repo-url
+      type: string
+      description: Trusted source repository URL (source verification checks repo-url against this)
+      default: "http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git"
+    - name: image-name
+      type: string
+      description: Container image name
+      default: "recipe-api"
+    - name: image-tag
+      type: string
+      description: Container image tag
+      default: "latest"
+    - name: registry-url
+      type: string
+      description: Container registry URL
+      default: "registry.registry.svc.cluster.local:5000"
+
+  workspaces:
+    - name: source
+      description: Workspace for source code
+
+  results:
+    - name: IMAGE_URL
+      description: Full URL of the pushed image
+      value: $(tasks.push-container-image.results.IMAGE_URL)
+    - name: IMAGE_DIGEST
+      description: Digest of the pushed image
+      value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+    - name: SCAN_STATUS
+      description: PASS or FAIL from Trivy scan
+      value: $(tasks.scan-image.results.SCAN_STATUS)
+
+  tasks:
+    - name: verify-source
+      taskRef:
+        name: verify-source-provenance
+      params:
+        - name: repo-url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: trusted-repo-url
+          value: $(params.trusted-repo-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: clone-repo
+      runAfter: ["verify-source"]
+      taskRef:
+        name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: deleteExisting
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: source
+
+    - name: build-go-app
+      runAfter: ["clone-repo"]
+      taskRef:
+        name: build-go-app
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: run-quality-checks
+      runAfter: ["build-go-app"]
+      taskRef:
+        name: quality-check-task
+      workspaces:
+        - name: source
+          workspace: source
+
+    # Uses push-container-image-with-chains which emits IMAGE_URL + IMAGE_DIGEST.
+    # Despite the name, this task works without Tekton Chains — it just builds
+    # and pushes with Kaniko and writes results for downstream tasks.
+    - name: push-container-image
+      runAfter: ["run-quality-checks"]
+      taskRef:
+        name: push-container-image-with-chains
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.image-tag)
+        - name: registry-url
+          value: $(params.registry-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    # Trivy vulnerability + secret scan, results attached as OCI referrer via oras.
+    - name: scan-image
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: scan-image
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    # Attaches the unsigned Source VSA to the image via OCI referrers API.
+    - name: create-source-vsa
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: create-source-vsa
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+        - name: SOURCE_VSA
+          value: $(tasks.verify-source.results.SOURCE_VSA)
