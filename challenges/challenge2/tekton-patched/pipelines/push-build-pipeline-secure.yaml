@@ -68,7 +68,7 @@ spec:
       description: Digest of the pushed image
       value: $(tasks.push-container-image.results.IMAGE_DIGEST)
     - name: SCAN_STATUS
-      description: PASS or FAIL from Trivy scan
+      description: PASS or FAIL from Trivy secret scan
       value: $(tasks.scan-image.results.SCAN_STATUS)
 
   tasks:
@@ -135,7 +135,7 @@ spec:
         - name: source
           workspace: source
 
-    # Trivy vulnerability + secret scan, results attached as OCI referrer via oras.
+    # Trivy secret scan, results attached as OCI referrer via oras.
     - name: scan-image
       runAfter: ["push-container-image"]
       taskRef:

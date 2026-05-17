@@ -11,8 +11,7 @@
 #                    └─ build-container-image
 #                         └─ push-container-image-with-chains   ← emits IMAGE_URL + IMAGE_DIGEST
 #                              ├─ create-source-vsa             ← attaches unsigned Source VSA via OCI referrers
-#                              ├─ scan-image                      ← Trivy vuln+secret scan → oras attach
-#                              └─ generate-sbom                 ← Trivy SBOM + oras attach
+#                              └─ scan-image                    ← Trivy secret scan → oras attach
 #
 # After push-container-image-with-chains completes, Tekton Chains automatically:
 #   1. Signs the image with cosign (key in signing-secrets / tekton-chains namespace)
@@ -23,11 +22,8 @@
 # (forks, commits not on the protected branch). It generates an unsigned
 # Source VSA claiming SLSA_SOURCE_LEVEL_1. The create-source-vsa task attaches
 # the VSA to the built image via OCI referrers API after the image is pushed.
-# The scan-image task scans the image with Trivy for vulnerabilities and
-# secrets, then attaches the results as an unsigned OCI artifact via oras.
-#
-# The generate-sbom task creates an SPDX JSON SBOM with Trivy and
-# attaches it as an unsigned OCI artifact via oras.
+# The scan-image task scans the image with Trivy for secrets, then attaches
+# the results as an unsigned OCI artifact via oras.
 #
 # Both tasks run in parallel after push-container-image-with-chains.
 #
@@ -40,7 +36,7 @@
 # Prerequisites (applied by make setup-challenge2-tekton):
 #   - Tasks: verify-source-provenance, create-source-vsa
 #            (verify-source-task.yaml in this repo)
-#   - Tasks: push-container-image-with-chains, generate-sbom, scan-image,
+#   - Tasks: push-container-image-with-chains, scan-image
 #            (build-tasks-with-chains.yaml in this repo)
 #   - All other tasks: git-clone, build-go-app, quality-check-task, build-container-image
 #   - Secret:    cosign-signing-secret in ctf-challenge (cosign.key + cosign.password)
@@ -175,7 +171,7 @@ spec:
           workspace: source
 
     # Attach the unsigned Source VSA to the image via OCI referrers API.
-    # Runs in parallel with generate-and-attest-sbom.
+    # Runs in parallel with scan-image.
     - name: create-source-vsa
       runAfter: ["push-container-image"]
       taskRef:
@@ -205,7 +201,7 @@ spec:
     # The scan results referrer digest is emitted as a Tekton Chains type-hinted
     # result (SCAN_RESULTS-ARTIFACT_URI/DIGEST) so Chains records it in the
     # SLSA provenance as a subject.
-    # Runs in parallel with generate-and-attest-sbom.
+    # Runs in parallel with create-source-vsa.
     - name: scan-image
       runAfter: ["push-container-image"]
       taskRef:
