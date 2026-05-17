@@ -3,7 +3,7 @@
 .PHONY: check-cli-tools install-tkn install-kubescape install-conforma verify-registry configure-registry-tls verify-tektonchains
 .PHONY: setup-conforma verify-conforma
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build trigger-challenge2-build-with-chains
-.PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3
+.PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3 setup-challenge3-tekton trigger-challenge3-build-with-chains
 .PHONY: setup-production-cluster setup-production-gitea seed-production-repo load-image-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
 .PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard
 
@@ -1039,6 +1039,33 @@ verify-challenge3: ## Verify Challenge 3 setup
 	@echo "✓ Challenge 3 environment ready"
 	@echo ""
 	@echo "Next: Follow challenges/challenge3/CTF-CHALLENGE-GUIDE.md to execute the attack"
+
+setup-challenge3-tekton: ## Deploy Challenge 3 Tekton resources (enhanced pipeline with vuln scan + SBOM + full provenance)
+	@echo ""
+	@echo "============================================"
+	@echo "Setting up Challenge 3 Tekton pipeline"
+	@echo "============================================"
+	@echo ""
+	@echo "Deploying tasks..."
+	@kubectl apply -f challenges/challenge3/tekton/tasks/
+	@echo ""
+	@echo "Deploying pipeline..."
+	@kubectl apply -f challenges/challenge3/tekton/pipelines/
+	@echo ""
+	@echo "Pipeline: push-build-pipeline-with-chains (enhanced)"
+	@echo "  Post-push tasks:"
+	@echo "    - create-source-vsa       (Source VSA -> provenance subject)"
+	@echo "    - scan-image              (Secret scan -> provenance subject)"
+	@echo "    - scan-vulnerabilities    (Vuln scan -> provenance subject)"
+	@echo "    - generate-sbom           (SBOM -> provenance subject)"
+	@echo ""
+	@echo "Trigger with: make trigger-challenge3-build-with-chains"
+
+trigger-challenge3-build-with-chains: ## Run Challenge 3 enhanced pipeline (Tekton Chains + vuln scan + SBOM)
+	@echo "Triggering Challenge 3 enhanced pipeline..."
+	@kubectl create -f challenges/challenge3/tekton/manual-pipelinerun-with-chains.yaml
+	@echo ""
+	@echo "Monitor with: kubectl get pipelineruns -n ctf-challenge -w"
 
 
 # ============================================================
