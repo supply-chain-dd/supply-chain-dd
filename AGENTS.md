@@ -27,7 +27,8 @@ When modifying anything in `challenges/challengeN/`, update the appropriate file
 | Setup steps, prerequisites, configuration | `SETUP.md` | Environment setup instructions |
 | Attack execution, commands, flag discovery | `CTF-CHALLENGE-GUIDE.md` | Step-by-step attack walkthrough |
 | Attack explanation, CVE references, impact | `ATTACK-ANALYSIS.md` | Technical analysis and real-world examples |
-| Detection tools, prevention policies, remediation | `SECURITY-GUIDE.md` | Detection and prevention guidance |
+| Detection tools, prevention policies, remediation | `SECURITY-GUIDE.md` | Detection and prevention guidance (must align with demo scripts) |
+| Demo scripts (`*-demo.sh`) | `SECURITY-GUIDE.md` | Add/update Interactive Demos section and cross-references in relevant phases |
 
 **Rule**: If you modify Tekton manifests, scripts, or policies, update the corresponding documentation in the **same commit**.
 
@@ -113,6 +114,12 @@ When modifying anything in `challenges/challengeN/`, update the appropriate file
 - Prevention policies (Kyverno, NetworkPolicy, RBAC)
 - Security best practices
 - Remediation steps
+
+**Demo script alignment (mandatory):**
+- Every `SECURITY-GUIDE.md` must include an "Interactive Demos" section listing all `*-demo.sh` scripts in the challenge directory
+- When creating or modifying a demo script, update `SECURITY-GUIDE.md` to reference it (Interactive Demos table + cross-references in relevant sections)
+- When modifying detection/prevention content in `SECURITY-GUIDE.md`, ensure commands and tool options match what the demos actually execute
+- If a guide section has no demo coverage, note it with: `> **No demo script yet**`
 
 **Structure:**
 ```markdown

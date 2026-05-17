@@ -14,6 +14,20 @@ After completing this guide, you will understand how to:
 
 ---
 
+## Interactive Demos
+
+This challenge includes three demo-magic scripts that walk through remediation and defense interactively. Each can be run standalone after the environment is set up (`make setup && make setup-challenge2-tekton`).
+
+| Script | What It Demonstrates | Guide Sections |
+|--------|---------------------|----------------|
+| `./filter-repo-demo.sh` | Using `git-filter-repo` to permanently remove `.env.production` from git history | Section 1.5 |
+| `./defense-demo.sh` | End-to-end defense: Dockerfile fix (multi-stage + `.dockerignore`), Trivy Rego policy scan, scanner limitations, image purge, webhook-triggered secure pipeline, and verification | Phases 1, 2, 5 |
+| `./tektonchains-demo.sh` | Tekton Chains installation, configuration, signing keys, pipeline execution, cosign verification of signatures and SLSA provenance | Phase 3 |
+
+> **Prerequisites**: `defense-demo.sh` deploys a secure pipeline and triggers it via webhook. It also demonstrates the custom Trivy Rego policy (`trivy-policies/copy_git_leak.rego`). `tektonchains-demo.sh` requires `cosign` installed and Tekton Chains set up (`make setup-tektonchains`).
+
+---
+
 ## Phase 1: Quick Wins — Preventing Secrets at Build Time
 
 These changes stop secrets from entering image layers in the first place. They require no additional tooling — just better Dockerfile practices.
@@ -150,6 +164,8 @@ Kaniko, used in this CTF's pipeline, was archived by Google in June 2025 and nev
 
 See [`tekton-patched/Dockerfile`](tekton-patched/Dockerfile) for a version that applies all three defenses. Compare it against the [vulnerable Dockerfile](../victim-repo-sample/Dockerfile) to understand the difference.
 
+> The `./defense-demo.sh` (Phase 1, steps 2–8) demonstrates this end-to-end: it shows the vulnerable Dockerfile, runs the Trivy Rego scan to detect the anti-pattern, replaces the Dockerfile with a multi-stage build, adds the `.dockerignore` allowlist, commits the fix, and protects the main branch.
+
 ### 1.5 Remediation: Cleaning Secrets from Git History with `git-filter-repo`
 
 When secrets have already been committed to a repository, prevention alone is not enough — the secrets persist in git history even after deletion. [`git-filter-repo`](https://github.com/newren/git-filter-repo) rewrites the entire repository history to permanently remove sensitive files.
@@ -249,6 +265,8 @@ Despite the merged-filesystem limitation, Trivy image scanning is still valuable
 4. Scan results can be attested and verified by policy engines
 
 ### 2.2 Scanning with Trivy (CLI)
+
+> The `./defense-demo.sh` (Phase 2) demonstrates Trivy's limitation: scanning the vulnerable image with `trivy image --scanners secret` returns 0 secrets because the merged filesystem hides the deleted `.git` directory. It then purges the vulnerable image from the registry.
 
 ```bash
 # Scan for secrets in the final image filesystem
@@ -379,6 +397,8 @@ The policy uses Trivy's Dockerfile input schema (`input.Stages[].Commands[]`), w
 
 **Using with TruffleHog for defense in depth:**
 
+> The `./defense-demo.sh` (Phase 1, steps 3–4) runs this exact Rego policy against the vulnerable Dockerfile, then re-scans the fixed image in Phase 4 to confirm the anti-pattern is resolved.
+
 TruffleHog can scan images layer-by-layer and will catch credentials stored directly in files (e.g., `.env` files, API keys in config files). While it cannot reconstruct git history, it complements the Rego policy by catching a different class of leaks:
 
 ```bash
@@ -393,7 +413,7 @@ trivy config \
   Dockerfile
 ```
 
-### R2.6 unning Hadolint locally
+### 2.6 Running Hadolint locally
 
 hadolint is not installed on the host. Run it via container:
 
@@ -429,6 +449,8 @@ Image used: `docker.io/hadolint/hadolint` (latest) or pinned `docker.io/hadolint
 ---
 
 ## Phase 3: Attestation and Provenance
+
+> The `./tektonchains-demo.sh` walks through this entire phase interactively: Tekton Chains installation verification, `chains-config` ConfigMap inspection, cosign signing key setup, pipeline execution, and verification with `cosign verify` / `cosign verify-attestation` / `cosign tree`.
 
 After build and scan, the image should have multiple signed attestations attached to it. Here is what the full supply chain picture looks like:
 
@@ -529,6 +551,8 @@ cosign verify-attestation --key cosign.pub \
 ---
 
 ## Phase 4: Policy Enforcement with Conforma
+
+> **No demo script yet**: Conforma validation is documented here but not yet covered by an interactive demo. See `./defense-demo.sh` for the build/scan/verify workflow that precedes Conforma.
 
 Conforma (formerly Enterprise Contract, `ec` CLI) validates images against Rego-based policies. It checks that:
 - The image is signed
@@ -682,6 +706,8 @@ make verify-conforma
 ```
 
 ### 5.3 Verify the Defenses
+
+> The `./defense-demo.sh` (Phases 3–4) demonstrates the webhook-triggered pipeline and verification. After pushing the Dockerfile fix to main, the Gitea webhook triggers the EventListener → PipelineRun automatically. Phase 4 then verifies the new v2.0 image has no secrets and re-runs the Rego policy to confirm the anti-pattern is gone.
 
 After the pipeline completes:
 
