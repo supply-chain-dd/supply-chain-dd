@@ -1,0 +1,87 @@
+---
+# Git Clone Task
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: git-clone
+  namespace: ctf-challenge
+spec:
+  description: Clone a git repository
+  params:
+    - name: url
+      description: Repository URL to clone
+      type: string
+    - name: revision
+      description: Revision to checkout (branch, tag, sha)
+      type: string
+      default: "main"
+    - name: deleteExisting
+      description: Clean out workspace before cloning
+      type: string
+      default: "true"
+  results:
+    - name: commit
+      description: The precise commit SHA that was checked out
+    - name: url
+      description: The repository URL that was cloned
+  workspaces:
+    - name: output
+      description: The workspace to clone into
+  steps:
+    - name: clone
+      image: alpine/git:v2.40.1
+      workingDir: $(workspaces.output.path)
+      script: |
+        #!/bin/sh
+        set -e
+
+        if [ "$(params.deleteExisting)" = "true" ]; then
+          echo "Cleaning workspace..."
+          rm -rf $(workspaces.output.path)/*
+          rm -rf $(workspaces.output.path)/.[!.]*
+        fi
+
+        echo "Cloning $(params.url) at revision $(params.revision)..."
+        git clone $(params.url) $(workspaces.output.path)/repo
+        cd $(workspaces.output.path)/repo
+        git checkout $(params.revision)
+
+        COMMIT_SHA=$(git rev-parse HEAD)
+
+        echo "Clone completed successfully"
+        echo "Repository: $(params.url)"
+        echo "Revision: $(params.revision)"
+        echo "Commit: ${COMMIT_SHA}"
+
+        # Write results for Conforma policy validation (url + commit)
+        # and Tekton Chains provenance materials (CHAINS-GIT_* type hints).
+        printf '%s' "${COMMIT_SHA}" > /tekton/results/commit
+        printf '%s' "$(params.url)" > /tekton/results/url
+
+        # Move contents up one level for easier access
+        mv $(workspaces.output.path)/repo/* $(workspaces.output.path)/ 2>/dev/null || true
+        mv $(workspaces.output.path)/repo/.[!.]* $(workspaces.output.path)/ 2>/dev/null || true
+        rm -rf $(workspaces.output.path)/repo
+---
+# Print Results Task
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: print-results
+  namespace: ctf-challenge
+spec:
+  description: Print build and push results
+  workspaces:
+    - name: source
+  steps:
+    - name: print-results
+      image: alpine:3.18
+      script: |
+        #!/bin/sh
+        echo "============================================"
+        echo "Build and Push Summary"
+        echo "============================================"
+        echo "✓ All tasks completed successfully"
+        echo "Container image has been built and pushed to registry"
+        echo "============================================"
+---

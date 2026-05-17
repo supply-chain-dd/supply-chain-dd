@@ -1,0 +1,940 @@
+---
+# Push Container Image Task — Chains-aware variant
+#
+# Extends the base push-container-image task with two Tekton task results:
+#   IMAGE_URL    — full registry URL of the pushed image
+#   IMAGE_DIGEST — sha256 digest written by kaniko via --digest-file
+#
+# Tekton Chains watches for completed TaskRuns that emit both of these results and
+# automatically:
+#   1. Signs the image with cosign (stores signature as <image>.sig in the registry)
+#   2. Generates a SLSA Provenance in-toto attestation (stored as <image>.att)
+#
+# Tekton Chains then automatically signs the image and generates a SLSA Provenance
+# attestation stored alongside the image in the OCI registry.
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: push-container-image-with-chains
+  namespace: ctf-challenge
+spec:
+  description: |
+    Pushes a container image to the local registry using Kaniko and emits
+    IMAGE_URL / IMAGE_DIGEST results so Tekton Chains can sign and attest it.
+  params:
+    - name: image-name
+      type: string
+      description: Image name (e.g. recipe-api)
+    - name: image-tag
+      type: string
+      description: Image tag
+      default: "latest"
+    - name: registry-url
+      type: string
+      description: Registry URL (internal cluster address)
+      default: "registry.registry.svc.cluster.local:5000"
+  results:
+    - name: IMAGE_DIGEST
+      description: Digest of the pushed image (sha256:...) — consumed by Tekton Chains
+    - name: IMAGE_URL
+      description: Full URL of the pushed image — consumed by Tekton Chains
+  workspaces:
+    - name: source
+      description: Workspace containing the Dockerfile and build context
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+        items:
+          - key: config.json
+            path: config.json
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
+  steps:
+    - name: push-image
+      image: gcr.io/kaniko-project/executor:v1.23.2
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: SSL_CERT_DIR
+          value: /kaniko/ssl/certs
+      command:
+        - /kaniko/executor
+      args:
+        - --dockerfile=Dockerfile
+        - --context=$(workspaces.source.path)
+        - --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag)
+        - --verbosity=info
+        - --ignore-path=/product_uuid
+        - --digest-file=/tekton/results/IMAGE_DIGEST
+      volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker/
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /kaniko/ssl/certs/additional-ca-cert-bundle.crt
+          subPath: ca.crt
+          readOnly: true
+
+    - name: write-image-url
+      image: alpine:3.18
+      script: |
+        #!/bin/sh
+        printf '%s' "$(params.registry-url)/$(params.image-name):$(params.image-tag)" \
+          > /tekton/results/IMAGE_URL
+        echo "============================================"
+        echo "Image pushed — Tekton Chains will now sign"
+        echo "============================================"
+        echo "IMAGE_URL:    $(cat /tekton/results/IMAGE_URL)"
+        echo "IMAGE_DIGEST: $(cat /tekton/results/IMAGE_DIGEST)"
+        echo ""
+        echo "Chains will store:"
+        echo "  Signature:   $(params.registry-url)/$(params.image-name):$(params.image-tag).sig"
+        echo "  Attestation: $(params.registry-url)/$(params.image-name):$(params.image-tag).att"
+        echo "============================================"
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: wait-for-chains
+  namespace: ctf-challenge
+spec:
+  description: |
+    Waits a configurable number of seconds for Tekton Chains to sign the pushed image
+    and store its SLSA Provenance attestation in the OCI registry.
+  params:
+    - name: seconds
+      type: string
+      description: How long to wait (seconds)
+      default: "45"
+  steps:
+    - name: wait
+      image: alpine:3.18
+      script: |
+        #!/bin/sh
+        echo "Waiting $(params.seconds)s for Tekton Chains to sign the image..."
+        echo "Chains watches for TaskRuns with IMAGE_URL + IMAGE_DIGEST results,"
+        echo "then signs the image and stores the SLSA attestation in the registry."
+        sleep "$(params.seconds)"
+        echo "Done — proceeding to Conforma policy validation"
+---
+# Verify with Conforma Task
+#
+# NOT used by push-build-pipeline-with-chains — kept as a reusable task
+# definition for ad-hoc or future pipeline use.
+#
+# Tekton Chains generates PipelineRun attestations only AFTER the pipeline
+# completes, so running ec validate image inside the pipeline will always
+# fail attestation_type.pipelinerun_attestation_found and
+# slsa_source_correlated.* rules. Run ec from the command line instead.
+#
+# Runs ec validate image (Conforma CLI) against an image.
+# Downloads the ec binary from GitHub releases — all images used here are public and
+# require no authentication, unlike the official verify-enterprise-contract bundle which
+# pulls registry.redhat.io/rhtas/ec-rhel9 (requires Red Hat credentials).
+#
+# Functionally equivalent to the official task:
+#   IMAGES → ec --image  (ApplicationSnapshot JSON stripped to containerImage)
+#   PUBLIC_KEY → --public-key  (cosign.pub mounted from Secret cosign-public-key)
+#   IGNORE_REKOR → --ignore-rekor  (Rekor not deployed in CTF cluster)
+#   CA_TRUST_* → SSL_CERT_DIR  (local registry self-signed CA)
+#   STRICT → --strict  (false = report only; true = fail pipeline)
+#
+# Prerequisites (created by make setup-challenge2-tekton):
+#   Secret    cosign-public-key  in ctf-challenge  (key: cosign.pub)
+#   ConfigMap registry-ca-cert   in ctf-challenge  (key: ca.crt)
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: verify-with-conforma
+  namespace: ctf-challenge
+spec:
+  description: |
+    Validates a container image against Conforma policy using the public ec CLI binary.
+    Uses only public images (alpine) — no Red Hat registry credentials required.
+  params:
+    - name: IMAGES
+      type: string
+      description: >-
+        ApplicationSnapshot JSON spec, e.g.
+        {"components":[{"name":"app","containerImage":"registry/app:tag@sha256:..."}]}
+    - name: POLICY_CONFIGURATION
+      type: string
+      description: Inline policy JSON or conforma/config path (e.g. github.com/conforma/config//minimal)
+      default: >-
+        {"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}
+    - name: PUBLIC_KEY
+      type: string
+      description: >-
+        cosign k8s reference to the signing public key Secret,
+        e.g. k8s://ctf-challenge/cosign-public-key
+      default: "k8s://ctf-challenge/cosign-public-key"
+    - name: IGNORE_REKOR
+      type: string
+      description: Skip Rekor transparency log checks (true | false)
+      default: "true"
+    - name: CA_TRUST_CONFIGMAP_NAME
+      type: string
+      description: ConfigMap containing the registry CA bundle
+      default: "registry-ca-cert"
+    - name: CA_TRUST_CONFIG_MAP_KEY
+      type: string
+      description: Key inside the ConfigMap that holds the CA cert
+      default: "ca.crt"
+    - name: STRICT
+      type: string
+      description: "Fail on policy violations: true | false"
+      default: "false"
+    - name: INFO
+      type: string
+      description: Include detailed rule results in output
+      default: "true"
+    - name: EXTRA_RULE_DATA
+      type: string
+      description: >-
+        Extra rule data for the policy evaluator. Format: key=value.
+        Multiple entries can be passed via repeated --extra-rule-data flags.
+      default: >-
+        allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","localhost:30000","docker.io","gcr.io","golang"]
+    - name: CONFORMA_VERSION
+      type: string
+      description: Conforma CLI GitHub release tag
+      default: "v0.9.25"
+  volumes:
+    - name: registry-ca-cert
+      configMap:
+        name: $(params.CA_TRUST_CONFIGMAP_NAME)
+    - name: cosign-public-key
+      secret:
+        secretName: cosign-public-key
+  steps:
+    - name: validate
+      image: alpine:3.18
+      env:
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+        - name: cosign-public-key
+          mountPath: /cosign
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates jq >/dev/null 2>&1
+
+        cp /certs/$(params.CA_TRUST_CONFIG_MAP_KEY) /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        EC_ARCH="amd64" ;;
+          aarch64|arm64) EC_ARCH="arm64" ;;
+          *)             EC_ARCH="amd64" ;;
+        esac
+        EC_URL="https://github.com/conforma/cli/releases/download/$(params.CONFORMA_VERSION)/ec_linux_${EC_ARCH}"
+        echo "Downloading Conforma CLI $(params.CONFORMA_VERSION) (linux/${EC_ARCH})..."
+        curl -sSfL "${EC_URL}" -o /tmp/ec
+        chmod +x /tmp/ec
+        echo "ec CLI ready"
+        echo ""
+
+        IMAGE_REF=$(echo '$(params.IMAGES)' | jq -r '.components[0].containerImage')
+
+        PUBLIC_KEY_ARG="/cosign/cosign.pub"
+
+        IGNORE_REKOR_FLAG=""
+        if [ "$(params.IGNORE_REKOR)" = "true" ]; then
+          IGNORE_REKOR_FLAG="--ignore-rekor"
+        fi
+
+        echo "============================================"
+        echo "Conforma Policy Validation"
+        echo "============================================"
+        echo "Image:   ${IMAGE_REF}"
+        echo "Policy:  $(params.POLICY_CONFIGURATION)"
+        echo "Strict:  $(params.STRICT)"
+        echo ""
+
+        EXTRA_RULE_DATA=$(printf '%s' '$(params.EXTRA_RULE_DATA)' | sed 's/"/""/g')
+        EXTRA_RULE_DATA="\"${EXTRA_RULE_DATA}\""
+
+        set +e
+        /tmp/ec validate image \
+          --image      "${IMAGE_REF}" \
+          --public-key "${PUBLIC_KEY_ARG}" \
+          --policy     '$(params.POLICY_CONFIGURATION)' \
+          --extra-rule-data "${EXTRA_RULE_DATA}" \
+          ${IGNORE_REKOR_FLAG} \
+          --output     text \
+          --strict     "$(params.STRICT)"
+        EC_EXIT=$?
+        set -e
+
+        echo ""
+        if [ "$EC_EXIT" -eq 0 ]; then
+          echo "All policy checks passed"
+        else
+          echo "Policy violations detected (exit ${EC_EXIT})"
+          [ "$(params.STRICT)" = "true" ] && exit "$EC_EXIT" || true
+        fi
+---
+# Generate and Attest SBOM Task
+#
+# Generates an SPDX JSON SBOM using Trivy and attaches it to the container
+# image as an OCI referrer using oras. No signing — Tekton Chains handles that.
+#
+# Emits Tekton Chains type-hinted results (SBOM-ARTIFACT_URI / SBOM-ARTIFACT_DIGEST)
+# so the SBOM artifact is recorded as a subject in the SLSA provenance attestation.
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: generate-sbom
+  namespace: ctf-challenge
+spec:
+  description: |
+    Generates an SPDX JSON SBOM for a container image using Trivy, then
+    attaches it to the image via OCI referrers API using oras.
+    Emits Tekton Chains type-hinted results so the SBOM artifact is recorded
+    in the SLSA provenance.
+  params:
+    - name: IMAGE_URL
+      type: string
+      description: Full URL of the image (e.g. registry.registry.svc.cluster.local:5000/recipe-api:v1.0)
+    - name: IMAGE_DIGEST
+      type: string
+      description: Image digest (sha256:...)
+    - name: TRIVY_VERSION
+      type: string
+      description: Trivy CLI version (without v prefix)
+      default: "0.70.0"
+    - name: ORAS_VERSION
+      type: string
+      description: ORAS CLI version
+      default: "v1.2.2"
+  results:
+    - name: SBOM_DIGEST
+      description: Digest of the attached SBOM artifact
+    - name: SBOM-ARTIFACT_URI
+      description: >-
+        OCI URI of the attached SBOM artifact.
+        Tekton Chains type hint — becomes a subject in the SLSA provenance.
+    - name: SBOM-ARTIFACT_DIGEST
+      description: >-
+        Digest of the attached SBOM referrer manifest.
+        Tekton Chains type hint — paired with SBOM-ARTIFACT_URI.
+  volumes:
+    - name: sbom-data
+      emptyDir: {}
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+        items:
+          - key: config.json
+            path: config.json
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
+  steps:
+    - name: generate-sbom
+      image: alpine:3.18
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker-config
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: sbom-data
+          mountPath: /sbom
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates jq >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        TRIVY_ARCH="64bit" ;;
+          aarch64|arm64) TRIVY_ARCH="ARM64" ;;
+          *)             TRIVY_ARCH="64bit" ;;
+        esac
+
+        TRIVY_URL="https://github.com/aquasecurity/trivy/releases/download/v$(params.TRIVY_VERSION)/trivy_$(params.TRIVY_VERSION)_Linux-${TRIVY_ARCH}.tar.gz"
+        echo "Downloading Trivy $(params.TRIVY_VERSION) (linux/${TRIVY_ARCH})..."
+        curl -sSfL "${TRIVY_URL}" | tar xz -C /tmp trivy
+        chmod +x /tmp/trivy
+        echo "Trivy ready"
+        echo ""
+
+        IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+        echo "============================================"
+        echo "Generating SPDX JSON SBOM with Trivy"
+        echo "============================================"
+        echo "Image: ${IMAGE_REF}"
+        echo ""
+
+        /tmp/trivy image \
+          --format spdx-json \
+          --output /sbom/sbom-raw.json \
+          --skip-db-update \
+          --skip-java-db-update \
+          --insecure \
+          "${IMAGE_REF}"
+
+        # Trivy uses hyphens (e.g. "OPERATING-SYSTEM") where SPDX 2.3
+        # requires underscores ("OPERATING_SYSTEM").
+        jq '.packages |= map(
+          if .primaryPackagePurpose
+          then .primaryPackagePurpose |= gsub("-"; "_")
+          else . end
+        )' /sbom/sbom-raw.json > /sbom/sbom-spdx.json
+        rm /sbom/sbom-raw.json
+
+        echo ""
+        echo "SBOM size: $(wc -c < /sbom/sbom-spdx.json) bytes"
+        echo "============================================"
+
+    - name: attach-sbom
+      image: alpine:3.18
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker-config
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: sbom-data
+          mountPath: /sbom
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)  ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
+        esac
+
+        ORAS_VERSION="$(params.ORAS_VERSION)"
+        ORAS_URL="https://github.com/oras-project/oras/releases/download/${ORAS_VERSION}/oras_${ORAS_VERSION#v}_linux_${ARCH}.tar.gz"
+        echo "Downloading oras ${ORAS_VERSION}..."
+        curl -fsSL "$ORAS_URL" | tar xz -C /tmp oras
+        chmod +x /tmp/oras
+        echo "oras ready"
+        echo ""
+
+        IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+        echo "============================================"
+        echo "Attaching SBOM to image via OCI referrers"
+        echo "============================================"
+        echo "Image:     ${IMAGE_REF}"
+        echo "SBOM file: /sbom/sbom-spdx.json"
+        echo "Type:      application/spdx+json"
+        echo ""
+
+        cd /sbom
+        ATTACH_OUTPUT=$(/tmp/oras attach \
+          --artifact-type "application/spdx+json" \
+          --registry-config /docker-config/config.json \
+          "$IMAGE_REF" \
+            sbom-spdx.json:application/spdx+json)
+
+        echo "$ATTACH_OUTPUT"
+
+        SBOM_DIGEST=$(echo "$ATTACH_OUTPUT" | grep -oE 'sha256:[a-f0-9]{64}' | tail -1 || true)
+        if [ -n "$SBOM_DIGEST" ]; then
+          printf '%s' "$SBOM_DIGEST" > /tekton/results/SBOM_DIGEST
+          # Tekton Chains type hints — Chains will record this artifact as a
+          # subject in the SLSA provenance attestation.
+          printf '%s' "$(params.IMAGE_URL)" > /tekton/results/SBOM-ARTIFACT_URI
+          printf '%s' "$SBOM_DIGEST" > /tekton/results/SBOM-ARTIFACT_DIGEST
+          echo ""
+          echo "SBOM attached successfully."
+          echo "SBOM artifact digest: $SBOM_DIGEST"
+        else
+          printf '%s' "unknown" > /tekton/results/SBOM_DIGEST
+          printf '%s' "unknown" > /tekton/results/SBOM-ARTIFACT_URI
+          printf '%s' "unknown" > /tekton/results/SBOM-ARTIFACT_DIGEST
+          echo ""
+          echo "WARNING: Could not extract SBOM digest from oras output."
+        fi
+        echo "============================================"
+---
+# Scan Image Task (Secret Scanning)
+#
+# Scans a container image for secrets using Trivy, then attaches the scan
+# results as an unsigned OCI artifact using oras attach.
+# No signing keys are needed — Tekton Chains will include the scan results
+# digest in its SLSA provenance via type-hinted results.
+#
+# The scan results blob is attached with artifact type
+# application/vnd.aquasecurity.trivy.report+json and is discoverable via
+# the OCI referrers API (or tag fallback scheme).
+#
+# Trivy scans the merged filesystem of the image — secrets deleted in upper
+# layers (whiteout files) may not be detected. For reliable deleted-layer
+# detection, see the layer-by-layer approach in SECURITY-GUIDE.md.
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: scan-image
+  namespace: ctf-challenge
+spec:
+  description: |
+    Scans a container image for secrets using Trivy.
+    Attaches scan results to the image as an OCI artifact via oras attach.
+    Emits Tekton Chains type-hinted results so the scan artifact is recorded
+    in the SLSA provenance.
+  params:
+    - name: IMAGE_URL
+      type: string
+      description: Full URL of the image
+    - name: IMAGE_DIGEST
+      type: string
+      description: Image digest (sha256:...)
+    - name: TRIVY_VERSION
+      type: string
+      description: Trivy CLI version (without v prefix)
+      default: "0.70.0"
+    - name: ORAS_VERSION
+      type: string
+      description: ORAS CLI version (without v prefix)
+      default: "1.2.2"
+  results:
+    - name: SCAN_STATUS
+      description: PASS or FAIL based on secret detection
+    - name: SCAN_RESULTS-ARTIFACT_URI
+      description: >-
+        OCI URI of the attached scan results artifact.
+        Tekton Chains type hint — becomes a subject in the SLSA provenance.
+    - name: SCAN_RESULTS-ARTIFACT_DIGEST
+      description: >-
+        Digest of the attached scan results referrer manifest.
+        Tekton Chains type hint — paired with SCAN_RESULTS-ARTIFACT_URI.
+  volumes:
+    - name: scan-data
+      emptyDir: {}
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+        items:
+          - key: config.json
+            path: config.json
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
+  steps:
+    - name: scan
+      image: alpine:3.18
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker-config
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: scan-data
+          mountPath: /scan
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates jq >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        TRIVY_ARCH="64bit" ;;
+          aarch64|arm64) TRIVY_ARCH="ARM64" ;;
+          *)             TRIVY_ARCH="64bit" ;;
+        esac
+
+        TRIVY_URL="https://github.com/aquasecurity/trivy/releases/download/v$(params.TRIVY_VERSION)/trivy_$(params.TRIVY_VERSION)_Linux-${TRIVY_ARCH}.tar.gz"
+        echo "Downloading Trivy $(params.TRIVY_VERSION)..."
+        curl -sSfL "${TRIVY_URL}" | tar xz -C /tmp trivy
+        chmod +x /tmp/trivy
+        echo "Trivy ready"
+        echo ""
+
+        IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+        echo "============================================"
+        echo "Scanning image for secrets"
+        echo "============================================"
+        echo "Image: ${IMAGE_REF}"
+        echo ""
+
+        set +e
+        /tmp/trivy image \
+          --scanners secret \
+          --image-config-scanners secret \
+          --format json \
+          --output /scan/trivy-scan-results.json \
+          --skip-java-db-update \
+          --insecure \
+          "${IMAGE_REF}"
+        SCAN_EXIT=$?
+        set -e
+
+        set +e
+        /tmp/trivy image \
+          --scanners secret \
+          --image-config-scanners secret \
+          --format table \
+          --skip-java-db-update \
+          --insecure \
+          "${IMAGE_REF}"
+        set -e
+
+        if [ -f /scan/trivy-scan-results.json ]; then
+          SECRET_COUNT=$(jq '[.Results[]? | (.Secrets // [])[] ] | length' /scan/trivy-scan-results.json 2>/dev/null || echo "0")
+
+          echo ""
+          echo "============================================"
+          echo "Scan summary:"
+          echo "  Secrets detected: ${SECRET_COUNT}"
+
+          if [ "${SECRET_COUNT}" -gt 0 ]; then
+            echo "  Status: FAIL"
+            printf "FAIL" > /tekton/results/SCAN_STATUS
+          else
+            echo "  Status: PASS"
+            printf "PASS" > /tekton/results/SCAN_STATUS
+          fi
+          echo "============================================"
+        else
+          echo "WARNING: Scan report not generated"
+          printf "FAIL" > /tekton/results/SCAN_STATUS
+        fi
+
+    - name: attach-results
+      image: alpine:3.18
+      volumeMounts:
+        - name: scan-data
+          mountPath: /scan
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        if [ ! -f /scan/trivy-scan-results.json ]; then
+          echo "No scan report found — skipping attachment"
+          exit 0
+        fi
+
+        apk add --no-cache curl ca-certificates >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        ORAS_ARCH="amd64" ;;
+          aarch64|arm64) ORAS_ARCH="arm64" ;;
+          *)             ORAS_ARCH="amd64" ;;
+        esac
+
+        ORAS_URL="https://github.com/oras-project/oras/releases/download/v$(params.ORAS_VERSION)/oras_$(params.ORAS_VERSION)_linux_${ORAS_ARCH}.tar.gz"
+        echo "Downloading oras v$(params.ORAS_VERSION)..."
+        curl -sSfL "${ORAS_URL}" | tar xz -C /tmp oras
+        chmod +x /tmp/oras
+        echo "oras ready"
+        echo ""
+
+        IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+        echo "============================================"
+        echo "Attaching scan results to image via oras"
+        echo "============================================"
+        echo "Image:         ${IMAGE_REF}"
+        echo "Artifact type: application/vnd.aquasecurity.trivy.report+json"
+        echo ""
+
+        cd /scan
+        OUTPUT=$(/tmp/oras attach "${IMAGE_REF}" \
+          --artifact-type application/vnd.aquasecurity.trivy.report+json \
+          --ca-file /certs/ca.crt \
+          --registry-config /docker-config/config.json \
+          trivy-scan-results.json:application/json 2>&1)
+
+        echo "${OUTPUT}"
+
+        REFERRER_DIGEST=$(echo "${OUTPUT}" | grep -i "^Digest:" | awk '{print $2}')
+
+        if [ -n "${REFERRER_DIGEST}" ]; then
+          printf '%s' "$(params.IMAGE_URL)" > /tekton/results/SCAN_RESULTS-ARTIFACT_URI
+          printf '%s' "${REFERRER_DIGEST}" > /tekton/results/SCAN_RESULTS-ARTIFACT_DIGEST
+
+          echo ""
+          echo "Scan results attached successfully"
+          echo "  Referrer digest: ${REFERRER_DIGEST}"
+        else
+          echo ""
+          echo "WARNING: Could not parse referrer digest from oras output"
+        fi
+        echo "============================================"
+---
+# Scan Vulnerabilities Task
+#
+# Scans a container image for known vulnerabilities using Trivy, then attaches
+# the scan results as an unsigned OCI artifact using oras attach.
+# Emits Tekton Chains type-hinted results (VULN_SCAN-ARTIFACT_URI / DIGEST)
+# so the vulnerability report is recorded as a subject in the SLSA provenance.
+#
+# Distinct from scan-image (which focuses on secret detection) — this task
+# targets CVEs and known vulnerabilities at configurable severity thresholds.
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: scan-vulnerabilities
+  namespace: ctf-challenge
+spec:
+  description: |
+    Scans a container image for known vulnerabilities using Trivy.
+    Attaches scan results to the image as an OCI artifact via oras attach.
+    Emits Tekton Chains type-hinted results so the vulnerability report is
+    recorded in the SLSA provenance.
+  params:
+    - name: IMAGE_URL
+      type: string
+      description: Full URL of the image
+    - name: IMAGE_DIGEST
+      type: string
+      description: Image digest (sha256:...)
+    - name: TRIVY_VERSION
+      type: string
+      description: Trivy CLI version (without v prefix)
+      default: "0.70.0"
+    - name: ORAS_VERSION
+      type: string
+      description: ORAS CLI version (without v prefix)
+      default: "1.2.2"
+    - name: SEVERITY_THRESHOLD
+      type: string
+      description: Report vulnerabilities at or above this severity (comma-separated)
+      default: "CRITICAL,HIGH"
+  results:
+    - name: VULN_SCAN_STATUS
+      description: PASS or FAIL based on vulnerability severity threshold
+    - name: VULN_SCAN-ARTIFACT_URI
+      description: >-
+        OCI URI of the attached vulnerability scan results artifact.
+        Tekton Chains type hint — becomes a subject in the SLSA provenance.
+    - name: VULN_SCAN-ARTIFACT_DIGEST
+      description: >-
+        Digest of the attached vulnerability scan results referrer manifest.
+        Tekton Chains type hint — paired with VULN_SCAN-ARTIFACT_URI.
+  volumes:
+    - name: vuln-data
+      emptyDir: {}
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+        items:
+          - key: config.json
+            path: config.json
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
+  steps:
+    - name: scan
+      image: alpine:3.18
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker-config
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: vuln-data
+          mountPath: /scan
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates jq >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        TRIVY_ARCH="64bit" ;;
+          aarch64|arm64) TRIVY_ARCH="ARM64" ;;
+          *)             TRIVY_ARCH="64bit" ;;
+        esac
+
+        TRIVY_URL="https://github.com/aquasecurity/trivy/releases/download/v$(params.TRIVY_VERSION)/trivy_$(params.TRIVY_VERSION)_Linux-${TRIVY_ARCH}.tar.gz"
+        echo "Downloading Trivy $(params.TRIVY_VERSION)..."
+        curl -sSfL "${TRIVY_URL}" | tar xz -C /tmp trivy
+        chmod +x /tmp/trivy
+        echo "Trivy ready"
+        echo ""
+
+        IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+        echo "============================================"
+        echo "Scanning image for vulnerabilities"
+        echo "============================================"
+        echo "Image: ${IMAGE_REF}"
+        echo "Severity threshold: $(params.SEVERITY_THRESHOLD)"
+        echo ""
+
+        set +e
+        /tmp/trivy image \
+          --scanners vuln \
+          --severity $(params.SEVERITY_THRESHOLD) \
+          --format json \
+          --output /scan/trivy-vuln-results.json \
+          --skip-java-db-update \
+          --insecure \
+          "${IMAGE_REF}"
+        SCAN_EXIT=$?
+        set -e
+
+        # Print human-readable summary to pipeline logs
+        set +e
+        /tmp/trivy image \
+          --scanners vuln \
+          --severity $(params.SEVERITY_THRESHOLD) \
+          --format table \
+          --skip-java-db-update \
+          --insecure \
+          "${IMAGE_REF}"
+        set -e
+
+        if [ -f /scan/trivy-vuln-results.json ]; then
+          VULN_COUNT=$(jq '[.Results[]? | (.Vulnerabilities // [])[] ] | length' /scan/trivy-vuln-results.json 2>/dev/null || echo "0")
+
+          echo ""
+          echo "============================================"
+          echo "Vulnerability scan summary:"
+          echo "  Vulnerabilities (>= $(params.SEVERITY_THRESHOLD)): ${VULN_COUNT}"
+
+          if [ "${VULN_COUNT}" -gt 0 ]; then
+            echo "  Status: FAIL"
+            printf "FAIL" > /tekton/results/VULN_SCAN_STATUS
+          else
+            echo "  Status: PASS"
+            printf "PASS" > /tekton/results/VULN_SCAN_STATUS
+          fi
+          echo "============================================"
+        else
+          echo "WARNING: Vulnerability scan report not generated"
+          printf "FAIL" > /tekton/results/VULN_SCAN_STATUS
+        fi
+
+    - name: attach-results
+      image: alpine:3.18
+      volumeMounts:
+        - name: vuln-data
+          mountPath: /scan
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        if [ ! -f /scan/trivy-vuln-results.json ]; then
+          echo "No vulnerability scan report found — skipping attachment"
+          exit 0
+        fi
+
+        apk add --no-cache curl ca-certificates >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        ORAS_ARCH="amd64" ;;
+          aarch64|arm64) ORAS_ARCH="arm64" ;;
+          *)             ORAS_ARCH="amd64" ;;
+        esac
+
+        ORAS_URL="https://github.com/oras-project/oras/releases/download/v$(params.ORAS_VERSION)/oras_$(params.ORAS_VERSION)_linux_${ORAS_ARCH}.tar.gz"
+        echo "Downloading oras v$(params.ORAS_VERSION)..."
+        curl -sSfL "${ORAS_URL}" | tar xz -C /tmp oras
+        chmod +x /tmp/oras
+        echo "oras ready"
+        echo ""
+
+        IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+        echo "============================================"
+        echo "Attaching vulnerability scan results via oras"
+        echo "============================================"
+        echo "Image:         ${IMAGE_REF}"
+        echo "Artifact type: application/vnd.aquasecurity.trivy.vuln.report+json"
+        echo ""
+
+        cd /scan
+        OUTPUT=$(/tmp/oras attach "${IMAGE_REF}" \
+          --artifact-type application/vnd.aquasecurity.trivy.vuln.report+json \
+          --ca-file /certs/ca.crt \
+          --registry-config /docker-config/config.json \
+          trivy-vuln-results.json:application/json 2>&1)
+
+        echo "${OUTPUT}"
+
+        REFERRER_DIGEST=$(echo "${OUTPUT}" | grep -i "^Digest:" | awk '{print $2}')
+
+        if [ -n "${REFERRER_DIGEST}" ]; then
+          # Tekton Chains type hints — Chains will record this artifact as a
+          # subject in the SLSA provenance attestation.
+          printf '%s' "$(params.IMAGE_URL)" > /tekton/results/VULN_SCAN-ARTIFACT_URI
+          printf '%s' "${REFERRER_DIGEST}" > /tekton/results/VULN_SCAN-ARTIFACT_DIGEST
+
+          echo ""
+          echo "Vulnerability scan results attached successfully"
+          echo "  Referrer digest: ${REFERRER_DIGEST}"
+        else
+          echo ""
+          echo "WARNING: Could not parse referrer digest from oras output"
+        fi
+        echo "============================================"
