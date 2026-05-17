@@ -58,6 +58,20 @@ make verify-security
 
 ---
 
+## Interactive Demos
+
+This challenge includes three demo-magic scripts that walk through detection and prevention interactively. Each can be run standalone after the environment is set up (`make setup && make setup-ctf-challenge`).
+
+| Script | What It Demonstrates |
+|--------|---------------------|
+| `./scorecard-demo.sh` | OSSF Scorecard scanning for dangerous workflows (`pull_request_target`) on a GitHub repository |
+| `./kubescape-demo.sh` | Before/after Kubescape scans (C-0015, C-0260), RBAC verification, NetworkPolicy application |
+| `./kyverno-demo.sh` | Kyverno `block-dangerous-task-commands` (Audit mode with PolicyReports) and `restrict-tekton-pr-pipelines` (Enforce mode blocking unauthorized ServiceAccounts) |
+
+> **Prerequisites**: `scorecard-demo.sh` requires the [sherine-k/gophers-api](https://github.com/sherine-k/gophers-api) GitHub repository cloned locally under `~/go/src/github.com/scraly/gophers-api`. Scorecard only works with GitHub repositories, not Gitea. `kubescape-demo.sh` requires `kubectl kubescape` plugin (`make install-kubescape`). `kyverno-demo.sh` requires Kyverno deployed (`make setup-kyverno`).
+
+---
+
 ## 📖 Step-by-Step Walkthrough
 
 ### Phase 1: Understanding the Vulnerability
@@ -137,6 +151,8 @@ make setup-kubescape
 kubectl get pods -n kubescape
 ```
 
+> **Demo approach**: The `./kubescape-demo.sh` uses `make setup-ctf-challenge-secure` to apply the secured pipeline configuration (RBAC + patched pipeline) in a single step, then applies NetworkPolicies directly with `kubectl apply -f security/network-policies/tekton-egress-restriction.yaml`. This achieves the same result as the phased approach above.
+
 ---
 
 ### Phase 3: Running Security Scans (Detection)
@@ -144,14 +160,38 @@ kubectl get pods -n kubescape
 #### Scan with Kubescape
 
 ```bash
-# Scan Tekton resources for security issues
+# Full framework scan on Tekton resources
 kubectl kubescape scan framework nsa,mitre challenges/challenge1/tekton/ --format pretty-printer
 
 # Scan entire cluster
 kubectl kubescape scan --format pretty-printer --output cluster-scan.txt
 ```
 
-**Example findings:**
+**Targeted scans** (as demonstrated in `./kubescape-demo.sh`):
+
+```bash
+# Check for privileged containers (C-0015)
+kubectl kubescape scan control C-0015 -v --include-namespaces ctf-challenge
+
+# Scan a specific workload pod
+VULN_POD=$(kubectl get pods -n ctf-challenge -l tekton.dev/pipelineTask=run-quality-checks -o name | head -1)
+kubectl kubescape scan workload ${VULN_POD} --namespace ctf-challenge
+
+# Check for missing NetworkPolicies (C-0260) — after applying defenses
+kubectl kubescape scan control C-0260 -v --include-namespaces ctf-challenge
+```
+
+> For the full before/after comparison, run `./kubescape-demo.sh`. It scans the vulnerable pipeline (Phase 1), applies defenses via `make setup-ctf-challenge-secure` + NetworkPolicies (Phase 2), then re-scans the secured pipeline (Phase 3).
+
+**Controls checked in the demo:**
+
+| Control | What It Checks | Demo Phase |
+|---------|---------------|------------|
+| C-0015 | Privileged containers | Phase 1 (before) |
+| C-0260 | Missing NetworkPolicies | Phase 3 (after) |
+| C-0034 | Automatic mounting of SA tokens | Phase 3 (Tekton limitation — cannot disable `automountServiceAccountToken` without breaking Tekton; mitigated by RBAC + NetworkPolicy) |
+
+**Additional findings from full framework scans:**
 ```
 ❌ C-0017: Excessive RBAC permissions
    Resource: ServiceAccount/default (namespace: ctf-challenge)
@@ -164,24 +204,24 @@ kubectl kubescape scan --format pretty-printer --output cluster-scan.txt
    Issue: No egress restrictions
    Severity: High
    Recommendation: Apply NetworkPolicy to prevent data exfiltration
-
-⚠️  C-0034: Script execution in containers
-   Resource: Task/quality-check-task
-   Issue: Executes scripts from untrusted source
-   Severity: Medium
-   Recommendation: Use static analysis instead of code execution
 ```
 
-#### Scan with OSSF Scorecard (if using GitHub)
+#### Scan with OSSF Scorecard (GitHub only)
+
+> **GitHub only**: Scorecard requires a GitHub-hosted repository — it cannot scan Gitea repositories. The `./scorecard-demo.sh` demonstrates this using [sherine-k/gophers-api](https://github.com/sherine-k/gophers-api) with `--checks=Dangerous-Workflow`, comparing the `main` branch (safe) against a `test_pr_target` branch (uses `pull_request_target`).
 
 ```bash
 # Install Scorecard
 go install github.com/ossf/scorecard/v4/cmd/scorecard@latest
 
-# Scan repository
+# Scan repository (all checks)
 scorecard --repo=github.com/yourorg/yourrepo
 
-# Focus on relevant checks
+# Focus on the check demonstrated in scorecard-demo.sh
+scorecard --repo=github.com/sherine-k/gophers-api \
+  --checks=Dangerous-Workflow --commit $(git rev-parse --short HEAD)
+
+# Additional relevant checks
 scorecard --repo=github.com/yourorg/yourrepo \
   --checks=Dangerous-Workflow,Token-Permissions,Pinned-Dependencies
 ```
@@ -214,6 +254,10 @@ make create-security-policies
    - Warn on risky commands (`go run`, `curl|bash`)
    - Restrict external Git repositories
 
+   **Policies demonstrated in `./kyverno-demo.sh`:**
+   - `security/kyverno-policies/block-dangerous-commands.yaml` — **Audit mode**: detects dangerous commands in Tasks; violations appear in PolicyReports
+   - `security/kyverno-policies/restrict-tekton-serviceaccounts.yaml` — **Enforce mode**: blocks PipelineRun/TaskRun creation with unauthorized ServiceAccounts (only `pr-pipeline-readonly` is allowed)
+
 2. **Network Policies** (`security/network-policies/`)
    - Block egress to external IPs
    - Allow only: DNS, K8s API, internal Gitea
@@ -227,6 +271,9 @@ make create-security-policies
 
 ```bash
 make apply-prevention-policies
+
+# Or apply NetworkPolicy directly (as done in kubescape-demo.sh):
+kubectl apply -f security/network-policies/tekton-egress-restriction.yaml
 ```
 
 **Verify policies are active:**
@@ -369,7 +416,9 @@ curl -m 5 http://gitea.gitea.svc.cluster.local:3000
 
 ### Phase 6: Continuous Monitoring
 
-#### (NOT YET TESTED) Set up Kyverno Policy Reports
+#### Kyverno Policy Reports
+
+> Demonstrated in `./kyverno-demo.sh` (step 3): applies `block-dangerous-task-commands` in Audit mode, then queries PolicyReports for failed validations.
 
 ```bash
 # View policy violations
@@ -378,9 +427,9 @@ kubectl get policyreport -A
 # Detailed report for ctf-challenge namespace
 kubectl describe policyreport -n ctf-challenge
 
-# Check for failed policy validations
-kubectl get policyreport -A -o json | \
-  jq '.items[] | select(.summary.fail > 0) | {name: .metadata.name, namespace: .metadata.namespace, failures: .summary.fail}'
+# Query PolicyReports for specific failures (as in kyverno-demo.sh)
+kubectl get policyreport -n ctf-challenge -o json | \
+  jq '.items[] | select(.summary.fail > 0) | {task: .scope.name, kind: .scope.kind, failures: [.results[] | select(.result == "fail") | {rule, message}]}'
 ```
 
 #### (NOT YET TESTED) Monitor with Kubescape

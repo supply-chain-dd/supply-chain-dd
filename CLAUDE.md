@@ -34,6 +34,7 @@ Each challenge must contain:
 * A `ATTACK-ANALYSIS.md` that explains the attack, eventually contains real world attack examples of the same type
 * A `SECURITY-GUIDE.md` that explains how to detect it and prevent it
 * All scripts, source code, manifests needed to setup the attack, conduct it, detect and prevent it
+* Interactive demo scripts (`*-demo.sh`) using demo-magic for detection/prevention walkthroughs. Each must be referenced in `SECURITY-GUIDE.md`.
 
 ### Component Stack
 1. **KinD Cluster**: Local Kubernetes cluster running in Docker containers
@@ -492,6 +493,7 @@ When modifying challenge files, update the appropriate documentation:
 | Attack execution steps | `CTF-CHALLENGE-GUIDE.md` |
 | Attack explanation, real-world examples | `ATTACK-ANALYSIS.md` |
 | Detection/prevention methods | `SECURITY-GUIDE.md` |
+| Demo scripts (`*-demo.sh`) | `SECURITY-GUIDE.md` (Interactive Demos section + cross-references) |
 
 **See [AGENTS.md](AGENTS.md) for complete guidelines.**
 
