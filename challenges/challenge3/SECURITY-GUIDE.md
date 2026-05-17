@@ -530,6 +530,252 @@ helm install falco falcosecurity/falco \
 kubectl apply -f security/falco-rules/backdoor-detection.yaml
 ```
 
+## SBOM Signing, Provenance, and Conforma Verification
+
+This section documents how the Challenge 3 pipeline handles SBOM attachment and
+provenance, how it differs from the Konflux/RHTAP approach, and how Conforma
+(Enterprise Contract) discovers SBOMs for policy evaluation.
+
+### Our CTF Approach vs Konflux
+
+Both approaches produce SLSA provenance via Tekton Chains. The difference is in
+how additional artifacts (SBOM, scans) are attached and whether they are
+independently signed.
+
+| Aspect | CTF (this project) | Konflux |
+|--------|-------------------|---------|
+| SBOM generation | Trivy `--format spdx-json` | Syft SPDX JSON |
+| SBOM attachment | `oras attach` as OCI referrer (`application/spdx+json`) | `cosign attach sbom --type spdx` |
+| SBOM signing | Not independently signed — digest included as provenance subject via Chains type hint (`SBOM-ARTIFACT_URI`/`SBOM-ARTIFACT_DIGEST`) | `cosign attest --type spdxjson` creates a signed in-toto attestation with the SBOM as predicate |
+| Signing method | N/A — Chains handles provenance signing with x509 keypair | Keyless: Fulcio short-lived certificate + projected ServiceAccount token + Rekor transparency log |
+| Pipeline SBOM result | `SBOM-ARTIFACT_URI` + `SBOM-ARTIFACT_DIGEST` (Chains type hints → provenance subjects) | `SBOM_BLOB_URL` (blob content digest — not a Chains type hint) |
+| Image signing | Tekton Chains auto-signs with cosign keypair (`signing-secrets` in `tekton-chains` namespace) | Tekton Chains auto-signs with keyless (Fulcio) |
+| Vuln scan | Trivy `--scanners vuln` → `oras attach` → Chains type hints | Not part of standard Konflux build pipeline |
+| Source VSA | Custom `verify-source-provenance` task → `oras attach` → Chains type hints | Not part of standard Konflux build pipeline |
+
+**Key takeaway:** Our pipeline uses Tekton Chains type hinting to include SBOM,
+vulnerability scan, secret scan, and Source VSA digests as **subjects** in the
+SLSA provenance attestation. Konflux instead creates a separate signed SBOM
+attestation via `cosign attest` and references it through `SBOM_BLOB_URL`.
+
+### Why the Konflux Keyless Signing Approach Doesn't Fit KinD
+
+Konflux's `cosign attest` uses **keyless signing** via Sigstore's Fulcio
+certificate authority and projected ServiceAccount tokens. This requires
+infrastructure that is not available in a local KinD cluster:
+
+1. **Public Fulcio (`fulcio.sigstore.dev`) only accepts OIDC tokens from managed
+   Kubernetes providers** — specifically EKS (AWS), GKE (Google Cloud), and AKS
+   (Azure) — whose OIDC issuer URLs are publicly accessible and registered with
+   Fulcio. KinD clusters have a local OIDC issuer
+   (`https://kubernetes.default.svc.cluster.local`) that Fulcio cannot reach for
+   token validation.
+
+2. **Konflux does not use public Fulcio.** It deploys a **private Sigstore stack**
+   (in-cluster Fulcio, Rekor, TUF) configured via a `cluster-config` ConfigMap in
+   the `konflux-info` namespace. The ConfigMap contains:
+   - `fulcioInternalUrl` / `fulcioExternalUrl`
+   - `rekorInternalUrl` / `rekorExternalUrl`
+   - `tufInternalUrl` / `tufExternalUrl`
+   - `defaultOIDCIssuer`
+
+3. **Our CTF Tekton Chains** is configured with `signers.x509.fulcio.enabled: false`
+   and uses a local cosign keypair stored in the `signing-secrets` Secret in the
+   `tekton-chains` namespace.
+
+Despite these differences, our SBOM is still **discoverable by Conforma/EC** via
+the OCI referrers API. Our `oras attach` uses the `application/spdx+json`
+artifact type, which is in EC's recognized SBOM artifact types set (see
+[SBOM_BLOB_URL and Conforma Policies](#sbom_blob_url-and-conforma-policies) below).
+
+### How Local Sigstore + SPIFFE/SPIRE Could Enable Keyless Signing
+
+To fully replicate the Konflux keyless signing approach in KinD, you would deploy
+a local Sigstore stack using the
+[sigstore/scaffolding](https://github.com/sigstore/scaffolding/blob/main/getting-started.md)
+project.
+
+#### Sigstore Scaffolding Deployment
+
+Scaffolding deploys the full Sigstore stack in-cluster across four namespaces:
+
+| Namespace | Component | In-cluster access |
+|-----------|-----------|-------------------|
+| `fulcio-system` | Fulcio (certificate authority) | `fulcio.fulcio-system.svc` |
+| `rekor-system` | Rekor (transparency log) | `rekor.rekor-system.svc` |
+| `ctlog-system` | TesseraCT (certificate transparency log) | `ctlog.ctlog-system.svc` |
+| `tuf-system` | TUF root mirror (trust root distribution) | `tuf.tuf-system.svc` |
+
+```bash
+# Install via Helm
+helm repo add sigstore https://sigstore.github.io/helm-charts
+helm install sigstore-scaffold sigstore/scaffold
+
+# Or use the release script
+curl -Lo /tmp/setup-scaffolding-from-release.sh \
+  https://github.com/sigstore/scaffolding/releases/download/v0.7.24/setup-scaffolding-from-release.sh
+chmod u+x /tmp/setup-scaffolding-from-release.sh
+/tmp/setup-scaffolding-from-release.sh
+```
+
+Scaffolding also includes a **test OIDC issuer** for keyless signing without
+browser-based authentication:
+
+```bash
+ko apply -BRf ./testdata/config/gettoken
+```
+
+> **Warning:** The test OIDC issuer performs no authentication. Only install it on
+> local test clusters.
+
+#### Projected ServiceAccount Token Volume
+
+Kubernetes projected ServiceAccount token volumes provide OIDC identity for
+keyless signing. The projected token is consumed by cosign as `SIGSTORE_ID_TOKEN`:
+
+```yaml
+volumes:
+  - name: oidc-token
+    projected:
+      sources:
+        - serviceAccountToken:
+            audience: sigstore
+            expirationSeconds: 600
+            path: oidc-token
+```
+
+```bash
+# In the task step:
+SIGSTORE_ID_TOKEN="$(cat /var/run/sigstore/cosign/oidc-token)"
+export SIGSTORE_ID_TOKEN
+
+cosign attest -y \
+  --type spdxjson \
+  --predicate sbom.json \
+  --fulcio-url=http://fulcio.fulcio-system.svc:8080 \
+  --rekor-url=http://rekor.rekor-system.svc:8080 \
+  "$IMAGE_REF"
+```
+
+Before signing, you must initialize the TUF root so cosign trusts the local
+Sigstore instance:
+
+```bash
+kubectl -n tuf-system get secrets tuf-root -ojsonpath='{.data.root}' | base64 -d > ./root.json
+cosign initialize --mirror http://tuf.tuf-system.svc:8080 --root ./root.json
+```
+
+#### SPIFFE/SPIRE Integration
+
+For production-grade workload identity (beyond test OIDC issuers), SPIFFE/SPIRE
+can serve as the OIDC provider that Fulcio trusts:
+
+- **SPIRE OIDC Discovery Provider** exposes a JWKS endpoint that Fulcio uses to
+  validate workload identity tokens
+- Fulcio configuration includes a `SPIFFETrustDomain` (e.g., `example.com`) and
+  validates SPIFFE IDs from that domain
+- Certificate SANs use the format:
+  `https://kubernetes.io/namespaces/{namespace}/serviceaccounts/{sa-name}`
+- Workflow: Pod identity → SPIRE SVID → OIDC token → Fulcio short-lived cert →
+  cosign sign/attest
+
+This enables true workload identity-based signing where the signing certificate
+is tied to the Kubernetes ServiceAccount identity of the build task, not a
+long-lived key.
+
+**References:**
+- [Sigstore Scaffolding Getting Started](https://github.com/sigstore/scaffolding/blob/main/getting-started.md)
+- [Running Sigstore Locally](https://blog.sigstore.dev/a-guide-to-running-sigstore-locally-f312dfac0682/)
+- [Zero-friction Keyless Signing with Kubernetes](https://www.chainguard.dev/unchained/zero-friction-keyless-signing-with-kubernetes)
+- [OIDC Usage in Fulcio](https://docs.sigstore.dev/certificate_authority/oidc-in-fulcio/)
+- [SPIRE OIDC Discovery Provider](https://github.com/spiffe/spire/blob/main/support/oidc-discovery-provider/README.md)
+- [Tekton Chains Authentication](https://tekton.dev/docs/chains/authentication/)
+
+### SBOM_BLOB_URL and Conforma Policies
+
+Conforma (Enterprise Contract) uses the `ec validate image` command to verify
+container images against supply chain security policies. SBOM verification is
+handled by OPA/Rego policy rules in the
+[enterprise-contract/ec-policies](https://github.com/enterprise-contract/ec-policies)
+repository.
+
+#### Three SBOM Discovery Methods
+
+EC discovers SBOMs through three methods defined in `policy/lib/sbom/sbom.rego`.
+If the same SBOM is found by multiple methods, duplicates are eliminated:
+
+**1. SBOM Attestations** (`_sboms_from_input`)
+
+Finds in-toto attestation statements with recognized SBOM predicate types:
+- `https://spdx.dev/Document` (SPDX)
+- `https://cyclonedx.org/bom` (CycloneDX)
+
+These are created by `cosign attest --type spdxjson` (as Konflux does).
+
+**2. SBOM_BLOB_URL from Provenance** (`_fetch_pipelinerun_sbom`)
+
+Reads the SLSA provenance attestation generated by Tekton Chains, finds the
+build task with a matching `IMAGE_DIGEST` result, and extracts the
+`SBOM_BLOB_URL` task result. EC then fetches the SBOM blob content from the
+OCI registry:
+
+```rego
+_fetch_pipelinerun_sbom contains sbom if {
+    some attestation in lib.pipelinerun_attestations
+    some task in tekton.build_tasks(attestation)
+
+    expected_image_digest := image.parse(input.image.ref).digest
+    image_digest := tekton.task_result(task, "IMAGE_DIGEST")
+    expected_image_digest == image_digest
+
+    blob_ref := tekton.task_result(task, "SBOM_BLOB_URL")
+    blob := ec.oci.blob(blob_ref)
+    sbom := json.unmarshal(blob)
+}
+```
+
+The `SBOM_BLOB_URL` format is `registry/repo@sha256:<sha256sum-of-sbom-file>`.
+The digest is the **blob content digest** computed locally with `sha256sum
+sbom.json`, NOT an OCI manifest or referrer digest. This is what Konflux's
+`buildah-oci-ta` task emits.
+
+**3. OCI Referrers** (`_sboms_from_referrers`) — **used by our CTF pipeline**
+
+Uses the OCI Referrers API to discover artifacts attached to the image with
+recognized SBOM media types:
+
+```rego
+_sbom_artifact_types := {
+    "application/spdx+json",
+    "application/vnd.cyclonedx+json",
+}
+
+_sboms_from_referrers contains sbom if {
+    some referrer in ec.oci.image_referrers(input.image.ref)
+    referrer.artifactType in _sbom_artifact_types
+    blob := ec.oci.blob(referrer.ref)
+    sbom := json.unmarshal(blob)
+}
+```
+
+Our Challenge 3 pipeline attaches the SBOM via `oras attach` with artifact type
+`application/spdx+json`, which matches EC's `_sbom_artifact_types` set. This
+means **our SBOM is discoverable by EC via OCI referrers** without needing
+`SBOM_BLOB_URL` or `cosign attach sbom`.
+
+#### Which Method to Use?
+
+| Method | When to use | Our pipeline |
+|--------|-------------|--------------|
+| SBOM attestation | When SBOM is signed as an in-toto attestation via `cosign attest` | Not used |
+| SBOM_BLOB_URL | When task emits blob URL result (Konflux pattern) | Not used |
+| OCI referrers | When SBOM is attached via `oras attach` or `cosign attach sbom` with recognized artifact type | **Used** (`application/spdx+json`) |
+
+All three methods feed into the same `sbom__found` policy rule, which checks
+that at least one SBOM exists for the image being validated. Additional rules
+(e.g., `sbom_spdx__valid`, `sbom_spdx__contains_packages`) then validate the
+SBOM content.
+
 ## Verification
 
 ### Verify Prevention Controls
