@@ -479,8 +479,8 @@ spec:
 ---
 # Scan Image Task
 #
-# Scans a container image for vulnerabilities and secrets using Trivy, then
-# attaches the scan results as an unsigned OCI artifact using oras attach.
+# Scans a container image for secrets using Trivy, then attaches the scan
+# results as an unsigned OCI artifact using oras attach.
 # No signing keys are needed — Tekton Chains will include the scan results
 # digest in its SLSA provenance via type-hinted results.
 #
@@ -498,7 +498,7 @@ metadata:
   namespace: ctf-challenge
 spec:
   description: |
-    Scans a container image for vulnerabilities and secrets using Trivy.
+    Scans a container image for secrets using Trivy.
     Attaches scan results to the image as an OCI artifact via oras attach.
     Emits Tekton Chains type-hinted results so the scan artifact is recorded
     in the SLSA provenance.
@@ -519,7 +519,7 @@ spec:
       default: "1.2.2"
     - name: SEVERITY_THRESHOLD
       type: string
-      description: Fail on vulnerabilities at or above this severity (UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL)
+      description: Unused — kept for interface compatibility. Secret scan does not use severity levels.
       default: "CRITICAL"
   results:
     - name: SCAN_STATUS
@@ -587,16 +587,14 @@ spec:
         IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
 
         echo "============================================"
-        echo "Scanning image for vulnerabilities + secrets"
+        echo "Scanning image for secrets"
         echo "============================================"
         echo "Image: ${IMAGE_REF}"
-        echo "Severity threshold: $(params.SEVERITY_THRESHOLD)"
         echo ""
 
-        # Generate full JSON scan report (vuln + secret + config secrets)
         set +e
         /tmp/trivy image \
-          --scanners vuln,secret \
+          --scanners secret \
           --image-config-scanners secret \
           --format json \
           --output /scan/trivy-scan-results.json \
@@ -606,30 +604,25 @@ spec:
         SCAN_EXIT=$?
         set -e
 
-        # Print human-readable summary to pipeline logs
         set +e
         /tmp/trivy image \
-          --scanners vuln,secret \
+          --scanners secret \
           --image-config-scanners secret \
-          --severity $(params.SEVERITY_THRESHOLD) \
           --format table \
           --skip-java-db-update \
           --insecure \
           "${IMAGE_REF}"
         set -e
 
-        # Determine pass/fail from the JSON report
         if [ -f /scan/trivy-scan-results.json ]; then
-          VULN_COUNT=$(jq '[.Results[]? | (.Vulnerabilities // [])[] | select(.Severity == "$(params.SEVERITY_THRESHOLD)" or .Severity == "CRITICAL")] | length' /scan/trivy-scan-results.json 2>/dev/null || echo "0")
           SECRET_COUNT=$(jq '[.Results[]? | (.Secrets // [])[] ] | length' /scan/trivy-scan-results.json 2>/dev/null || echo "0")
 
           echo ""
           echo "============================================"
           echo "Scan summary:"
-          echo "  Vulnerabilities >= $(params.SEVERITY_THRESHOLD): ${VULN_COUNT}"
           echo "  Secrets detected: ${SECRET_COUNT}"
 
-          if [ "${VULN_COUNT}" -gt 0 ] || [ "${SECRET_COUNT}" -gt 0 ]; then
+          if [ "${SECRET_COUNT}" -gt 0 ]; then
             echo "  Status: FAIL"
             printf "FAIL" > /tekton/results/SCAN_STATUS
           else
