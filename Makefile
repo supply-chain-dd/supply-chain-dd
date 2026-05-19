@@ -3,6 +3,7 @@
 .PHONY: check-cli-tools install-tkn install-kubescape install-conforma verify-registry configure-registry-tls verify-tektonchains
 .PHONY: setup-conforma verify-conforma
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build trigger-challenge2-build-with-chains
+.PHONY: setup-sigstore-local verify-sigstore-local setup-challenge2-tekton-keyless trigger-challenge2-build-keyless
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3 setup-challenge3-tekton trigger-challenge3-build-with-chains
 .PHONY: setup-production-cluster setup-production-gitea seed-production-repo load-image-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
 .PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard
@@ -17,6 +18,8 @@ KYVERNO_VERSION ?= v3.7.1
 KUBESCAPE_VERSION ?= latest
 TKN_VERSION ?= v0.44.1
 KUBESCAPE_CLI_VERSION ?= v3.0.3
+SIGSTORE_SCAFFOLD_VERSION ?= v0.7.24
+KNATIVE_VERSION ?= 1.18.0
 REGISTRY_PORT ?= 5000
 REGISTRY_NODE_PORT ?= 30000
 REGISTRY_USER ?= ctf-admin
@@ -901,6 +904,92 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 	@echo "       [Tekton Chains auto-signs image and creates SLSA attestation]"
 	@echo "    7. create-source-vsa           — attach unsigned Source VSA via OCI referrers"
 	@echo "    8. generate-sbom               — Trivy SPDX SBOM + oras attach"
+	@echo ""
+	@echo "  Monitor with:"
+	@echo "    kubectl get pipelineruns -n ctf-challenge -w"
+	@if command -v kubectl-tkn >/dev/null 2>&1; then \
+		echo "  View logs:"; \
+		echo "    kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
+	elif command -v tkn >/dev/null 2>&1; then \
+		echo "  View logs:"; \
+		echo "    tkn pipelinerun logs -f -n ctf-challenge"; \
+	else \
+		echo "  Install tkn for easier log viewing:"; \
+		echo "    make install-tkn"; \
+	fi
+
+# ============================================================
+# Sigstore Local Stack + Keyless Signing
+# ============================================================
+
+setup-sigstore-local: ## Deploy local Sigstore stack (Fulcio, Rekor, TUF) on KinD
+	@cd setup && SIGSTORE_SCAFFOLD_VERSION=$(SIGSTORE_SCAFFOLD_VERSION) KNATIVE_VERSION=$(KNATIVE_VERSION) ./scripts/setup-sigstore-local.sh
+
+verify-sigstore-local: ## Verify local Sigstore stack is running
+	@echo "Verifying local Sigstore stack..."
+	@echo ""
+	@echo "Fulcio (CA):"
+	@kubectl get pods -n fulcio-system 2>/dev/null || echo "  ❌ Fulcio not deployed"
+	@echo ""
+	@echo "Rekor (transparency log):"
+	@kubectl get pods -n rekor-system 2>/dev/null || echo "  ❌ Rekor not deployed"
+	@echo ""
+	@echo "TUF (root of trust):"
+	@kubectl get pods -n tuf-system 2>/dev/null || echo "  ❌ TUF not deployed"
+	@echo ""
+	@echo "TUF root ConfigMap:"
+	@kubectl get configmap sigstore-tuf-root -n ctf-challenge 2>/dev/null && echo "  ✓ sigstore-tuf-root exists in ctf-challenge" || echo "  ❌ sigstore-tuf-root not found"
+	@echo ""
+	@echo "OIDC issuer:"
+	@kubectl get --raw /.well-known/openid-configuration 2>/dev/null | jq -r '.issuer' || echo "  ❌ Could not retrieve OIDC issuer"
+
+setup-challenge2-tekton-keyless: ## Deploy keyless signing pipeline for Challenge 2
+	@echo "========================================"
+	@echo "Installing Challenge 2 Keyless Signing"
+	@echo "========================================"
+	@echo ""
+	@echo "Setting up keyless signer ServiceAccount..."
+	@kubectl apply -f challenges/challenge2/tekton/serviceaccounts-keyless.yaml
+	@echo ""
+	@echo "Applying sign-image-keyless task..."
+	@kubectl apply -f challenges/challenge2/tekton/tasks/sign-image-keyless-task.yaml
+	@echo ""
+	@echo "Applying keyless signing pipeline..."
+	@kubectl apply -f challenges/challenge2/tekton/pipelines/push-build-pipeline-keyless.yaml
+	@echo ""
+	@echo "✓ Keyless signing pipeline installed"
+	@echo ""
+	@echo "Pipeline: push-build-pipeline-keyless"
+	@echo "  Uses cosign keyless signing via local Fulcio + Rekor"
+	@echo "  SA: pipeline-keyless-signer (projected token as OIDC identity)"
+	@echo ""
+	@echo "Next: make trigger-challenge2-build-keyless"
+
+trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipeline
+	@echo "========================================"
+	@echo "Triggering Challenge 2 Keyless Build Pipeline"
+	@echo "========================================"
+	@echo ""
+	@if ! kubectl get pipeline push-build-pipeline-keyless -n ctf-challenge >/dev/null 2>&1; then \
+		echo "❌ Pipeline not found. Run 'make setup-challenge2-tekton-keyless' first"; \
+		exit 1; \
+	fi
+	@echo "Starting pipeline run (push-build-pipeline-keyless)..."
+	@kubectl create -f challenges/challenge2/tekton/manual-pipelinerun-keyless.yaml
+	@echo ""
+	@echo "  ✓ PipelineRun created (push-build-pipeline-keyless)"
+	@echo ""
+	@echo "  Pipeline stages:"
+	@echo "    1. verify-source          — validate repo URL + branch containment"
+	@echo "    2. clone-repo             — fetch source from Gitea"
+	@echo "    3. build-go-app           — compile Go binary"
+	@echo "    4. run-quality-checks     — static analysis"
+	@echo "    5. push-container-image   — push + emit IMAGE_URL/IMAGE_DIGEST"
+	@echo "    6. sign-image-keyless     — cosign keyless sign (Fulcio + Rekor)"
+	@echo "       [Tekton Chains still generates SLSA provenance in background]"
+	@echo "    7. create-source-vsa      — attach unsigned Source VSA"
+	@echo "    8. generate-sbom          — Trivy SPDX SBOM + oras attach"
+	@echo "    9. scan-image             — Trivy vuln+secret scan + oras attach"
 	@echo ""
 	@echo "  Monitor with:"
 	@echo "    kubectl get pipelineruns -n ctf-challenge -w"
