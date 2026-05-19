@@ -1,0 +1,193 @@
+---
+# Pipeline: push-build-pipeline-keyless
+#
+# Alternative to push-build-pipeline-with-chains that replaces Tekton Chains
+# image signing with in-pipeline keyless signing via a local Sigstore stack
+# (Fulcio + Rekor deployed via sigstore/scaffolding).
+#
+#   verify-source                                    <- validates repo URL + branch containment
+#     └─ git-clone                                   <- emits url + commit results
+#          └─ build-go-app
+#               └─ run-quality-checks
+#                    └─ build-container-image
+#                         └─ push-container-image-with-chains   <- emits IMAGE_URL + IMAGE_DIGEST
+#                              ├─ sign-image-keyless            <- cosign keyless sign (Fulcio + Rekor)
+#                              ├─ create-source-vsa             <- attaches unsigned Source VSA via OCI referrers
+#                              ├─ scan-image                    <- Trivy vuln+secret scan -> oras attach
+#                              └─ generate-sbom                 <- Trivy SBOM + oras attach
+#
+# The sign-image-keyless task uses a projected serviceAccountToken volume
+# (audience: sigstore) as an OIDC identity token. The local Fulcio issues a
+# short-lived certificate, cosign signs the image, and the signature is
+# logged in the local Rekor transparency log.
+#
+# Tekton Chains still generates SLSA Provenance attestations (the push task
+# emits IMAGE_URL + IMAGE_DIGEST which trigger Chains). Only image signing
+# moves in-pipeline.
+#
+# Prerequisites:
+#   - Local Sigstore stack: make setup-sigstore-local
+#   - Tasks: sign-image-keyless (sign-image-keyless-task.yaml)
+#   - Tasks: verify-source-provenance, create-source-vsa (verify-source-task.yaml)
+#   - Tasks: push-container-image-with-chains, generate-sbom, scan-image
+#            (build-tasks-with-chains.yaml)
+#   - All other tasks: git-clone, build-go-app, quality-check-task, build-container-image
+#   - ConfigMap: sigstore-tuf-root    in ctf-challenge (TUF root.json)
+#   - ConfigMap: registry-ca-cert     in ctf-challenge (ca.crt)
+#   - Secret:    registry-docker-config in ctf-challenge
+#   - SA:        pipeline-keyless-signer in ctf-challenge
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: push-build-pipeline-keyless
+  namespace: ctf-challenge
+spec:
+  params:
+    - name: repo-url
+      type: string
+      description: Git repository URL to clone
+    - name: revision
+      type: string
+      description: Git revision (branch, tag, or SHA)
+      default: "main"
+    - name: trusted-repo-url
+      type: string
+      description: Trusted source repository URL (source verification checks repo-url against this)
+      default: "http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git"
+    - name: image-name
+      type: string
+      description: Container image name
+      default: "recipe-api"
+    - name: image-tag
+      type: string
+      description: Container image tag
+      default: "latest"
+    - name: registry-url
+      type: string
+      description: Internal registry URL (cluster-accessible)
+      default: "registry.registry.svc.cluster.local:5000"
+
+  workspaces:
+    - name: source
+      description: Shared workspace for source code
+
+  results:
+    - name: IMAGE_URL
+      description: Full URL of the pushed image
+      value: $(tasks.push-container-image.results.IMAGE_URL)
+    - name: IMAGE_DIGEST
+      description: Digest of the pushed image
+      value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+    - name: IMAGE_SIGNATURE
+      description: Keyless signature status
+      value: $(tasks.sign-image-keyless.results.IMAGE_SIGNATURE)
+    - name: VSA_DIGEST
+      description: Digest of the Source VSA attached via OCI referrers
+      value: $(tasks.create-source-vsa.results.VSA_DIGEST)
+
+  tasks:
+    - name: verify-source
+      taskRef:
+        name: verify-source-provenance
+      params:
+        - name: repo-url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: trusted-repo-url
+          value: $(params.trusted-repo-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: git-clone
+      runAfter: ["verify-source"]
+      taskRef:
+        name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: deleteExisting
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: source
+
+    - name: build-go-app
+      runAfter: ["git-clone"]
+      taskRef:
+        name: build-go-app
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: run-quality-checks
+      runAfter: ["build-go-app"]
+      taskRef:
+        name: quality-check-task
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: push-container-image
+      runAfter: ["run-quality-checks"]
+      taskRef:
+        name: push-container-image-with-chains
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.image-tag)
+        - name: registry-url
+          value: $(params.registry-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    # Keyless image signing via local Fulcio + Rekor
+    - name: sign-image-keyless
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: sign-image-keyless
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    # Attach unsigned Source VSA via OCI referrers API
+    - name: create-source-vsa
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: create-source-vsa
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+        - name: SOURCE_VSA
+          value: $(tasks.verify-source.results.SOURCE_VSA)
+
+    # Generate SPDX SBOM with Trivy and attach via OCI referrers
+    - name: generate-sbom
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: generate-sbom
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    # Scan image for vulnerabilities and secrets with Trivy
+    - name: scan-image
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: scan-image
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)

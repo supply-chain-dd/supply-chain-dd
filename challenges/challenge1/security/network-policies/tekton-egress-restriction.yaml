@@ -121,15 +121,29 @@ spec:
     - port: 8443
       protocol: TCP
 
+  # Allow communication with Kourier internal gateway (Knative networking)
+  # Sigstore services (Fulcio, Rekor, TUF) are Knative Services that route
+  # through Kourier. The ExternalName services resolve to kourier-internal,
+  # whose pod listens on port 8081 (not 80). NetworkPolicy matches the
+  # actual pod port, so we must allow 8081.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kourier-system
+    ports:
+    - port: 8081
+      protocol: TCP
+
   # Allow HTTPS to external hosts (required by the build pipeline):
   #   - Alpine CDN (dl-cdn.alpinelinux.org): apk add in Dockerfile and task steps
   #   - Go module proxy (proxy.golang.org, sum.golang.org): go mod download
   #   - GitHub releases (github.com, objects.githubusercontent.com):
   #     oras, trivy, cosign CLI downloads
   #
-  # Only port 443 is allowed — HTTP (80) and arbitrary ports are blocked,
-  # preventing plaintext exfiltration. RBAC and Kyverno provide additional
-  # layers to limit what pipeline code can do with this access.
+  # Only port 443 is allowed — HTTP (80) to external hosts and arbitrary
+  # ports are blocked, preventing plaintext exfiltration. RBAC and Kyverno
+  # provide additional layers to limit what pipeline code can do with this
+  # access.
   - ports:
     - port: 443
       protocol: TCP

@@ -1,0 +1,42 @@
+---
+# Manual PipelineRun for Challenge 2 — Keyless signing variant
+# Triggers push-build-pipeline-keyless, which:
+#   1. Verifies source provenance (repo URL + branch containment)
+#   2. Builds and pushes the image (emitting IMAGE_URL + IMAGE_DIGEST)
+#   3. Signs the image in-pipeline using cosign keyless flow (Fulcio + Rekor)
+#   4. Tekton Chains still generates SLSA Provenance attestation (asynchronously)
+#   5. Attaches an unsigned Source VSA via OCI referrers API
+#   6. Generates an SPDX JSON SBOM via Trivy + oras
+#   7. Scans the image for vulnerabilities + secrets via Trivy + oras
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: push-build-keyless-manual-
+  namespace: ctf-challenge
+  labels:
+    tekton.dev/pipeline: push-build-pipeline-keyless
+    trigger-type: manual
+spec:
+  serviceAccountName: pipeline-keyless-signer
+  pipelineRef:
+    name: push-build-pipeline-keyless
+  params:
+    - name: repo-url
+      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
+    - name: revision
+      value: main
+    - name: trusted-repo-url
+      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
+    - name: image-name
+      value: recipe-api
+    - name: image-tag
+      value: v2.0-keyless
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
