@@ -38,6 +38,15 @@ nodes:
   - containerPort: 30003
     hostPort: 30003
     protocol: TCP
+  - containerPort: 30006  # Rekor (sigstore transparency log)
+    hostPort: 30006
+    protocol: TCP
+  - containerPort: 30007  # TUF (sigstore root of trust)
+    hostPort: 30007
+    protocol: TCP
+  - containerPort: 30008  # Fulcio (sigstore CA)
+    hostPort: 30008
+    protocol: TCP
 # containerdConfigPatches:
 # - |-
 #   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]

@@ -157,18 +157,20 @@ pe "kubectl get pipelineruns -n ctf-challenge"
 p "  PHASE 4 — Vérification de la nouvelle image v2.0"
 
 
-p "1. L'image v2.0 est dans le registre"
+# p "1. L'image v2.0 est dans le registre"
 pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-api/tags/list"
+pe "oras discover localhost:30000/recipe-api:v2.0 \
+  --registry-config ~/.docker/config.json \
+  --ca-file ${SCRIPT_DIR}/../../setup/certs/registry.crt"
+
+# p "2. Scan de secrets sur la nouvelle image"
+# pe "trivy image --scanners secret --insecure localhost:30000/recipe-api:v2.0"
+# p "→ 0 secrets — le multi-stage build ne copie que le binaire dans l'image finale"
 
 
-p "2. Scan de secrets sur la nouvelle image"
-pe "trivy image --scanners secret --insecure localhost:30000/recipe-api:v2.0"
-p "→ 0 secrets — le multi-stage build ne copie que le binaire dans l'image finale"
-
-
-p "3. Scan de misconfiguration avec la politique Rego custom"
-pe "trivy image --scanners misconfig --config-check ${SCRIPT_DIR}/trivy-policies/ --namespaces user --insecure localhost:30000/recipe-api:v2.0"
-p "→ Aucune alerte — le Dockerfile n'est pas dans l'image (exclu par .dockerignore + multi-stage)"
+# p "3. Scan de misconfiguration avec la politique Rego custom"
+# pe "trivy image --scanners misconfig --config-check ${SCRIPT_DIR}/trivy-policies/ --namespaces user --insecure localhost:30000/recipe-api:v2.0"
+# p "→ Aucune alerte — le Dockerfile n'est pas dans l'image (exclu par .dockerignore + multi-stage)"
 
 # ============================================================================
 # Résumé
@@ -177,12 +179,12 @@ p "→ Aucune alerte — le Dockerfile n'est pas dans l'image (exclu par .docker
 rm -rf "${WORK_DIR}"
 
 
-p "=== RÉSUMÉ ==="
-p "1. Dockerfile multi-stage : seul le binaire dans l'image finale"
-p "2. .dockerignore allowlist : .git et .env exclus du contexte de build"
-p "3. Ancienne image vulnérable purgée du registre"
-p "4. Pipeline sécurisée avec vérification de source, scan et attestation"
-p "5. Branche main protégée via l'API Gitea"
-p "6. Nouvelle image vérifiée : aucun secret dans les couches"
+# p "=== RÉSUMÉ ==="
+# p "1. Dockerfile multi-stage : seul le binaire dans l'image finale"
+# p "2. .dockerignore allowlist : .git et .env exclus du contexte de build"
+# p "3. Ancienne image vulnérable purgée du registre"
+# p "4. Pipeline sécurisée avec vérification de source, scan et attestation"
+# p "5. Branche main protégée via l'API Gitea"
+# p "6. Nouvelle image vérifiée : aucun secret dans les couches"
 
 p "✅"

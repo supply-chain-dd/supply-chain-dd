@@ -3,6 +3,9 @@ set -euo pipefail
 
 SIGSTORE_SCAFFOLD_VERSION="${SIGSTORE_SCAFFOLD_VERSION:-v0.7.24}"
 KNATIVE_VERSION="${KNATIVE_VERSION:-1.18.0}"
+REKOR_NODE_PORT="${REKOR_NODE_PORT:-30006}"
+TUF_NODE_PORT="${TUF_NODE_PORT:-30007}"
+FULCIO_NODE_PORT="${FULCIO_NODE_PORT:-30008}"
 
 echo "============================================"
 echo "Deploying local Sigstore stack (scaffolding)"
@@ -10,6 +13,26 @@ echo "  Scaffolding: ${SIGSTORE_SCAFFOLD_VERSION}"
 echo "  Knative:     v${KNATIVE_VERSION}"
 echo "============================================"
 echo ""
+
+create_nodeport_service() {
+    local NAME=$1 NAMESPACE=$2 NODE_PORT=$3
+    cat <<EOSVC | kubectl apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${NAME}-nodeport
+  namespace: ${NAMESPACE}
+spec:
+  type: NodePort
+  selector:
+    serving.knative.dev/service: ${NAME}
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: ${NODE_PORT}
+    protocol: TCP
+EOSVC
+}
 
 # ============================================================
 # Prerequisites check
@@ -145,11 +168,21 @@ if kubectl get ksvc tuf -n tuf-system &>/dev/null 2>&1; then
         REKOR_URL=$(kubectl -n rekor-system get ksvc rekor -ojsonpath='{.status.url}' 2>/dev/null || echo "unknown")
         FULCIO_URL=$(kubectl -n fulcio-system get ksvc fulcio -ojsonpath='{.status.url}' 2>/dev/null || echo "unknown")
         TUF_MIRROR=$(kubectl -n tuf-system get ksvc tuf -ojsonpath='{.status.url}' 2>/dev/null || echo "unknown")
+        # Ensure NodePort services exist
+        create_nodeport_service rekor rekor-system "${REKOR_NODE_PORT}"
+        create_nodeport_service tuf tuf-system "${TUF_NODE_PORT}"
+        create_nodeport_service fulcio fulcio-system "${FULCIO_NODE_PORT}"
+
         echo ""
-        echo "Service endpoints:"
+        echo "Service endpoints (internal):"
         echo "  Fulcio: ${FULCIO_URL}"
         echo "  Rekor:  ${REKOR_URL}"
         echo "  TUF:    ${TUF_MIRROR}"
+        echo ""
+        echo "Host access (NodePort):"
+        echo "  Rekor:  http://localhost:${REKOR_NODE_PORT}"
+        echo "  TUF:    http://localhost:${TUF_NODE_PORT}"
+        echo "  Fulcio: http://localhost:${FULCIO_NODE_PORT}"
         exit 0
     fi
 fi
@@ -193,6 +226,8 @@ rmdir "${REKOR_DIR}"
 echo "  Waiting for Rekor..."
 kubectl wait --timeout 5m -n rekor-system --for=condition=Complete jobs --all
 kubectl wait --timeout 5m -n rekor-system --for=condition=Ready ksvc rekor
+create_nodeport_service rekor rekor-system "${REKOR_NODE_PORT}"
+echo "  ✓ Rekor accessible at http://localhost:${REKOR_NODE_PORT}"
 
 # --- 3c. Fulcio ---
 echo "[3/6] Installing Fulcio..."
@@ -215,6 +250,8 @@ kubectl -n fulcio-system get job 2>&1 | grep -q 'No resources found' || \
     kubectl wait --timeout 5m -n fulcio-system --for=condition=Complete jobs --all
 kubectl wait --timeout 5m -n fulcio-system --for=condition=Ready ksvc fulcio
 kubectl wait --timeout 5m -n fulcio-system --for=condition=Ready ksvc fulcio-grpc 2>/dev/null || true
+create_nodeport_service fulcio fulcio-system "${FULCIO_NODE_PORT}"
+echo "  ✓ Fulcio accessible at http://localhost:${FULCIO_NODE_PORT}"
 
 # --- 3d. CTLog ---
 echo "[4/6] Installing CT Log..."
@@ -265,6 +302,8 @@ kubectl -n tsa-system get secrets tsa-cert-chain -oyaml | \
 echo "  Waiting for TUF..."
 kubectl wait --timeout 4m -n tuf-system --for=condition=Complete jobs --all
 kubectl wait --timeout 2m -n tuf-system --for=condition=Ready ksvc tuf
+create_nodeport_service tuf tuf-system "${TUF_NODE_PORT}"
+echo "  ✓ TUF accessible at http://localhost:${TUF_NODE_PORT}"
 
 echo ""
 echo "✓ Sigstore stack deployed successfully"
@@ -296,22 +335,16 @@ TUF_MIRROR=$(kubectl -n tuf-system get ksvc tuf -ojsonpath='{.status.url}')
 echo ""
 echo "✓ Local Sigstore stack setup complete"
 echo ""
-echo "Service endpoints (from Knative Services):"
+echo "Service endpoints (internal / Knative):"
 echo "  Fulcio:      ${FULCIO_URL}"
 echo "  Fulcio gRPC: ${FULCIO_GRPC_URL}"
 echo "  Rekor:       ${REKOR_URL}"
 echo "  TUF:         ${TUF_MIRROR}"
 echo ""
-echo "To access from the host, port-forward Kourier:"
-echo "  kubectl -n kourier-system port-forward service/kourier-internal 8080:80 &"
-echo ""
-echo "Then add to /etc/hosts:"
-echo "  127.0.0.1 rekor.rekor-system.svc fulcio.fulcio-system.svc tuf.tuf-system.svc"
-echo ""
-echo "And use:"
-echo "  export REKOR_URL=http://rekor.rekor-system.svc:8080"
-echo "  export FULCIO_URL=http://fulcio.fulcio-system.svc:8080"
-echo "  export TUF_MIRROR=http://tuf.tuf-system.svc:8080"
+echo "Host access (NodePort):"
+echo "  Rekor:  http://localhost:${REKOR_NODE_PORT}"
+echo "  TUF:    http://localhost:${TUF_NODE_PORT}"
+echo "  Fulcio: http://localhost:${FULCIO_NODE_PORT}"
 echo ""
 echo "OIDC issuer (for keyless verification):"
 echo "  kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer'"

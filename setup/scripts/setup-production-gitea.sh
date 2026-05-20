@@ -67,7 +67,7 @@ helm upgrade --install gitea gitea-charts/gitea \
   --set persistence.enabled=true \
   --set persistence.size=10Gi \
   --wait \
-  --timeout=5m
+  --timeout=10m
 
 # Wait for Gitea to be ready
 echo "Waiting for Gitea pods to be ready..."
