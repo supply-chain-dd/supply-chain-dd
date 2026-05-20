@@ -22,6 +22,9 @@ SIGSTORE_SCAFFOLD_VERSION ?= v0.7.24
 KNATIVE_VERSION ?= 1.18.0
 REGISTRY_PORT ?= 5000
 REGISTRY_NODE_PORT ?= 30000
+REKOR_NODE_PORT ?= 30006
+TUF_NODE_PORT ?= 30007
+FULCIO_NODE_PORT ?= 30008
 REGISTRY_USER ?= ctf-admin
 REGISTRY_PASS ?= CTFRegistryPass123!
 
@@ -923,7 +926,7 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 # ============================================================
 
 setup-sigstore-local: ## Deploy local Sigstore stack (Fulcio, Rekor, TUF) on KinD
-	@cd setup && SIGSTORE_SCAFFOLD_VERSION=$(SIGSTORE_SCAFFOLD_VERSION) KNATIVE_VERSION=$(KNATIVE_VERSION) ./scripts/setup-sigstore-local.sh
+	@cd setup && SIGSTORE_SCAFFOLD_VERSION=$(SIGSTORE_SCAFFOLD_VERSION) KNATIVE_VERSION=$(KNATIVE_VERSION) REKOR_NODE_PORT=$(REKOR_NODE_PORT) TUF_NODE_PORT=$(TUF_NODE_PORT) FULCIO_NODE_PORT=$(FULCIO_NODE_PORT) ./scripts/setup-sigstore-local.sh
 
 verify-sigstore-local: ## Verify local Sigstore stack is running
 	@echo "Verifying local Sigstore stack..."
@@ -1008,7 +1011,7 @@ trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipelin
 # Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-sigstore-local setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
 	@echo ""
 	@echo "Restoring kubectl context to CTF cluster..."
 	@kubectl config use-context kind-$(CLUSTER_NAME)

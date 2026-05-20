@@ -13,7 +13,7 @@ COSIGN_PUB="${REPO_ROOT}/cosign.pub"
 REGISTRY_CA="${REPO_ROOT}/setup/certs/registry.crt"
 REGISTRY_URL="localhost:30000"
 IMAGE_NAME="recipe-api"
-IMAGE_TAG="v1.0"
+IMAGE_TAG="v2.0"
 IMAGE_REF="${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 if ! command -v cosign &>/dev/null; then
@@ -90,8 +90,7 @@ p "  - KMS : clé stockée dans un HSM ou service cloud (AWS KMS, GCP KMS, Vault
 p "  SECTION 4 — Intégration dans la pipeline"
 p "Chains surveille les TaskRuns qui émettent deux résultats : IMAGE_URL et IMAGE_DIGEST"
 
-pe "kubectl get task push-container-image-with-chains -n ctf-challenge -o jsonpath='{.spec.results[*].name}' && echo"
-p "→ IMAGE_DIGEST et IMAGE_URL déclenchent la signature automatique par Chains"
+pe "kubectl get task push-container-image-with-chains -n ctf-challenge -oyaml"
 
 # p "Comparaison des résultats des deux pipelines :"
 # p "push-build-pipeline-secure (sans Chains) :"
