@@ -175,7 +175,7 @@ spec:
     - name: create-source-vsa
       runAfter: ["push-container-image"]
       taskRef:
-        name: create-source-vsa
+        name: create-source-vsa-with-chains
       params:
         - name: IMAGE_URL
           value: $(tasks.push-container-image.results.IMAGE_URL)

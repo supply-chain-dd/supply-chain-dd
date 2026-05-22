@@ -54,29 +54,30 @@ case $choice in
     1)
         echo ""
         echo "Configuring per-registry certificate trust..."
-        if [ "$RUNTIME" = "podman" ]; then
-            CERT_DIR="/etc/containers/certs.d/localhost:${REGISTRY_NODE_PORT}"
-            echo "  Creating directory: ${CERT_DIR}"
-            sudo mkdir -p "${CERT_DIR}"
-            echo "  Copying certificate..."
-            sudo cp "${CERT_FILE}" "${CERT_DIR}/ca.crt"
-            echo "  Setting permissions..."
-            sudo chmod 644 "${CERT_DIR}/ca.crt"
-            echo ""
-            echo "✓ Podman configured to trust registry at localhost:${REGISTRY_NODE_PORT}"
-        else
-            CERT_DIR="/etc/docker/certs.d/localhost:${REGISTRY_NODE_PORT}"
-            echo "  Creating directory: ${CERT_DIR}"
-            sudo mkdir -p "${CERT_DIR}"
-            echo "  Copying certificate..."
-            sudo cp "${CERT_FILE}" "${CERT_DIR}/ca.crt"
-            echo "  Setting permissions..."
-            sudo chmod 644 "${CERT_DIR}/ca.crt"
+
+        CONTAINERS_CERT_DIR="/etc/containers/certs.d/localhost:${REGISTRY_NODE_PORT}"
+        echo "  Creating directory: ${CONTAINERS_CERT_DIR}"
+        sudo mkdir -p "${CONTAINERS_CERT_DIR}"
+        echo "  Copying certificate..."
+        sudo cp "${CERT_FILE}" "${CONTAINERS_CERT_DIR}/ca.crt"
+        sudo chmod 644 "${CONTAINERS_CERT_DIR}/ca.crt"
+        echo "  -> Podman/Buildah configured"
+
+        DOCKER_CERT_DIR="/etc/docker/certs.d/localhost:${REGISTRY_NODE_PORT}"
+        echo "  Creating directory: ${DOCKER_CERT_DIR}"
+        sudo mkdir -p "${DOCKER_CERT_DIR}"
+        echo "  Copying certificate..."
+        sudo cp "${CERT_FILE}" "${DOCKER_CERT_DIR}/ca.crt"
+        sudo chmod 644 "${DOCKER_CERT_DIR}/ca.crt"
+        echo "  -> Docker/crane/oras configured"
+
+        if [ "$RUNTIME" = "docker" ]; then
             echo "  Restarting Docker..."
             sudo systemctl restart docker
-            echo ""
-            echo "✓ Docker configured to trust registry at localhost:${REGISTRY_NODE_PORT}"
         fi
+
+        echo ""
+        echo "Certificate installed in both /etc/containers and /etc/docker cert directories."
         ;;
     2)
         echo ""

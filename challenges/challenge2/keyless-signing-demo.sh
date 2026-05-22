@@ -9,7 +9,6 @@ clear
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-COSIGN_PUB="${REPO_ROOT}/cosign.pub"
 REGISTRY_CA="${REPO_ROOT}/setup/certs/registry.crt"
 REGISTRY_URL="localhost:30000"
 IMAGE_NAME="recipe-api"
@@ -120,7 +119,7 @@ pe "kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.status.
 p "  SECTION 5 — Verifying the Keyless Signature"
 p "Unlike key-based verification, keyless uses certificate identity + OIDC issuer"
 p "First, initialize cosign's TUF root to trust the local Fulcio CA and Rekor key"
-
+ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
 TUF_ROOT_FILE=$(mktemp)
 kubectl get configmap sigstore-tuf-root -n ctf-challenge -o jsonpath='{.data.root\.json}' > "${TUF_ROOT_FILE}"
 pe "cosign initialize --mirror=${TUF_MIRROR_LOCAL} --root=${TUF_ROOT_FILE}"
@@ -139,11 +138,13 @@ p "  - Identity is bound to the ServiceAccount via OIDC"
 p "  - The signing event is recorded in Rekor (auditable)"
 
 # ============================================================================
-# SECTION 6 — SLSA Provenance (still from Tekton Chains)
+# SECTION 6 — SLSA Provenance (Tekton Chains, keyless via Fulcio)
 # ============================================================================
 
-p "  SECTION 6 — SLSA Provenance (Tekton Chains)"
-p "Tekton Chains still generates SLSA provenance (key-based signing)"
+p "  SECTION 6 — SLSA Provenance (Tekton Chains, keyless via Fulcio)"
+p "Tekton Chains also signs via Fulcio — same local Sigstore instance"
+
+CHAINS_IDENTITY="https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller"
 
 p "Waiting for Chains to sign..."
 for i in $(seq 1 12); do
@@ -153,28 +154,17 @@ for i in $(seq 1 12); do
 done
 
 if [ "$SIGNED" = "true" ]; then
-    pe "cosign verify-attestation --insecure-ignore-tlog --key ${COSIGN_PUB} --type slsaprovenance --registry-cacert=${REGISTRY_CA} ${IMAGE_REF} 2>&1 | head -5"
-    p "SLSA provenance is valid and signed by Tekton Chains"
+    pe "cosign verify-attestation \
+  --certificate-identity=${CHAINS_IDENTITY} \
+  --certificate-oidc-issuer=${ISSUER} \
+  --rekor-url=${REKOR_URL_LOCAL} \
+  --insecure-ignore-sct \
+  --type slsaprovenance \
+  --registry-cacert=${REGISTRY_CA} \
+  ${IMAGE_REF} 2>&1 | head -5"
+    p "SLSA provenance is valid — signed by Tekton Chains via Fulcio (keyless)"
 else
     p "Chains has not signed yet — provenance verification skipped"
 fi
-
-# ============================================================================
-# SECTION 7 — Comparison
-# ============================================================================
-
-# p "  SECTION 7 — Key-based vs Keyless Signing"
-# p ""
-# p "  Key-based (Tekton Chains):            Keyless (in-pipeline):"
-# p "  ──────────────────────────            ─────────────────────"
-# p "  cosign keypair in K8s Secret          No keys to manage"
-# p "  Chains controller signs async         cosign signs in-pipeline"
-# p "  Verify with: cosign.pub               Verify with: SA identity + OIDC issuer"
-# p "  Key rotation is manual                Certificates are ephemeral (10 min)"
-# p "  No transparency log                   All events in Rekor"
-# p ""
-# p "Both approaches coexist in this setup:"
-# p "  make trigger-challenge2-build-with-chains  — key-based (Chains)"
-# p "  make trigger-challenge2-build-keyless      — keyless (Fulcio)"
 
 p ""

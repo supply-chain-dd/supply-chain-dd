@@ -71,24 +71,24 @@ spec:
     - name: source
       description: Shared workspace for source code
 
-  results:
-    - name: IMAGE_URL
-      description: Full URL of the pushed image
-      value: $(tasks.push-container-image.results.IMAGE_URL)
-    - name: IMAGE_DIGEST
-      description: Digest of the pushed image
-      value: $(tasks.push-container-image.results.IMAGE_DIGEST)
-    - name: IMAGE_SIGNATURE
-      description: Keyless signature status
-      value: $(tasks.sign-image-keyless.results.IMAGE_SIGNATURE)
-    - name: VSA_DIGEST
-      description: Digest of the Source VSA attached via OCI referrers
-      value: $(tasks.create-source-vsa.results.VSA_DIGEST)
+  # results:
+  #   - name: IMAGE_URL
+  #     description: Full URL of the pushed image
+  #     value: $(tasks.push-container-image.results.IMAGE_URL)
+  #   - name: IMAGE_DIGEST
+  #     description: Digest of the pushed image
+  #     value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+  #   - name: IMAGE_SIGNATURE
+  #     description: Keyless signature status
+  #     value: $(tasks.sign-image-keyless.results.IMAGE_SIGNATURE)
+  #   - name: VSA_DIGEST
+  #     description: Digest of the Source VSA attached via OCI referrers
+  #     value: $(tasks.create-source-vsa.results.VSA_DIGEST)
 
   tasks:
     - name: verify-source
       taskRef:
-        name: verify-source-provenance
+        name: verify-source
       params:
         - name: repo-url
           value: $(params.repo-url)
@@ -134,7 +134,7 @@ spec:
     - name: push-container-image
       runAfter: ["run-quality-checks"]
       taskRef:
-        name: push-container-image-with-chains
+        name: push-container-image
       params:
         - name: image-name
           value: $(params.image-name)
@@ -153,9 +153,9 @@ spec:
         name: sign-image-keyless
       params:
         - name: IMAGE_URL
-          value: $(tasks.push-container-image.results.IMAGE_URL)
+          value: $(tasks.push-container-image.results.image-url)
         - name: IMAGE_DIGEST
-          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+          value: $(tasks.push-container-image.results.image-digest)
 
     # Attach unsigned Source VSA via OCI referrers API
     - name: create-source-vsa
@@ -164,9 +164,9 @@ spec:
         name: create-source-vsa
       params:
         - name: IMAGE_URL
-          value: $(tasks.push-container-image.results.IMAGE_URL)
+          value: $(tasks.push-container-image.results.image-url)
         - name: IMAGE_DIGEST
-          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+          value: $(tasks.push-container-image.results.image-digest)
         - name: SOURCE_VSA
           value: $(tasks.verify-source.results.SOURCE_VSA)
 

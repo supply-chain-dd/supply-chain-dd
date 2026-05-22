@@ -87,10 +87,10 @@ spec:
         echo "============================================"
         echo "IMAGE_URL:    $(cat /tekton/results/IMAGE_URL)"
         echo "IMAGE_DIGEST: $(cat /tekton/results/IMAGE_DIGEST)"
-        echo ""
-        echo "Chains will store:"
-        echo "  Signature:   $(params.registry-url)/$(params.image-name):$(params.image-tag).sig"
-        echo "  Attestation: $(params.registry-url)/$(params.image-name):$(params.image-tag).att"
+        # echo ""
+        # echo "Chains will store:"
+        # echo "  Signature:   $(params.registry-url)/$(params.image-name):$(params.image-tag).sig"
+        # echo "  Attestation: $(params.registry-url)/$(params.image-name):$(params.image-tag).att"
         echo "============================================"
 ---
 apiVersion: tekton.dev/v1beta1
