@@ -18,16 +18,16 @@ REKOR_NODE_PORT="${REKOR_NODE_PORT:-30006}"
 TUF_NODE_PORT="${TUF_NODE_PORT:-30007}"
 
 if ! command -v cosign &>/dev/null; then
-    echo "cosign not installed. See: https://docs.sigstore.dev/cosign/installation/"
+    echo "cosign non installé. Voir : https://docs.sigstore.dev/cosign/installation/"
     exit 1
 fi
 
 if ! command -v tkn &>/dev/null; then
-    echo "tkn CLI not found. Install with: make -C ${REPO_ROOT} install-tkn"
-    echo "   Pipeline logs will not be shown in real time."
+    echo "tkn CLI non trouvé. Installer avec : make -C ${REPO_ROOT} install-tkn"
+    echo "   Les logs du pipeline ne seront pas affichés en temps réel."
 fi
 
-# --- Sigstore service URLs via NodePort ---
+# --- URLs des services Sigstore via NodePort ---
 REKOR_URL_LOCAL="http://localhost:${REKOR_NODE_PORT}"
 TUF_MIRROR_LOCAL="http://localhost:${TUF_NODE_PORT}"
 
@@ -36,89 +36,75 @@ cleanup() {
 }
 trap cleanup EXIT
 
-p "=== Keyless Image Signing — Cosign + Local Fulcio/Rekor ==="
-# p "Instead of Tekton Chains signing images with a static cosign keypair,"
-# p "this pipeline signs images in-pipeline using keyless signing:"
-# p "  - A projected ServiceAccount token serves as OIDC identity"
-# p "  - Local Fulcio issues a short-lived certificate"
-# p "  - The signature is logged in local Rekor (transparency log)"
-# p "  - No private keys to manage!"
+p "=== Signature Keyless d'images — Cosign + Fulcio/Rekor local ==="
 
 # ============================================================================
-# SECTION 1 — Local Sigstore Stack
+# SECTION 1 — Stack Sigstore locale
 # ============================================================================
-
-# p "  SECTION 1 — Local Sigstore Stack"
-# p "The sigstore/scaffolding Helm chart deploys Fulcio, Rekor, CT log, and TUF"
 
 pe "kubectl get pods -n fulcio-system"
-p "Fulcio is the Certificate Authority — issues short-lived signing certificates"
+p "Fulcio est l'autorité de certification — émet des certificats de signature éphémères"
 
 pe "kubectl get pods -n rekor-system"
-p "Rekor is the transparency log — records all signing events immutably"
+p "Rekor est le transparency log — enregistre chaque événement de signature de façon immuable"
 
 pe "kubectl get pods -n tuf-system"
-p "TUF distributes the root of trust for verifying Fulcio/Rekor"
+p "TUF distribue la racine de confiance pour vérifier Fulcio/Rekor"
 
+pe "make -C ${REPO_ROOT} setup-challenge2-tekton-keyless"
 # ============================================================================
-# SECTION 2 — OIDC Identity
+# SECTION 2 — Identité OIDC
 # ============================================================================
 
-# p "  SECTION 2 — OIDC Identity for Signing"
-p "The pipeline uses a dedicated ServiceAccount: pipeline-keyless-signer"
+p "La pipeline utilise un ServiceAccount dédié : pipeline-keyless-signer"
 
 pe "kubectl get serviceaccount pipeline-keyless-signer -n ctf-challenge -o yaml | head -20"
 
-p "The cluster's OIDC issuer is used by Fulcio to verify the SA token:"
+p "L'OIDC issuer du cluster est utilisé par Fulcio pour vérifier le token du SA :"
 pe "kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer'"
 
 ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
 
-# p "Certificate identity for verification:"
-# p "  https://kubernetes.io/namespaces/ctf-challenge/serviceaccounts/pipeline-keyless-signer"
-# p "  OIDC issuer: ${ISSUER}"
-
 # ============================================================================
-# SECTION 3 — Projected ServiceAccount Token
+# SECTION 3 — Token ServiceAccount projeté
 # ============================================================================
 
-p "  SECTION 3 — Projected ServiceAccount Token"
-p "The sign-image-keyless task mounts a projected SA token as an OIDC identity:"
+p "  SECTION 3 — Token ServiceAccount projeté"
+p "La tâche sign-image-keyless monte un token SA projeté comme identité OIDC :"
 
-# pe "kubectl get task sign-image-keyless -n ctf-challenge -o jsonpath='{.spec.volumes}' | jq '.[0]'"
 pe "kubectl get task sign-image-keyless -n ctf-challenge -oyaml"
-p "audience: sigstore — Fulcio only accepts tokens with this audience"
-p "expirationSeconds: 600 — token is short-lived (10 minutes)"
+p "audience: sigstore — Fulcio n'accepte que les tokens avec cette audience"
+p "expirationSeconds: 600 — le token est éphémère (10 minutes)"
 
 # ============================================================================
-# SECTION 4 — Pipeline Execution
+# SECTION 4 — Exécution du pipeline
 # ============================================================================
 
-p "  SECTION 4 — Pipeline Execution"
-p "Triggering the keyless signing pipeline..."
+p "  SECTION 4 — Exécution du pipeline"
+p "Déclenchement du pipeline de signature keyless..."
 
 pe "kubectl create -f ${SCRIPT_DIR}/tekton/manual-pipelinerun-keyless.yaml"
 
 sleep 3
 LATEST_PR=$(kubectl get pipelineruns -n ctf-challenge --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
 
-p "Following logs..."
+p "Suivi des logs..."
 if command -v tkn &>/dev/null; then
     pei "tkn pr logs -f ${LATEST_PR} -n ctf-challenge"
 else
-    p "tkn not available — waiting for pipeline to complete..."
+    p "tkn non disponible — attente de la fin du pipeline..."
     kubectl wait --for=condition=Succeeded pipelinerun/${LATEST_PR} -n ctf-challenge --timeout=600s 2>/dev/null || true
 fi
 
 pe "kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.status.conditions[0].reason}' && echo"
 
 # ============================================================================
-# SECTION 5 — Verify Keyless Signature
+# SECTION 5 — Vérification de la signature keyless
 # ============================================================================
 
-p "  SECTION 5 — Verifying the Keyless Signature"
-p "Unlike key-based verification, keyless uses certificate identity + OIDC issuer"
-p "First, initialize cosign's TUF root to trust the local Fulcio CA and Rekor key"
+p "  SECTION 5 — Vérification de la signature keyless"
+p "Contrairement à la vérification par clé, le keyless utilise l'identité certificat + l'émetteur OIDC"
+p "D'abord, initialiser la racine TUF de cosign pour faire confiance au CA Fulcio et à la clé Rekor locaux"
 ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
 TUF_ROOT_FILE=$(mktemp)
 kubectl get configmap sigstore-tuf-root -n ctf-challenge -o jsonpath='{.data.root\.json}' > "${TUF_ROOT_FILE}"
@@ -132,39 +118,39 @@ pe "cosign verify \
   --registry-cacert=${REGISTRY_CA} \
   ${IMAGE_REF} 2>&1 | head -20"
 
-p "The signature is valid!"
-p "  - No private key needed for verification"
-p "  - Identity is bound to the ServiceAccount via OIDC"
-p "  - The signing event is recorded in Rekor (auditable)"
+# p "La signature est valide !"
+# p "  - Aucune clé privée nécessaire pour la vérification"
+# p "  - L'identité est liée au ServiceAccount via OIDC"
+# p "  - L'événement de signature est enregistré dans Rekor (auditable)"
 
-# ============================================================================
-# SECTION 6 — SLSA Provenance (Tekton Chains, keyless via Fulcio)
-# ============================================================================
+# # ============================================================================
+# # SECTION 6 — Provenance SLSA (Tekton Chains, keyless via Fulcio)
+# # ============================================================================
 
-p "  SECTION 6 — SLSA Provenance (Tekton Chains, keyless via Fulcio)"
-p "Tekton Chains also signs via Fulcio — same local Sigstore instance"
+# p "  SECTION 6 — Provenance SLSA (Tekton Chains, keyless via Fulcio)"
+# p "Tekton Chains signe également via Fulcio — même instance Sigstore locale"
 
-CHAINS_IDENTITY="https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller"
+# CHAINS_IDENTITY="https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller"
 
-p "Waiting for Chains to sign..."
-for i in $(seq 1 12); do
-    SIGNED=$(kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signed}' 2>/dev/null)
-    [ "$SIGNED" = "true" ] && break
-    sleep 5
-done
+# p "Attente de la signature par Chains..."
+# for i in $(seq 1 12); do
+#     SIGNED=$(kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signed}' 2>/dev/null)
+#     [ "$SIGNED" = "true" ] && break
+#     sleep 5
+# done
 
-if [ "$SIGNED" = "true" ]; then
-    pe "cosign verify-attestation \
-  --certificate-identity=${CHAINS_IDENTITY} \
-  --certificate-oidc-issuer=${ISSUER} \
-  --rekor-url=${REKOR_URL_LOCAL} \
-  --insecure-ignore-sct \
-  --type slsaprovenance \
-  --registry-cacert=${REGISTRY_CA} \
-  ${IMAGE_REF} 2>&1 | head -5"
-    p "SLSA provenance is valid — signed by Tekton Chains via Fulcio (keyless)"
-else
-    p "Chains has not signed yet — provenance verification skipped"
-fi
+# if [ "$SIGNED" = "true" ]; then
+#     pe "cosign verify-attestation \
+#   --certificate-identity=${CHAINS_IDENTITY} \
+#   --certificate-oidc-issuer=${ISSUER} \
+#   --rekor-url=${REKOR_URL_LOCAL} \
+#   --insecure-ignore-sct \
+#   --type slsaprovenance \
+#   --registry-cacert=${REGISTRY_CA} \
+#   ${IMAGE_REF} 2>&1 | head -5"
+#     p "La provenance SLSA est valide — signée par Tekton Chains via Fulcio (keyless)"
+# else
+#     p "Chains n'a pas encore signé — vérification de la provenance ignorée"
+# fi
 
-p ""
+p "✅"

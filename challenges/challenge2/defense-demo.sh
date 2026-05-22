@@ -166,7 +166,7 @@ pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-ap
 #   --ca-file ${SCRIPT_DIR}/../../setup/certs/registry.crt"
 pe "SSL_CERT_FILE=/etc/containers/certs.d/localhost:30000/ca.crt \
   oras discover --plain-http=false \
-  localhost:30000/recipe-api-test:v2.0 \
+  localhost:30000/recipe-api:v2.0 \
   --registry-config ~/.docker/config.json"
 # p "2. Scan de secrets sur la nouvelle image"
 # pe "trivy image --scanners secret --insecure localhost:30000/recipe-api:v2.0"

@@ -71,24 +71,10 @@ spec:
     - name: source
       description: Shared workspace for source code
 
-  # results:
-  #   - name: IMAGE_URL
-  #     description: Full URL of the pushed image
-  #     value: $(tasks.push-container-image.results.IMAGE_URL)
-  #   - name: IMAGE_DIGEST
-  #     description: Digest of the pushed image
-  #     value: $(tasks.push-container-image.results.IMAGE_DIGEST)
-  #   - name: IMAGE_SIGNATURE
-  #     description: Keyless signature status
-  #     value: $(tasks.sign-image-keyless.results.IMAGE_SIGNATURE)
-  #   - name: VSA_DIGEST
-  #     description: Digest of the Source VSA attached via OCI referrers
-  #     value: $(tasks.create-source-vsa.results.VSA_DIGEST)
-
   tasks:
     - name: verify-source
       taskRef:
-        name: verify-source
+        name: verify-source-provenance
       params:
         - name: repo-url
           value: $(params.repo-url)
@@ -134,7 +120,7 @@ spec:
     - name: push-container-image
       runAfter: ["run-quality-checks"]
       taskRef:
-        name: push-container-image
+        name: push-container-image-with-chains
       params:
         - name: image-name
           value: $(params.image-name)
@@ -153,9 +139,9 @@ spec:
         name: sign-image-keyless
       params:
         - name: IMAGE_URL
-          value: $(tasks.push-container-image.results.image-url)
+          value: $(tasks.push-container-image.results.IMAGE_URL)
         - name: IMAGE_DIGEST
-          value: $(tasks.push-container-image.results.image-digest)
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
 
     # Attach unsigned Source VSA via OCI referrers API
     - name: create-source-vsa
@@ -164,22 +150,22 @@ spec:
         name: create-source-vsa
       params:
         - name: IMAGE_URL
-          value: $(tasks.push-container-image.results.image-url)
-        - name: IMAGE_DIGEST
-          value: $(tasks.push-container-image.results.image-digest)
-        - name: SOURCE_VSA
-          value: $(tasks.verify-source.results.SOURCE_VSA)
-
-    # Generate SPDX SBOM with Trivy and attach via OCI referrers
-    - name: generate-sbom
-      runAfter: ["push-container-image"]
-      taskRef:
-        name: generate-sbom
-      params:
-        - name: IMAGE_URL
           value: $(tasks.push-container-image.results.IMAGE_URL)
         - name: IMAGE_DIGEST
           value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+        - name: SOURCE_VSA
+          value: $(tasks.verify-source.results.SOURCE_VSA)
+
+    # # Generate SPDX SBOM with Trivy and attach via OCI referrers
+    # - name: generate-sbom
+    #   runAfter: ["push-container-image"]
+    #   taskRef:
+    #     name: generate-sbom
+    #   params:
+    #     - name: IMAGE_URL
+    #       value: $(tasks.push-container-image.results.IMAGE_URL)
+    #     - name: IMAGE_DIGEST
+    #       value: $(tasks.push-container-image.results.IMAGE_DIGEST)
 
     # Scan image for vulnerabilities and secrets with Trivy
     - name: scan-image
