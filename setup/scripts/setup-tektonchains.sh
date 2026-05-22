@@ -54,8 +54,6 @@ kubectl patch configmap chains-config -n tekton-chains --type merge -p '{
     "artifacts.pipelinerun.enable-deep-inspection": "true",
     "artifacts.taskrun.format": "in-toto",
     "artifacts.taskrun.storage": "oci",
-    "artifacts.oci.format": "simplesigning",
-    "artifacts.oci.storage": "oci",
     "artifacts.oci.signer": "x509",
     "signers.x509.fulcio.enabled": "true",
     "signers.x509.fulcio.address": "http://fulcio.fulcio-system.svc",

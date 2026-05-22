@@ -120,6 +120,7 @@ When modifying anything in `challenges/challengeN/`, update the appropriate file
 - When creating or modifying a demo script, update `SECURITY-GUIDE.md` to reference it (Interactive Demos table + cross-references in relevant sections)
 - When modifying detection/prevention content in `SECURITY-GUIDE.md`, ensure commands and tool options match what the demos actually execute
 - If a guide section has no demo coverage, note it with: `> **No demo script yet**`
+- **All demo script comments and `p` messages must be written in French.** This applies to all `*-demo.sh` files across all challenges. Shell variable names and command-line arguments remain in English.
 
 **Structure:**
 ```markdown

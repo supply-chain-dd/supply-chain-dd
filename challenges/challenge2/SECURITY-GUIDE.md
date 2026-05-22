@@ -24,7 +24,7 @@ This challenge includes three demo-magic scripts that walk through remediation a
 | `./defense-demo.sh` | End-to-end defense: Dockerfile fix (multi-stage + `.dockerignore`), Trivy Rego policy scan, scanner limitations, image purge, webhook-triggered secure pipeline, and verification | Phases 1, 2, 5 |
 | `./tektonchains-demo.sh` | Tekton Chains installation, configuration, signing keys, pipeline execution, cosign verification of signatures and SLSA provenance | Phase 3 |
 
-> **Prerequisites**: `defense-demo.sh` deploys a secure pipeline and triggers it via webhook. It also demonstrates the custom Trivy Rego policy (`trivy-policies/copy_git_leak.rego`). `tektonchains-demo.sh` requires `cosign` installed and Tekton Chains set up (`make setup-tektonchains`).
+> **Prerequisites**: `defense-demo.sh` deploys a secure pipeline and triggers it via webhook. `keyless-signing-demo.sh` requires `cosign` installed and the local Sigstore stack deployed (`make setup-sigstore-local`).
 
 ---
 
@@ -450,7 +450,7 @@ Image used: `docker.io/hadolint/hadolint` (latest) or pinned `docker.io/hadolint
 
 ## Phase 3: Attestation and Provenance
 
-> The `./tektonchains-demo.sh` walks through this entire phase interactively: Tekton Chains installation verification, `chains-config` ConfigMap inspection, cosign signing key setup, pipeline execution, and verification with `cosign verify` / `cosign verify-attestation` / `cosign tree`.
+> The `./keyless-signing-demo.sh` walks through this phase interactively: local Sigstore stack verification (Fulcio, Rekor, TUF), OIDC identity via projected ServiceAccount token, keyless pipeline execution, and verification with `cosign verify` / `cosign verify-attestation`.
 
 After build and scan, the image should have multiple signed attestations attached to it. Here is what the full supply chain picture looks like:
 
