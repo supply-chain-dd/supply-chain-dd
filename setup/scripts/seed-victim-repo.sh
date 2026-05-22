@@ -76,7 +76,7 @@ cd "$TEMP_DIR"
 if [ -d "_git" ]; then
     echo "Restoring git history from _git folder..."
     mv _git .git
-
+    git status
     # Configure git user
     git config user.name "Recipe Developer"
     git config user.email "developer@recipeco.com"

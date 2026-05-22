@@ -160,7 +160,7 @@ spec:
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: create-source-vsa
+  name: create-source-vsa-with-chains
   namespace: ctf-challenge
 spec:
   params:
@@ -278,3 +278,123 @@ spec:
           echo "WARNING: Could not extract VSA digest from oras output."
           echo "VSA may still have been attached. Check with: oras discover $IMAGE_REF"
         fi
+
+
+---
+# Task: create-source-vsa
+#
+# Runs after push-container-image, in parallel with generate-and-attest-sbom.
+# Reads the unsigned Source VSA from a task param (passed from verify-source-
+# provenance via pipeline result routing) and attaches it to the built image
+# using the OCI referrers API via oras.
+#
+# The VSA digest is output as a result. Tekton Chains may include this in
+# the signed provenance attestation.
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: create-source-vsa
+  namespace: ctf-challenge
+spec:
+  params:
+    - name: IMAGE_URL
+      type: string
+      description: Full URL of the pushed image
+    - name: IMAGE_DIGEST
+      type: string
+      description: Digest of the pushed image (sha256:...)
+    - name: SOURCE_VSA
+      type: string
+      description: The Source VSA JSON to attach as a referrer
+    - name: ORAS_VERSION
+      type: string
+      description: ORAS CLI version
+      default: "v1.2.2"
+  # results:
+  #   - name: VSA_DIGEST
+  #     description: Digest of the attached VSA artifact (for Chains provenance inclusion)
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+        items:
+          - key: config.json
+            path: config.json
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
+  steps:
+    - name: attach-vsa
+      image: alpine:3.18
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker-config
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates > /dev/null 2>&1
+
+        # Install CA cert for registry trust
+        if [ -f /certs/ca.crt ]; then
+          cp /certs/ca.crt /usr/local/share/ca-certificates/registry-ca.crt
+          update-ca-certificates 2>/dev/null || true
+        fi
+
+        IMAGE_URL="$(params.IMAGE_URL)"
+        IMAGE_DIGEST="$(params.IMAGE_DIGEST)"
+        IMAGE_REF="${IMAGE_URL}@${IMAGE_DIGEST}"
+        ORAS_VERSION="$(params.ORAS_VERSION)"
+
+        echo "============================================"
+        echo "Attaching Source VSA to image"
+        echo "============================================"
+        echo "Image: $IMAGE_REF"
+        echo ""
+
+        # Write VSA to file
+        echo '$(params.SOURCE_VSA)' > source-vsa.json
+
+        echo "Source VSA content:"
+        cat source-vsa.json
+        echo ""
+
+        # Download oras
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)  ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
+        esac
+        ORAS_URL="https://github.com/oras-project/oras/releases/download/${ORAS_VERSION}/oras_${ORAS_VERSION#v}_linux_${ARCH}.tar.gz"
+
+        echo "Downloading oras ${ORAS_VERSION}..."
+        curl -fsSL "$ORAS_URL" | tar xz -C /tmp oras
+        chmod +x /tmp/oras
+
+        # Attach VSA as OCI referrer
+        echo "Attaching VSA as OCI referrer..."
+        ATTACH_OUTPUT=$(/tmp/oras attach \
+          --artifact-type "application/vnd.slsa.verification_summary+json" \
+          --distribution-spec v1.1-referrers-api \
+          --registry-config /docker-config/config.json \
+          "$IMAGE_REF" \
+          source-vsa.json:application/json ) || {
+          echo "WARNING: oras attach failed, trying without referrers API flag..."
+          ATTACH_OUTPUT=$(/tmp/oras attach \
+            --artifact-type "application/vnd.slsa.verification_summary+json" \
+            --registry-config /docker-config/config.json \
+            "$IMAGE_REF" \
+            source-vsa.json:application/json )
+        }
+
+        echo "$ATTACH_OUTPUT"
+

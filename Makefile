@@ -157,25 +157,19 @@ verify-conforma: ## Verify Conforma (ec) CLI installation and signing key
 		exit 1; \
 	fi
 	@echo ""
-	@echo "Signing key:"
-	@if [ -f cosign.pub ]; then \
-		echo "  ✓ cosign.pub found in repo root"; \
-	else \
-		echo "  ⚠  cosign.pub not found (run: make setup-tektonchains)"; \
-	fi
-	@echo ""
-	@echo "Cluster secret (used by the verify-with-conforma pipeline task):"
-	@kubectl get secret cosign-public-key -n ctf-challenge >/dev/null 2>&1 \
-		&& echo "  ✓ cosign-public-key Secret exists in ctf-challenge" \
-		|| echo "  ⚠  cosign-public-key Secret not found (run: make setup-challenge2-tekton)"
+	@echo "Signing:"
+	@echo "  Tekton Chains uses Fulcio (keyless) — no cosign.pub needed"
+	@echo "  Verify with --certificate-identity and --certificate-oidc-issuer"
 	@echo ""
 	@echo "Example validation command:"
+	@echo "  ISSUER=\$$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')"
 	@echo "  SSL_CERT_FILE=setup/certs/registry.crt \\"
 	@echo "  ec validate image \\"
 	@echo "    --images '{\"components\":[{\"name\":\"recipe-api\",\"containerImage\":\"localhost:30000/recipe-api:v1.0\",\"source\":{\"git\":{\"url\":\"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git\",\"revision\":\"9d81c465f358fef7efd791966e482e1eece4ff78\"}}}]}' \\"
-	@echo "    --public-key cosign.pub \\"
+	@echo "    --certificate-identity https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \\"
+	@echo "    --certificate-oidc-issuer \$$ISSUER \\"
+	@echo "    --rekor-url http://localhost:\$$(REKOR_NODE_PORT) \\"
 	@echo "    --policy '{\"sources\":[{\"name\":\"ctf-minimal\",\"policy\":[\"github.com/conforma/policy//policy/lib\",\"github.com/conforma/policy//policy/release\"],\"config\":{\"include\":[\"@minimal\"],\"exclude\":[\"base_image_registries.base_image_info_found\",\"cve.cve_results_found\"]}}]}' \\"
-	@echo "    --ignore-rekor \\"
 	@echo "    --extra-rule-data allowed_registry_prefixes=registry.registry.svc.cluster.local:5000 \\"
 	@echo "    --extra-rule-data allowed_registry_prefixes=localhost:30000 \\"
 	@echo "    --extra-rule-data allowed_registry_prefixes=docker.io \\"
@@ -789,31 +783,8 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
 		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
 	@echo ""
-	@echo "Creating cosign public key Secret for verify-enterprise-contract task..."
-	@if [ -f cosign.pub ]; then \
-		kubectl create secret generic cosign-public-key \
-			--from-file=cosign.pub=cosign.pub \
-			-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -; \
-		echo "  ✓ cosign-public-key Secret created (referenced as k8s://ctf-challenge/cosign-public-key)"; \
-	else \
-		echo "  ⚠  cosign.pub not found — run 'make setup-tektonchains' first."; \
-		echo "     verify-enterprise-contract will fail until the key is present."; \
-	fi
-	@echo ""
-	@echo "Creating cosign signing key Secret for SBOM attestation task..."
-	@if kubectl get secret signing-secrets -n tekton-chains >/dev/null 2>&1; then \
-		COSIGN_KEY=$$(kubectl get secret signing-secrets -n tekton-chains -o jsonpath='{.data.cosign\.key}' | base64 -d); \
-		COSIGN_PASSWORD=$$(kubectl get secret signing-secrets -n tekton-chains -o jsonpath='{.data.cosign\.password}' | base64 -d); \
-		kubectl create secret generic cosign-signing-secret \
-			--from-literal=cosign.key="$$COSIGN_KEY" \
-			--from-literal=cosign.password="$$COSIGN_PASSWORD" \
-			-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -; \
-		echo "  ✓ cosign-signing-secret created in ctf-challenge namespace"; \
-	else \
-		echo "  ⚠  signing-secrets not found in tekton-chains namespace."; \
-		echo "     Run 'make setup-tektonchains' first."; \
-		echo "     generate-and-attest-sbom task will fail until the key is present."; \
-	fi
+	@echo "Tekton Chains uses Fulcio for keyless signing (no cosign.pub needed)."
+	@echo "  Verify with: cosign verify --certificate-identity=... --certificate-oidc-issuer=..."
 	@echo ""
 	@echo "✓ Challenge 2 Tekton resources installed successfully"
 	@echo ""
@@ -873,6 +844,21 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	@echo "✓ Pipeline triggered successfully"
 	@echo ""
 	@echo "Image will be pushed to: registry.registry.svc.cluster.local:5000/recipe-api:latest"
+
+trigger-challenge2-build-secure: ## Trigger Challenge 2 pipeline to build and push image
+	@echo "========================================"
+	@echo "Triggering Challenge 2 Build Pipeline (Secure)"
+	@echo "========================================"
+	@echo ""
+	@if ! kubectl get pipeline push-build-pipeline-secure -n ctf-challenge >/dev/null 2>&1; then \
+		echo "❌ Pipeline not found. Run 'kubectl apply -f supply-chain-dd/challenges/challenge2/tekton-patched/pipelines/push-build-pipeline-secure.yaml' first"; \
+		exit 1; \
+	fi
+	@echo "Starting pipeline run..."
+	@kubectl create -f challenges/challenge2/tekton-patched/manual-pipelinerun-secure.yaml
+	@echo ""
+	@echo "  ✓ PipelineRun created"
+	
 
 trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (build + push + sign + SBOM)
 	@echo "========================================"
@@ -1011,7 +997,7 @@ trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipelin
 # Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-sigstore-local setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
 	@echo ""
 	@echo "Restoring kubectl context to CTF cluster..."
 	@kubectl config use-context kind-$(CLUSTER_NAME)

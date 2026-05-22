@@ -60,16 +60,16 @@ spec:
     - name: source
       description: Workspace for source code
 
-  results:
-    - name: IMAGE_URL
-      description: Full URL of the pushed image
-      value: $(tasks.push-container-image.results.IMAGE_URL)
-    - name: IMAGE_DIGEST
-      description: Digest of the pushed image
-      value: $(tasks.push-container-image.results.IMAGE_DIGEST)
-    - name: SCAN_STATUS
-      description: PASS or FAIL from Trivy secret scan
-      value: $(tasks.scan-image.results.SCAN_STATUS)
+  # results:
+  #   - name: IMAGE_URL
+  #     description: Full URL of the pushed image
+  #     value: $(tasks.push-container-image.results.IMAGE_URL)
+  #   - name: IMAGE_DIGEST
+  #     description: Digest of the pushed image
+  #     value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+  #   - name: SCAN_STATUS
+  #     description: PASS or FAIL from Trivy scan
+  #     value: $(tasks.scan-image.results.SCAN_STATUS)
 
   tasks:
     - name: verify-source
@@ -117,13 +117,10 @@ spec:
         - name: source
           workspace: source
 
-    # Uses push-container-image-with-chains which emits IMAGE_URL + IMAGE_DIGEST.
-    # Despite the name, this task works without Tekton Chains — it just builds
-    # and pushes with Kaniko and writes results for downstream tasks.
     - name: push-container-image
       runAfter: ["run-quality-checks"]
       taskRef:
-        name: push-container-image-with-chains
+        name: push-container-image
       params:
         - name: image-name
           value: $(params.image-name)
@@ -142,9 +139,9 @@ spec:
         name: scan-image
       params:
         - name: IMAGE_URL
-          value: $(tasks.push-container-image.results.IMAGE_URL)
+          value: $(tasks.push-container-image.results.image-url)
         - name: IMAGE_DIGEST
-          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+          value: $(tasks.push-container-image.results.image-digest)
 
     # Attaches the unsigned Source VSA to the image via OCI referrers API.
     - name: create-source-vsa
@@ -153,8 +150,8 @@ spec:
         name: create-source-vsa
       params:
         - name: IMAGE_URL
-          value: $(tasks.push-container-image.results.IMAGE_URL)
+          value: $(tasks.push-container-image.results.image-url)
         - name: IMAGE_DIGEST
-          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+          value: $(tasks.push-container-image.results.image-digest)
         - name: SOURCE_VSA
           value: $(tasks.verify-source.results.SOURCE_VSA)

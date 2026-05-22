@@ -128,6 +128,11 @@ spec:
       type: string
       description: Registry URL
       default: "registry.registry.svc.cluster.local:5000"
+  results:
+    - name: image-digest
+      description: Digest of the pushed image (sha256:...) 
+    - name: image-url
+      description: Full URL of the pushed image
   workspaces:
     - name: source
       description: The workspace containing the Dockerfile and source code
@@ -156,6 +161,7 @@ spec:
         - --destination=$(params.registry-url)/$(params.image-name):$(params.image-tag)
         - --verbosity=info
         - --ignore-path=/product_uuid
+        - --digest-file=/tekton/results/image-digest
       volumeMounts:
         - name: docker-config
           mountPath: /kaniko/.docker/
@@ -164,3 +170,11 @@ spec:
           mountPath: /kaniko/ssl/certs/additional-ca-cert-bundle.crt
           subPath: ca.crt
           readOnly: true
+
+    - name: write-image-url
+      image: alpine:3.18
+      script: |
+        #!/bin/sh
+        printf '%s' "$(params.registry-url)/$(params.image-name):$(params.image-tag)" \
+          > /tekton/results/image-url
+

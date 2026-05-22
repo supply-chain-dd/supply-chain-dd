@@ -111,6 +111,13 @@ else
     EXIT_CODE=1
 fi
 
+# 6.5 Tekton Chains
+echo ""
+echo "[6.5] Tekton Chains"
+check_item "Tekton Chains namespace exists" "kubectl get namespace tekton-chains > /dev/null" || EXIT_CODE=1
+check_item "Chains controller running" "kubectl get pods -n tekton-chains -l app.kubernetes.io/name=controller --no-headers 2>/dev/null | grep -q Running" || EXIT_CODE=1
+check_item "Fulcio enabled in chains-config" "kubectl get configmap chains-config -n tekton-chains -o jsonpath='{.data.signers\\.x509\\.fulcio\\.enabled}' | grep -q true" || EXIT_CODE=1
+
 # 7. Images in Registry
 echo ""
 echo "[7] Registry Images"

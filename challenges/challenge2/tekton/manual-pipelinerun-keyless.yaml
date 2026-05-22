@@ -17,9 +17,12 @@ metadata:
     tekton.dev/pipeline: push-build-pipeline-keyless
     trigger-type: manual
 spec:
-  serviceAccountName: pipeline-keyless-signer
+  serviceAccountName: challenge2-pipeline
   pipelineRef:
     name: push-build-pipeline-keyless
+  taskRunSpecs:
+    - pipelineTaskName: sign-image-keyless
+      taskServiceAccountName: pipeline-keyless-signer
   params:
     - name: repo-url
       value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git

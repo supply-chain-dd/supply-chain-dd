@@ -15,6 +15,8 @@ REGISTRY_URL="https://localhost:30000"
 REGISTRY_USER="ctf-admin"
 REGISTRY_PASS="CTFRegistryPass123!"
 
+kubectl scale deployment tekton-chains-controller --replicas=0 -n tekton-chains
+
 # Setup: deploy secure pipeline + patch trigger template to point to it
 p "0. Patch des pipelines avant de commiter"
 
@@ -159,10 +161,13 @@ p "  PHASE 4 — Vérification de la nouvelle image v2.0"
 
 # p "1. L'image v2.0 est dans le registre"
 pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-api/tags/list"
-pe "oras discover localhost:30000/recipe-api:v2.0 \
-  --registry-config ~/.docker/config.json \
-  --ca-file ${SCRIPT_DIR}/../../setup/certs/registry.crt"
-
+# pe "oras discover localhost:30000/recipe-api:v2.0 \
+#   --registry-config ~/.docker/config.json \
+#   --ca-file ${SCRIPT_DIR}/../../setup/certs/registry.crt"
+pe "SSL_CERT_FILE=/etc/containers/certs.d/localhost:30000/ca.crt \
+  oras discover --plain-http=false \
+  localhost:30000/recipe-api-test:v2.0 \
+  --registry-config ~/.docker/config.json"
 # p "2. Scan de secrets sur la nouvelle image"
 # pe "trivy image --scanners secret --insecure localhost:30000/recipe-api:v2.0"
 # p "→ 0 secrets — le multi-stage build ne copie que le binaire dans l'image finale"
