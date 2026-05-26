@@ -1,0 +1,48 @@
+---
+# Kyverno ClusterPolicy: require-sbom-attestation
+#
+# Requires that container images have an SBOM attestation attached before
+# deployment. Works with images that store SBOMs as OCI referrers with
+# artifact type "application/spdx+json".
+#
+# This policy uses Kyverno's image verification to check for attestations
+# signed by cosign (keyless or keyed).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-sbom-attestation
+  annotations:
+    policies.kyverno.io/title: Require SBOM Attestation
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Container images must have an SBOM (Software Bill of Materials)
+      attestation attached. This ensures transparency about image contents
+      and enables detection of supply chain attacks like base image poisoning.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-sbom-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - "production"
+                - "staging"
+      verifyImages:
+        - imageReferences:
+            - "registry.registry.svc.cluster.local:5000/*"
+          attestations:
+            - type: https://spdx.dev/Document
+              conditions:
+                - all:
+                    - key: "{{ creationInfo.created || '' }}"
+                      operator: NotEquals
+                      value: ""
+          mutateDigest: true
+          verifyDigest: true
+          required: true

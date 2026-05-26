@@ -776,6 +776,102 @@ that at least one SBOM exists for the image being validated. Additional rules
 (e.g., `sbom_spdx__valid`, `sbom_spdx__contains_packages`) then validate the
 SBOM content.
 
+## Interactive Demos
+
+### SBOM Comparison Demo
+
+**Script:** [`sbom-comparison-demo.sh`](sbom-comparison-demo.sh)
+
+Standalone demo that compares SBOMs of the clean vs poisoned `golang:1.25-alpine`
+image. Demonstrates how SBOM analysis catches injected malware by:
+
+1. Generating SPDX JSON SBOM of the official image (Docker Hub)
+2. Generating SPDX JSON SBOM of the poisoned image (local registry)
+3. Comparing package lists with `comm` — shows unexpected entries
+4. Inspecting entrypoint modifications
+
+```bash
+bash challenges/challenge3/sbom-comparison-demo.sh
+```
+
+### Defense Demo (End-to-End Pipeline Hardening)
+
+**Script:** [`defense-demo.sh`](defense-demo.sh)
+
+End-to-end demo showing the full defense in action:
+
+1. **Deploy secured pipeline** — `verify-base-image` + `sign-image-keyless` tasks
+2. **Restore clean base images** — push from Docker Hub, attach SBOMs via `oras`
+3. **Patch Dockerfile** — digest-pinned multi-stage build with `.dockerignore`
+4. **Push to Gitea** — webhook triggers the secured pipeline automatically
+5. **Watch pipeline** — `verify-base-image` validates registry, digest, SBOM, baseline
+6. **Post-pipeline verification** — Conforma and Ampel policy enforcement
+7. **Failure case** — shows how poisoned images are rejected
+
+```bash
+bash challenges/challenge3/defense-demo.sh
+```
+
+### Post-Pipeline Verification with Conforma and Ampel
+
+After the pipeline completes and Tekton Chains generates SLSA provenance, two
+complementary tools can enforce policies:
+
+| Tool | Policy Language | What It Checks | Output |
+|------|----------------|----------------|--------|
+| **Conforma (EC)** | OPA/Rego | SBOM existence, package content, provenance, pipeline structure | Pass/fail report |
+| **Ampel** | CEL (HJSON) | SBOM existence, SLSA builder ID | VSA (Verification Summary Attestation) |
+
+**Conforma (Konflux pattern):**
+```bash
+ec validate image \
+  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v3.0@sha256:DIGEST"}]}' \
+  --policy '{"sources":[{"name":"ctf","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"]}}]}' \
+  --ignore-rekor \
+  --output text
+```
+
+**Ampel:**
+```bash
+SSL_CERT_FILE=setup/certs/registry.crt ampel verify \
+  sha256:DIGEST \
+  --policy challenges/challenge3/security/ampel-policies/verify-build-artifacts.hjson \
+  --collector "coci:localhost:30000/recipe-api@sha256:DIGEST" \
+  --context "builderId:https://tekton.dev/chains/v2" \
+  --format tty
+```
+
+> **Note:** The `--signer` flag is omitted because Ampel v1.2.1 does not support
+> custom Sigstore roots (local Fulcio CA). Attestation signatures can be verified
+> directly with `cosign verify-attestation`. The SBOM attestation is created by the
+> `attest-sbom-keyless` pipeline task using `cosign attest --type spdxjson`.
+
+**Policy files:**
+- Conforma Rego: [`security/conforma-policies/sbom-baseline-check.rego`](security/conforma-policies/sbom-baseline-check.rego)
+- Ampel HJSON: [`security/ampel-policies/verify-build-artifacts.hjson`](security/ampel-policies/verify-build-artifacts.hjson)
+- Kyverno digest: [`security/kyverno-policies/require-image-digest.yaml`](security/kyverno-policies/require-image-digest.yaml)
+- Kyverno SBOM: [`security/kyverno-policies/require-sbom-attestation.yaml`](security/kyverno-policies/require-sbom-attestation.yaml)
+
+### Secured Pipeline Resources
+
+The hardened pipeline and supporting resources are in [`tekton-patched/`](tekton-patched/):
+
+| Resource | File | Purpose |
+|----------|------|---------|
+| `verify-base-image` task | [`tasks/verify-base-image-task.yaml`](tekton-patched/tasks/verify-base-image-task.yaml) | Pre-build: registry, digest, SBOM, baseline check |
+| `sign-image-keyless` task | [`tasks/sign-image-keyless-task.yaml`](tekton-patched/tasks/sign-image-keyless-task.yaml) | Post-push: keyless signing via Fulcio + Rekor |
+| `attest-sbom-keyless` task | [`tasks/attest-sbom-keyless-task.yaml`](tekton-patched/tasks/attest-sbom-keyless-task.yaml) | Post-SBOM: wraps SBOM in signed in-toto attestation |
+| Secured pipeline | [`pipelines/push-build-pipeline-with-chains-secure.yaml`](tekton-patched/pipelines/push-build-pipeline-with-chains-secure.yaml) | Full pipeline with all defense layers |
+| Webhook trigger | [`triggers/push-eventlistener-secure.yaml`](tekton-patched/triggers/push-eventlistener-secure.yaml) | Auto-triggers on git push |
+| Patched Dockerfile | [`Dockerfile`](tekton-patched/Dockerfile) | Digest-pinned multi-stage build |
+| Manual trigger | [`manual-pipelinerun-with-chains-secure.yaml`](tekton-patched/manual-pipelinerun-with-chains-secure.yaml) | Manual fallback |
+| Baseline SBOM | [`../security/configmaps/golang-baseline-sbom.yaml`](security/configmaps/golang-baseline-sbom.yaml) | Expected package list |
+
+Deploy with:
+```bash
+make setup-challenge3-tekton-secure
+```
+
 ## Verification
 
 ### Verify Prevention Controls

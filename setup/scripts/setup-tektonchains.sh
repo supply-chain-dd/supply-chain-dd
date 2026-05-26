@@ -51,10 +51,11 @@ kubectl patch configmap chains-config -n tekton-chains --type merge -p '{
   "data": {
     "artifacts.pipelinerun.format": "in-toto",
     "artifacts.pipelinerun.storage": "oci",
+    "artifacts.pipelinerun.signer": "x509",
     "artifacts.pipelinerun.enable-deep-inspection": "true",
     "artifacts.taskrun.format": "in-toto",
     "artifacts.taskrun.storage": "oci",
-    "artifacts.oci.signer": "x509",
+    "artifacts.oci.signer": "none",
     "signers.x509.fulcio.enabled": "true",
     "signers.x509.fulcio.address": "http://fulcio.fulcio-system.svc",
     "transparency.enabled": "true",
@@ -65,8 +66,9 @@ kubectl patch configmap chains-config -n tekton-chains --type merge -p '{
 echo "Tekton Chains configured with:"
 echo "  - Provenance format: in-toto (compatible with Conforma)"
 echo "  - Provenance storage: OCI registry"
+echo "  - Provenance signer: x509 (Fulcio keyless)"
 echo "  - Deep inspection: enabled"
-echo "  - Signer: Fulcio (keyless, ephemeral certificates)"
+echo "  - OCI image signing: DISABLED (handled by in-pipeline sign-image-keyless task)"
 echo "  - Fulcio address: http://fulcio.fulcio-system.svc"
 echo "  - Transparency log: http://rekor.rekor-system.svc"
 

@@ -1,0 +1,287 @@
+---
+# Task: verify-base-image
+#
+# Pre-build verification of base images referenced in the Dockerfile.
+# Runs BEFORE the build step to catch base image poisoning attacks.
+#
+# Checks (for each FROM line):
+#   1. Image comes from the internal registry
+#   2. Image uses an immutable digest reference (@sha256:...)
+#   3. Image has an SBOM attached (OCI referrers)
+#   4. SBOM SPDX ID + name pairs match baseline (detects image tampering)
+#
+# Prerequisites:
+#   - ConfigMap: registry-ca-cert      in ctf-challenge (ca.crt)
+#   - Secret:    registry-docker-config in ctf-challenge
+#   - ConfigMap: golang-baseline-sbom   in ctf-challenge (baseline-spdx-packages.json)
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: verify-base-image
+  namespace: ctf-challenge
+spec:
+  description: |
+    Verifies base images referenced in the Dockerfile before the build step.
+    Checks registry origin, digest pinning, SBOM presence, and SBOM baseline
+    comparison to detect base image poisoning.
+  params:
+    - name: registry-url
+      type: string
+      description: Internal registry URL (cluster-accessible)
+      default: "registry.registry.svc.cluster.local:5000"
+    - name: SYFT_VERSION
+      type: string
+      description: Syft CLI version (with v prefix)
+      default: "v1.44.0"
+    - name: ORAS_VERSION
+      type: string
+      description: ORAS CLI version
+      default: "v1.2.2"
+  results:
+    - name: BASE_IMAGE_VERIFIED
+      description: "true if all base images passed verification"
+    - name: BASE_IMAGE_REF
+      description: "The verified base image reference (digest-pinned)"
+    - name: SBOM_BASELINE_STATUS
+      description: "PASS or FAIL for SBOM baseline comparison"
+    - name: UNEXPECTED_PACKAGES
+      description: "List of unexpected packages found (if any)"
+  workspaces:
+    - name: source
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+        items:
+          - key: config.json
+            path: config.json
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
+    - name: baseline-sbom
+      configMap:
+        name: golang-baseline-sbom
+    - name: sbom-data
+      emptyDir: {}
+  steps:
+    - name: verify-base-images
+      image: alpine:3.18
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker-config
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: docker-config
+          mountPath: /docker-config
+          readOnly: true
+        - name: registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+        - name: baseline-sbom
+          mountPath: /baseline
+          readOnly: true
+        - name: sbom-data
+          mountPath: /sbom
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates jq grep >/dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates >/dev/null 2>&1
+
+        # --- Download oras ---
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)  ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
+        esac
+        ORAS_VERSION="$(params.ORAS_VERSION)"
+        ORAS_URL="https://github.com/oras-project/oras/releases/download/${ORAS_VERSION}/oras_${ORAS_VERSION#v}_linux_${ARCH}.tar.gz"
+        echo "Downloading oras ${ORAS_VERSION}..."
+        curl -fsSL "$ORAS_URL" | tar xz -C /tmp oras
+        chmod +x /tmp/oras
+
+        # --- Download syft ---
+        SYFT_VERSION="$(params.SYFT_VERSION)"
+        SYFT_URL="https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/syft_${SYFT_VERSION#v}_linux_${ARCH}.tar.gz"
+        echo "Downloading Syft ${SYFT_VERSION}..."
+        curl -fsSL "$SYFT_URL" | tar xz -C /tmp syft
+        chmod +x /tmp/syft
+        echo "Tools ready"
+        echo ""
+
+        LOG=/tmp/verify-output.log
+        : > "$LOG"
+        log() { printf '%s\n' "$*" >> "$LOG"; }
+
+        DOCKERFILE="$(workspaces.source.path)/Dockerfile"
+        if [ ! -f "$DOCKERFILE" ]; then
+          echo "FAIL: No Dockerfile found at ${DOCKERFILE}"
+          printf '%s' "false" > /tekton/results/BASE_IMAGE_VERIFIED
+          printf '%s' "none"  > /tekton/results/BASE_IMAGE_REF
+          printf '%s' "FAIL"  > /tekton/results/SBOM_BASELINE_STATUS
+          printf '%s' "no-dockerfile" > /tekton/results/UNEXPECTED_PACKAGES
+          exit 1
+        fi
+
+        REGISTRY="$(params.registry-url)"
+        STRUCTURAL_FAILED=false
+        FIRST_REF=""
+        SBOM_STATUS="PASS"
+        UNEXPECTED=""
+
+        grep -i '^FROM ' "$DOCKERFILE" > /tmp/from_lines.txt
+
+        # ============================================
+        # Step 1: Base Image Structural Verification
+        # ============================================
+        log "============================================"
+        log "Step 1: Base Image Structural Verification"
+        log "============================================"
+
+        while read -r line; do
+          IMAGE_REF=$(echo "$line" | awk '{print $2}')
+          log ""
+          log "--- Checking: $IMAGE_REF ---"
+
+          if [ -z "$FIRST_REF" ]; then
+            FIRST_REF="$IMAGE_REF"
+          fi
+
+          if [ "$IMAGE_REF" = "scratch" ]; then
+            log "  PASS: scratch image (no verification needed)"
+            continue
+          fi
+
+          # CHECK 1: Must reference the internal registry
+          if ! echo "$IMAGE_REF" | grep -q "$REGISTRY"; then
+            log "  FAIL: Image not from internal registry ($REGISTRY)"
+            log "    Got: $IMAGE_REF"
+            STRUCTURAL_FAILED=true
+            continue
+          fi
+          log "  PASS: Image is from internal registry"
+
+          # CHECK 2: Must use digest reference (@sha256:...)
+          if ! echo "$IMAGE_REF" | grep -q '@sha256:'; then
+            log "  FAIL: Image uses mutable tag instead of digest"
+            log "    Got: $IMAGE_REF"
+            log "    Expected: <image>@sha256:<digest>"
+            STRUCTURAL_FAILED=true
+          else
+            log "  PASS: Image uses immutable digest reference"
+          fi
+
+          # CHECK 3: Must have SBOM attached (OCI referrers)
+          log "  Checking for SBOM attachment via OCI referrers..."
+          REFERRERS=$(/tmp/oras discover \
+            --artifact-type "application/spdx+json" \
+            --format json \
+            --registry-config /docker-config/config.json \
+            "$IMAGE_REF" 2>/dev/null || echo '{"manifests":[]}')
+
+          SBOM_COUNT=$(echo "$REFERRERS" | jq '.manifests | length' 2>/dev/null || echo "0")
+          if [ "$SBOM_COUNT" -gt 0 ]; then
+            log "  PASS: SBOM attached to base image ($SBOM_COUNT referrer(s))"
+          else
+            log "  FAIL: No SBOM found attached to base image"
+            STRUCTURAL_FAILED=true
+          fi
+        done < /tmp/from_lines.txt
+
+        # ============================================
+        # Step 2: SBOM Baseline Comparison (SPDX ID + purl)
+        # ============================================
+        log ""
+        log "============================================"
+        log "Step 2: SBOM Baseline Comparison (SPDX ID + purl)"
+        log "============================================"
+
+        BUILD_IMAGE_REF=$(head -1 /tmp/from_lines.txt | awk '{print $2}')
+
+        if [ "$BUILD_IMAGE_REF" = "scratch" ] || ! echo "$BUILD_IMAGE_REF" | grep -q "$REGISTRY"; then
+          log "  SKIP: Build image not from internal registry — cannot compare baseline"
+        else
+          log ""
+          log "--- SBOM Baseline: $BUILD_IMAGE_REF ---"
+
+          log "  Generating SBOM with Syft..."
+          rm -f /sbom/current-sbom.json
+          if ! /tmp/syft scan "$BUILD_IMAGE_REF" \
+            -o spdx-json \
+            --file /sbom/current-sbom.json 2>/dev/null; then
+            log "  FAIL: Could not generate SBOM for image"
+            SBOM_STATUS="FAIL"
+          else
+            jq -r '.packages[] | "\(.SPDXID)\t\(.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator | split("?") | .[0])"' \
+              /sbom/current-sbom.json | sort > /sbom/current-pairs.txt
+            jq -r '.[] | "\(.spdxid)\t\(.purl | split("?") | .[0])"' \
+              /baseline/baseline-packages.json | sort > /sbom/baseline-pairs.txt
+
+            log "  Current image components: $(wc -l < /sbom/current-pairs.txt)"
+            log "  Baseline components:      $(wc -l < /sbom/baseline-pairs.txt)"
+
+            EXTRA=$(comm -13 /sbom/baseline-pairs.txt /sbom/current-pairs.txt || true)
+
+            if [ -n "$EXTRA" ]; then
+              log ""
+              log "  FAIL: Unexpected SBOM entries found:"
+              echo "$EXTRA" | while IFS="$(printf '\t')" read -r spdxid purl; do
+                log "    + $spdxid ($purl)"
+              done
+              SBOM_STATUS="FAIL"
+              UNEXPECTED="$EXTRA"
+            else
+              log "  PASS: All SBOM entries match baseline"
+            fi
+
+            MISSING=$(comm -23 /sbom/baseline-pairs.txt /sbom/current-pairs.txt || true)
+            if [ -n "$MISSING" ]; then
+              log ""
+              log "  FAIL: Baseline entries missing from image:"
+              echo "$MISSING" | while IFS="$(printf '\t')" read -r spdxid purl; do
+                log "    - $spdxid ($purl)"
+              done
+              SBOM_STATUS="FAIL"
+            fi
+          fi
+        fi
+
+        # ============================================
+        # Display all results
+        # ============================================
+        cat "$LOG"
+
+        STRUCT_LABEL="PASS"
+        if [ "$STRUCTURAL_FAILED" = "true" ]; then
+          STRUCT_LABEL="FAIL"
+        fi
+
+        echo ""
+        echo "============================================"
+        echo "         VERIFICATION SUMMARY"
+        echo "============================================"
+        echo "  Structural verification: $STRUCT_LABEL"
+        echo "  SBOM baseline check:     $SBOM_STATUS"
+
+        if [ "$STRUCTURAL_FAILED" = "true" ] || [ "$SBOM_STATUS" = "FAIL" ]; then
+          echo ""
+          echo "  OVERALL RESULT: FAILED"
+          echo "============================================"
+          printf '%s' "false"      > /tekton/results/BASE_IMAGE_VERIFIED
+          printf '%s' "$FIRST_REF" > /tekton/results/BASE_IMAGE_REF
+          printf '%s' "$SBOM_STATUS" > /tekton/results/SBOM_BASELINE_STATUS
+          printf '%s' "$UNEXPECTED" > /tekton/results/UNEXPECTED_PACKAGES
+          exit 1
+        fi
+
+        echo ""
+        echo "  OVERALL RESULT: PASSED"
+        echo "============================================"
+        printf '%s' "true"      > /tekton/results/BASE_IMAGE_VERIFIED
+        printf '%s' "$FIRST_REF" > /tekton/results/BASE_IMAGE_REF
+        printf '%s' "PASS"      > /tekton/results/SBOM_BASELINE_STATUS
+        printf '%s' "none"      > /tekton/results/UNEXPECTED_PACKAGES

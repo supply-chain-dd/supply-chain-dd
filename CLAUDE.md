@@ -114,12 +114,33 @@ Each challenge must contain:
 │   │   └── test-attack2.sh
 │   ├── challenge3/                 # Attack #3: Base Image Poisoning
 │   │   ├── ATTACK-ANALYSIS.md      # Technical analysis and real-world examples
-│   │   ├── CTF-CHALLENGE-GUIDE.md  # Step-by-step attack execution
+│   │   ├── CTF-CHALLENGE-GUIDE.md  # Step-by-step attack execution + defense walkthrough
 │   │   ├── SETUP.md                # Environment setup for attack
-│   │   ├── SECURITY-GUIDE.md       # Detection and prevention methods
+│   │   ├── SECURITY-GUIDE.md       # Detection, prevention, interactive demos
+│   │   ├── sbom-comparison-demo.sh # SBOM comparison demo (clean vs poisoned)
+│   │   ├── defense-demo.sh         # End-to-end defense demo
 │   │   ├── tekton/                 # Vulnerable pipeline configs
-│   │   ├── security/               # Kyverno, NetworkPolicy, RBAC
-│   │   └── tekton-patched/         # Secured pipeline with image verification
+│   │   ├── tekton-patched/         # Secured pipeline with all defense layers
+│   │   │   ├── tasks/
+│   │   │   │   ├── verify-base-image-task.yaml      # Pre-build base image verification
+│   │   │   │   └── sign-image-keyless-task.yaml     # Keyless signing (Fulcio + Rekor)
+│   │   │   ├── pipelines/
+│   │   │   │   └── push-build-pipeline-with-chains-secure.yaml
+│   │   │   ├── triggers/
+│   │   │   │   └── push-eventlistener-secure.yaml
+│   │   │   ├── manual-pipelinerun-with-chains-secure.yaml
+│   │   │   ├── Dockerfile           # Digest-pinned multi-stage build
+│   │   │   └── .dockerignore        # Allowlist pattern
+│   │   └── security/               # Post-pipeline policies
+│   │       ├── configmaps/
+│   │       │   └── golang-baseline-sbom.yaml  # SBOM baseline for comparison
+│   │       ├── kyverno-policies/
+│   │       │   ├── require-image-digest.yaml
+│   │       │   └── require-sbom-attestation.yaml
+│   │       ├── conforma-policies/
+│   │       │   └── sbom-baseline-check.rego
+│   │       └── ampel-policies/
+│   │           └── verify-build-artifacts.hjson
 │   ├── challenge4/                 # Attack #4: GitOps Compromise (Coming soon)
 │   └── victim-repo-sample/         # Shared victim application
 ├── gitea/                          # Gitea configurations
@@ -257,6 +278,7 @@ The Makefile provides a clean interface for common operations:
 - `install-tkn`       - Install Tekton CLI as kubectl plugin
 - `install-kubescape` - Install Kubescape CLI as kubectl plugin
 - `install-conforma`  - Install Conforma (`ec`) CLI from GitHub releases
+- `install-ampel`     - Install Ampel CLI for post-pipeline verification
 
 **Environment Setup:**
 - `setup`                      - Complete setup (KinD cluster + Gitea + tekton + registry + verification)
@@ -269,6 +291,7 @@ The Makefile provides a clean interface for common operations:
 - `setup-ctf-challenge`        - Install Tekton CTF challenge resources (VULNERABLE version)
 - `setup-ctf-challenge-secure` - Install Tekton CTF challenge with SECURE configuration
 - `setup-challenge2-tekton`    - Deploy challenge2 Tekton resources including Chains-aware pipeline
+- `setup-challenge3-tekton-secure` - Deploy Challenge 3 secured Tekton resources (verify-base-image + keyless signing)
 
 **Security Tools:**
 - `setup-security-tools` - Deploy all security tools (Kyverno + Kubescape)
@@ -279,6 +302,7 @@ The Makefile provides a clean interface for common operations:
 **Challenge Triggers:**
 - `trigger-challenge2-build`             - Run the standard push-build-pipeline (no signing)
 - `trigger-challenge2-build-with-chains` - Run push-build-pipeline-with-chains (Tekton Chains + Conforma)
+- `trigger-challenge3-build-secure`      - Run Challenge 3 secured pipeline manually
 
 **Security Operations:**
 - `security-scan`            - Run all security scans (static analysis + runtime checks)

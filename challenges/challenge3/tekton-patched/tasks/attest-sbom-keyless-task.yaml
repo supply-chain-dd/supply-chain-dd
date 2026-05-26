@@ -1,0 +1,192 @@
+---
+# Task: attest-sbom-keyless
+#
+# Wraps a previously-attached SBOM (raw SPDX JSON, pushed via oras attach)
+# in an in-toto attestation and signs it using cosign keyless flow with the
+# local Sigstore stack (Fulcio + Rekor). The signed attestation is pushed as
+# a layer in the image's cosign .att tag, making it discoverable by Ampel's
+# coci collector.
+#
+# This task runs AFTER generate-sbom and does NOT modify the original OCI
+# referrer — it adds a signed in-toto wrapper alongside it.
+#
+# Prerequisites:
+#   - Local Sigstore stack deployed: make setup-sigstore-local
+#   - generate-sbom task must have completed (SBOM attached as OCI referrer)
+#   - ConfigMap: sigstore-tuf-root in ctf-challenge (TUF root.json)
+#   - ConfigMap: registry-ca-cert in ctf-challenge (ca.crt)
+#   - Secret:   registry-docker-config in ctf-challenge
+#   - PipelineRun must use SA: pipeline-keyless-signer
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: attest-sbom-keyless
+  namespace: ctf-challenge
+spec:
+  params:
+    - name: IMAGE_URL
+      type: string
+      description: Full image URL (registry/repo:tag)
+    - name: IMAGE_DIGEST
+      type: string
+      description: Image digest (sha256:...)
+    - name: FULCIO_URL
+      type: string
+      description: Fulcio CA URL (from ksvc fulcio in fulcio-system)
+      default: "http://fulcio.fulcio-system.svc"
+    - name: REKOR_URL
+      type: string
+      description: Rekor transparency log URL (from ksvc rekor in rekor-system)
+      default: "http://rekor.rekor-system.svc"
+    - name: TUF_MIRROR
+      type: string
+      description: TUF root mirror URL (from ksvc tuf in tuf-system)
+      default: "http://tuf.tuf-system.svc"
+    - name: TSA_URL
+      type: string
+      description: Timestamp Authority URL (from ksvc tsa in tsa-system)
+      default: "http://tsa.tsa-system.svc/api/v1/timestamp"
+    - name: COSIGN_VERSION
+      type: string
+      description: Cosign CLI version
+      default: "v2.6.3"
+    - name: ORAS_VERSION
+      type: string
+      description: ORAS CLI version
+      default: "v1.2.2"
+  results:
+    - name: SBOM_ATTESTATION
+      description: Indicates the SBOM was attested successfully
+  volumes:
+    - name: oidc-token
+      projected:
+        sources:
+          - serviceAccountToken:
+              audience: sigstore
+              expirationSeconds: 600
+              path: oidc-token
+    - name: docker-config
+      secret:
+        secretName: registry-docker-config
+    - name: registry-ca-cert
+      configMap:
+        name: registry-ca-cert
+    - name: tuf-root
+      configMap:
+        name: sigstore-tuf-root
+    - name: sbom-data
+      emptyDir: {}
+  steps:
+  - name: fetch-and-attest-sbom
+    image: alpine:3.20
+    volumeMounts:
+      - name: oidc-token
+        mountPath: /var/run/sigstore/cosign
+        readOnly: true
+      - name: docker-config
+        mountPath: /docker-config
+        readOnly: true
+      - name: registry-ca-cert
+        mountPath: /certs
+        readOnly: true
+      - name: tuf-root
+        mountPath: /tuf
+        readOnly: true
+      - name: sbom-data
+        mountPath: /sbom
+    env:
+      - name: DOCKER_CONFIG
+        value: /docker-config
+    script: |
+      #!/bin/sh
+      set -e
+
+      apk add --no-cache curl ca-certificates jq > /dev/null
+
+      cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+      update-ca-certificates 2>/dev/null || true
+
+      ARCH=$(uname -m)
+      case "$ARCH" in
+        x86_64)  ARCH="amd64" ;;
+        aarch64) ARCH="arm64" ;;
+      esac
+
+      # --- Download oras ---
+      ORAS_VERSION="$(params.ORAS_VERSION)"
+      ORAS_URL="https://github.com/oras-project/oras/releases/download/${ORAS_VERSION}/oras_${ORAS_VERSION#v}_linux_${ARCH}.tar.gz"
+      echo "Downloading oras ${ORAS_VERSION}..."
+      curl -fsSL "$ORAS_URL" | tar xz -C /tmp oras
+      chmod +x /tmp/oras
+
+      # --- Download cosign ---
+      echo "Downloading cosign $(params.COSIGN_VERSION)..."
+      curl -fsSL "https://github.com/sigstore/cosign/releases/download/$(params.COSIGN_VERSION)/cosign-linux-${ARCH}" -o /usr/local/bin/cosign
+      chmod +x /usr/local/bin/cosign
+
+      IMAGE_REF="$(params.IMAGE_URL)@$(params.IMAGE_DIGEST)"
+
+      # --- Fetch SBOM from OCI referrer ---
+      echo "============================================"
+      echo "Fetching SBOM from OCI referrer"
+      echo "============================================"
+      echo "Image: ${IMAGE_REF}"
+
+      SBOM_DIGEST=$(/tmp/oras discover \
+        --artifact-type "application/spdx+json" \
+        --format json \
+        --registry-config /docker-config/config.json \
+        "$IMAGE_REF" | jq -r '.manifests[0].digest')
+
+      if [ -z "$SBOM_DIGEST" ] || [ "$SBOM_DIGEST" = "null" ]; then
+        echo "ERROR: No SBOM referrer found for ${IMAGE_REF}"
+        exit 1
+      fi
+      echo "SBOM referrer manifest: $SBOM_DIGEST"
+
+      SBOM_MANIFEST=$(/tmp/oras manifest fetch \
+        --registry-config /docker-config/config.json \
+        "$(params.IMAGE_URL)@${SBOM_DIGEST}")
+
+      BLOB_DIGEST=$(echo "$SBOM_MANIFEST" | jq -r '.layers[0].digest')
+      echo "SBOM blob digest: $BLOB_DIGEST"
+
+      /tmp/oras blob fetch \
+        --registry-config /docker-config/config.json \
+        --output /sbom/sbom-spdx.json \
+        "$(params.IMAGE_URL)@${BLOB_DIGEST}"
+
+      echo "SBOM fetched: $(wc -c < /sbom/sbom-spdx.json) bytes"
+
+      # --- Initialize TUF ---
+      echo ""
+      echo "Initializing TUF from local mirror..."
+      cosign initialize \
+        --mirror=$(params.TUF_MIRROR) \
+        --root=/tuf/root.json
+
+      SIGSTORE_ID_TOKEN=$(cat /var/run/sigstore/cosign/oidc-token)
+      export SIGSTORE_ID_TOKEN
+
+      # --- Attest SBOM ---
+      echo ""
+      echo "============================================"
+      echo "Creating signed SBOM attestation"
+      echo "============================================"
+      echo "  Image:  ${IMAGE_REF}"
+      echo "  Type:   spdxjson"
+      echo "  Fulcio: $(params.FULCIO_URL)"
+      echo "  Rekor:  $(params.REKOR_URL)"
+
+      cosign attest -y \
+        --type spdxjson \
+        --predicate /sbom/sbom-spdx.json \
+        --fulcio-url=$(params.FULCIO_URL) \
+        --rekor-url=$(params.REKOR_URL) \
+        --insecure-skip-verify \
+        --registry-cacert=/certs/ca.crt \
+        "${IMAGE_REF}"
+
+      echo "attested" > $(results.SBOM_ATTESTATION.path)
+      echo ""
+      echo "SBOM attestation created and pushed to .att tag"

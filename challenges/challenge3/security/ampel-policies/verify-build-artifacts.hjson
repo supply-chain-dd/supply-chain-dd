@@ -1,0 +1,70 @@
+{
+  // Post-pipeline verification policy for Challenge 3
+  //
+  // Verifies build artifacts after the Tekton pipeline completes and
+  // Tekton Chains has generated SLSA provenance.
+  //
+  // Checks:
+  //   1. SBOM attestation exists for the built image (in-toto wrapped, pushed by cosign attest)
+  //   2. SLSA provenance has correct builder identity
+  //
+  // Note: Identity verification (--signer) is omitted because Ampel v1.2.1
+  // does not support custom Sigstore roots. The signer library supports it
+  // via WithSigstoreRootsPath, but the CLI does not expose this flag.
+  // Attestation signatures can still be verified directly with cosign.
+  //
+  // Usage:
+  //   SSL_CERT_FILE=setup/certs/registry.crt ampel verify sha256:<digest> \
+  //     --policy challenges/challenge3/security/ampel-policies/verify-build-artifacts.hjson \
+  //     --collector "coci:localhost:30000/recipe-api@sha256:<digest>" \
+  //     --context "builderId:https://tekton.dev/chains/v2" \
+  //     --format tty
+
+  id: challenge3-build-verification
+  meta: {
+    description: "Post-pipeline verification for Challenge 3 - Verifies SBOM and SLSA provenance"
+  }
+  blocks: [
+    {
+      id: sbom-check
+      meta: {
+        description: "Verify SBOM attestation exists for the built image"
+      }
+      policies: [
+        {
+          source: {
+            location: {
+              uri: "git+https://github.com/carabiner-dev/policies#sbom/sbom-exists.json"
+            }
+          }
+        }
+      ]
+    }
+    {
+      id: slsa-provenance-check
+      meta: {
+        description: "Verify SLSA provenance builder identity"
+        controls: [
+          { framework: "SLSA", class: "BUILD", id: "LEVEL_3" }
+        ]
+      }
+      policies: [
+        {
+          source: {
+            location: {
+              uri: "git+https://github.com/carabiner-dev/policies#slsa/slsa-builder-id.json"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
+
+  // To produce a VSA (Verification Summary Attestation):
+  //   ampel verify <image>@sha256:<digest> \
+  //     --policy challenges/challenge3/security/ampel-policies/verify-build-artifacts.hjson \
+  //     --collector "coci:localhost:30000/recipe-api" \
+  //     --attest-results --attest-format=vsa \
+  //     --format text

@@ -1,0 +1,186 @@
+---
+# EventListener for Challenge 3 Secured Pipeline
+# Triggers on Push Events — routes to the hardened pipeline with base image
+# verification, keyless signing, and full provenance coverage.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: push-build-listener
+  namespace: ctf-challenge
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: push-build-trigger
+      interceptors:
+        - ref:
+            name: "github"
+          params:
+            - name: "eventTypes"
+              value: ["push"]
+            - name: "secretRef"
+              value:
+                secretName: github-webhook-secret
+                secretKey: secretToken
+      bindings:
+        - ref: push-build-binding
+      template:
+        ref: push-build-template
+---
+# TriggerBinding - Extracts data from Gitea push webhook
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: push-build-binding
+  namespace: ctf-challenge
+spec:
+  params:
+    - name: repo-url
+      value: $(body.repository.clone_url)
+    - name: revision
+      value: $(body.after)
+    - name: repo-name
+      value: $(body.repository.full_name)
+    - name: ref
+      value: $(body.ref)
+    - name: pusher
+      value: $(body.pusher.username)
+---
+# TriggerTemplate - Creates PipelineRun from push webhook
+# Uses the secured pipeline and pipeline-keyless-signer SA
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: push-build-template
+  namespace: ctf-challenge
+spec:
+  params:
+    - name: repo-url
+    - name: revision
+    - name: repo-name
+    - name: ref
+    - name: pusher
+    - name: image-name
+      description: Container image name
+      default: "recipe-api"
+    - name: image-tag
+      description: Container image tag
+      default: "v3.0"
+    - name: registry-url
+      description: Container registry URL
+      default: "registry.registry.svc.cluster.local:5000"
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: push-build-secure-
+        namespace: ctf-challenge
+        labels:
+          tekton.dev/pipeline: push-build-pipeline-with-chains-secure
+          git.pusher: $(tt.params.pusher)
+        annotations:
+          git.repo: $(tt.params.repo-name)
+          git.ref: $(tt.params.ref)
+      spec:
+        serviceAccountName: challenge2-pipeline
+        pipelineRef:
+          name: push-build-pipeline-with-chains-secure
+        taskRunSpecs:
+          - pipelineTaskName: sign-image-keyless
+            taskServiceAccountName: pipeline-keyless-signer
+          - pipelineTaskName: attest-sbom
+            taskServiceAccountName: pipeline-keyless-signer
+        params:
+          - name: repo-url
+            value: $(tt.params.repo-url)
+          - name: revision
+            value: $(tt.params.revision)
+          - name: image-name
+            value: $(tt.params.image-name)
+          - name: image-tag
+            value: $(tt.params.image-tag)
+          - name: registry-url
+            value: $(tt.params.registry-url)
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+---
+# ServiceAccount for EventListener
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-triggers-sa
+  namespace: ctf-challenge
+---
+# Role with minimal permissions for EventListener
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tekton-triggers-role
+  namespace: ctf-challenge
+rules:
+- apiGroups: ["triggers.tekton.dev"]
+  resources: ["triggerbindings", "triggertemplates", "eventlisteners", "interceptors", "triggers"]
+  verbs: ["get","list","watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+  resourceNames: ["github-webhook-secret"]
+- apiGroups: ["tekton.dev"]
+  resources: ["pipelineruns"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+---
+# ClusterRole for cluster-scoped Tekton Triggers resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tekton-triggers-clusterrole
+rules:
+- apiGroups: ["triggers.tekton.dev"]
+  resources: ["clustertriggerbindings", "clusterinterceptors"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-triggers-clusterrolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: ctf-challenge
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-triggers-rolebinding
+  namespace: ctf-challenge
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tekton-triggers-role
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: ctf-challenge
+---
+# GitHub/Gitea webhook secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-webhook-secret
+  namespace: ctf-challenge
+type: Opaque
+stringData:
+  secretToken: "change-me-in-production"

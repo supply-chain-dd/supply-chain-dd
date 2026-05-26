@@ -1,0 +1,119 @@
+---
+# Job: generate-sbom-baseline
+#
+# Generates SBOMs for golang and alpine base images from the internal
+# registry, attaches them as OCI referrers, and outputs the baseline
+# JSON for the golang image.
+#
+# Used in Phase 2 of the defense demo — after pushing clean images
+# to the registry — so the baseline matches exactly what the
+# verify-base-image task will see (same registry URL, same digests).
+#
+# The baseline JSON is output between ===BASELINE_JSON_START=== and
+# ===BASELINE_JSON_END=== markers for extraction by the demo script.
+#
+# Prerequisites:
+#   - Secret:    registry-docker-config in ctf-challenge
+#   - ConfigMap: registry-ca-cert      in ctf-challenge
+#   - Clean golang:1.25-alpine and alpine:3.20 pushed to the registry
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: generate-sbom-baseline
+  namespace: ctf-challenge
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: docker-config
+          secret:
+            secretName: registry-docker-config
+            items:
+              - key: config.json
+                path: config.json
+        - name: registry-ca-cert
+          configMap:
+            name: registry-ca-cert
+      containers:
+        - name: sbom-gen
+          image: alpine:3.18
+          env:
+            - name: DOCKER_CONFIG
+              value: /docker-config
+            - name: SSL_CERT_DIR
+              value: /certs
+            - name: REGISTRY
+              value: "registry.registry.svc.cluster.local:5000"
+          volumeMounts:
+            - name: docker-config
+              mountPath: /docker-config
+              readOnly: true
+            - name: registry-ca-cert
+              mountPath: /certs
+              readOnly: true
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              apk add --no-cache curl ca-certificates jq >/dev/null 2>&1
+              cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+              update-ca-certificates >/dev/null 2>&1
+
+              ARCH=$(uname -m)
+              case "$ARCH" in x86_64) ARCH="amd64";; aarch64) ARCH="arm64";; esac
+
+              SYFT_VERSION="v1.44.0"
+              echo "Downloading Syft ${SYFT_VERSION}..."
+              curl -fsSL "https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/syft_${SYFT_VERSION#v}_linux_${ARCH}.tar.gz" | tar xz -C /tmp syft
+
+              ORAS_VERSION="v1.2.2"
+              echo "Downloading oras ${ORAS_VERSION}..."
+              curl -fsSL "https://github.com/oras-project/oras/releases/download/${ORAS_VERSION}/oras_${ORAS_VERSION#v}_linux_${ARCH}.tar.gz" | tar xz -C /tmp oras
+
+              echo ""
+              echo "=== Scanning golang image ==="
+              /tmp/syft scan ${REGISTRY}/golang:1.25-alpine -o spdx-json --file /tmp/golang-sbom.json
+
+              echo ""
+              echo "=== Scanning alpine image ==="
+              /tmp/syft scan ${REGISTRY}/alpine:3.20 -o spdx-json --file /tmp/alpine-sbom.json
+
+              echo ""
+              echo "=== Getting digests ==="
+              GOLANG_DIGEST=$(/tmp/oras manifest fetch --descriptor --registry-config /docker-config/config.json ${REGISTRY}/golang:1.25-alpine | jq -r .digest)
+              ALPINE_DIGEST=$(/tmp/oras manifest fetch --descriptor --registry-config /docker-config/config.json ${REGISTRY}/alpine:3.20 | jq -r .digest)
+              echo "golang digest: ${GOLANG_DIGEST}"
+              echo "alpine digest: ${ALPINE_DIGEST}"
+
+              echo ""
+              echo "=== Attaching SBOMs ==="
+              /tmp/oras attach --disable-path-validation --artifact-type application/spdx+json \
+                --registry-config /docker-config/config.json \
+                ${REGISTRY}/golang@${GOLANG_DIGEST} \
+                /tmp/golang-sbom.json:application/spdx+json
+              /tmp/oras attach --disable-path-validation --artifact-type application/spdx+json \
+                --registry-config /docker-config/config.json \
+                ${REGISTRY}/alpine@${ALPINE_DIGEST} \
+                /tmp/alpine-sbom.json:application/spdx+json
+
+              echo ""
+              echo "=== Verifying SBOM attachments ==="
+              /tmp/oras discover --artifact-type application/spdx+json \
+                --registry-config /docker-config/config.json \
+                ${REGISTRY}/golang@${GOLANG_DIGEST}
+              /tmp/oras discover --artifact-type application/spdx+json \
+                --registry-config /docker-config/config.json \
+                ${REGISTRY}/alpine@${ALPINE_DIGEST}
+
+              echo ""
+              echo "=== Generating baseline ==="
+              jq '[.packages[] | {spdxid: .SPDXID, purl: (.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator)}] | sort_by(.spdxid)' \
+                /tmp/golang-sbom.json > /tmp/baseline-packages.json
+
+              echo "===BASELINE_JSON_START==="
+              cat /tmp/baseline-packages.json
+              echo ""
+              echo "===BASELINE_JSON_END==="

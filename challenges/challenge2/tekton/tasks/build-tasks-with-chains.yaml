@@ -298,6 +298,9 @@ spec:
 #
 # Generates an SPDX JSON SBOM using Trivy and attaches it to the container
 # image as an OCI referrer using oras. No signing — Tekton Chains handles that.
+#
+# Emits Tekton Chains type-hinted results (SBOM-ARTIFACT_URI / SBOM-ARTIFACT_DIGEST)
+# so the SBOM artifact is recorded as a subject in the SLSA provenance attestation.
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -307,6 +310,8 @@ spec:
   description: |
     Generates an SPDX JSON SBOM for a container image using Trivy, then
     attaches it to the image via OCI referrers API using oras.
+    Emits Tekton Chains type-hinted results so the SBOM artifact is recorded
+    in the SLSA provenance.
   params:
     - name: IMAGE_URL
       type: string
@@ -325,6 +330,14 @@ spec:
   results:
     - name: SBOM_DIGEST
       description: Digest of the attached SBOM artifact
+    - name: SBOM-ARTIFACT_URI
+      description: >-
+        OCI URI of the attached SBOM artifact.
+        Tekton Chains type hint — becomes a subject in the SLSA provenance.
+    - name: SBOM-ARTIFACT_DIGEST
+      description: >-
+        Digest of the attached SBOM referrer manifest.
+        Tekton Chains type hint — paired with SBOM-ARTIFACT_URI.
   volumes:
     - name: sbom-data
       emptyDir: {}
@@ -467,11 +480,17 @@ spec:
         SBOM_DIGEST=$(echo "$ATTACH_OUTPUT" | grep -oE 'sha256:[a-f0-9]{64}' | tail -1 || true)
         if [ -n "$SBOM_DIGEST" ]; then
           printf '%s' "$SBOM_DIGEST" > /tekton/results/SBOM_DIGEST
+          # Tekton Chains type hints — Chains will record this artifact as a
+          # subject in the SLSA provenance attestation.
+          printf '%s' "$(params.IMAGE_URL)" > /tekton/results/SBOM-ARTIFACT_URI
+          printf '%s' "$SBOM_DIGEST" > /tekton/results/SBOM-ARTIFACT_DIGEST
           echo ""
           echo "SBOM attached successfully."
           echo "SBOM artifact digest: $SBOM_DIGEST"
         else
           printf '%s' "unknown" > /tekton/results/SBOM_DIGEST
+          printf '%s' "unknown" > /tekton/results/SBOM-ARTIFACT_URI
+          printf '%s' "unknown" > /tekton/results/SBOM-ARTIFACT_DIGEST
           echo ""
           echo "WARNING: Could not extract SBOM digest from oras output."
         fi
@@ -517,13 +536,9 @@ spec:
       type: string
       description: ORAS CLI version (without v prefix)
       default: "1.2.2"
-    - name: SEVERITY_THRESHOLD
-      type: string
-      description: Unused — kept for interface compatibility. Secret scan does not use severity levels.
-      default: "CRITICAL"
   results:
     - name: SCAN_STATUS
-      description: PASS or FAIL based on severity threshold
+      description: PASS or FAIL based on secret detection
     - name: SCAN_RESULTS-ARTIFACT_URI
       description: >-
         OCI URI of the attached scan results artifact.
@@ -594,6 +609,7 @@ spec:
 
         set +e
         /tmp/trivy image \
+          # --scanners vuln,secret \ # Activate this after challenge3
           --scanners secret \
           --image-config-scanners secret \
           --format json \
@@ -606,7 +622,7 @@ spec:
 
         set +e
         /tmp/trivy image \
-          --scanners secret \
+          # --scanners vuln,secret \
           --image-config-scanners secret \
           --format table \
           --skip-java-db-update \
