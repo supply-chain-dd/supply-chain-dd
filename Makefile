@@ -1085,6 +1085,19 @@ seed-legitimate-base-image: ## Seed legitimate golang base image to local regist
 	@echo "  Pushing to registry..."
 	@$(CONTAINER_RUNTIME) push localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine
 	@echo "✓ Legitimate base image seeded to registry"
+	@echo ""
+	@echo "Seeding runtime base image (alpine:3.20)..."
+	@if ! $(CONTAINER_RUNTIME) images | grep -q "alpine.*3.20"; then \
+		echo "  Pulling alpine:3.20..."; \
+		$(CONTAINER_RUNTIME) pull alpine:3.20; \
+	else \
+		echo "  ✓ alpine:3.20 already pulled"; \
+	fi
+	@echo "  Tagging as localhost:$(REGISTRY_NODE_PORT)/alpine:3.20..."
+	@$(CONTAINER_RUNTIME) tag alpine:3.20 localhost:$(REGISTRY_NODE_PORT)/alpine:3.20
+	@echo "  Pushing to registry..."
+	@$(CONTAINER_RUNTIME) push localhost:$(REGISTRY_NODE_PORT)/alpine:3.20
+	@echo "✓ Runtime base image seeded to registry"
 
 verify-challenge3: ## Verify Challenge 3 setup
 	@echo "Verifying Challenge 3 setup..."
@@ -1145,6 +1158,52 @@ trigger-challenge3-build-with-chains: ## Run Challenge 3 enhanced pipeline (Tekt
 	@echo ""
 	@echo "Monitor with: kubectl get pipelineruns -n ctf-challenge -w"
 
+setup-challenge3-tekton-secure: ## Deploy Challenge 3 secured Tekton resources (base image verification + keyless signing)
+	@echo ""
+	@echo "============================================"
+	@echo "Setting up Challenge 3 SECURED pipeline"
+	@echo "============================================"
+	@echo ""
+	@echo "Deploying secured tasks..."
+	@kubectl apply -f challenges/challenge3/tekton-patched/tasks/
+	@echo ""
+	@echo "Deploying secured pipeline..."
+	@kubectl apply -f challenges/challenge3/tekton-patched/pipelines/
+	@echo ""
+	@echo "Deploying webhook trigger..."
+	@kubectl apply -f challenges/challenge3/tekton-patched/triggers/
+	@echo ""
+	@echo "Deploying baseline SBOM ConfigMap..."
+	@kubectl apply -f challenges/challenge3/security/configmaps/
+	@echo ""
+	@echo "Secured pipeline: push-build-pipeline-with-chains-secure"
+	@echo "  Pre-build tasks:"
+	@echo "    - verify-base-image        (Registry, digest, SBOM, baseline check)"
+	@echo "  Post-push tasks:"
+	@echo "    - sign-image-keyless       (Cosign keyless via Fulcio)"
+	@echo "    - create-source-vsa        (Source VSA -> provenance subject)"
+	@echo "    - scan-image               (Secret scan -> provenance subject)"
+	@echo "    - scan-vulnerabilities     (Vuln scan -> provenance subject)"
+	@echo "    - generate-sbom            (SBOM -> provenance subject)"
+	@echo "    - attest-sbom              (Signed SBOM attestation via cosign attest)"
+	@echo ""
+	@echo "Trigger with: make trigger-challenge3-build-secure"
+
+trigger-challenge3-build-secure: ## Run Challenge 3 secured pipeline manually
+	@echo "Triggering Challenge 3 secured pipeline..."
+	@kubectl create -f challenges/challenge3/tekton-patched/manual-pipelinerun-with-chains-secure.yaml
+	@echo ""
+	@echo "Monitor with: kubectl get pipelineruns -n ctf-challenge -w"
+
+install-ampel: ## Install Ampel CLI for post-pipeline policy verification
+	@echo "Installing Ampel CLI..."
+	@go install github.com/carabiner-dev/ampel/cmd/ampel@latest
+	@echo "✓ Ampel installed"
+
+install-syft: ## Install Syft CLI for SBOM generation
+	@echo "Installing Syft CLI..."
+	@curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b $$(go env GOPATH)/bin
+	@echo "✓ Syft installed"
 
 # ============================================================
 # Challenge 4: GitOps Pipeline Compromise

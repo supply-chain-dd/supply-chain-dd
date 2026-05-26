@@ -1,0 +1,59 @@
+---
+# Kyverno ClusterPolicy: require-image-digest
+#
+# Enforces that all container images in Pods use immutable digest references
+# (@sha256:...) instead of mutable tags. Prevents base image poisoning by
+# ensuring the exact image content is known at deploy time.
+#
+# Applies to production namespaces. Exclude system namespaces as needed.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-image-digest
+  annotations:
+    policies.kyverno.io/title: Require Image Digest
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Container images must use digest references (@sha256:...) to ensure
+      immutability. Mutable tags (e.g., :latest, :v1.0) can be replaced
+      by an attacker, enabling base image poisoning attacks.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-image-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - "production"
+                - "staging"
+      validate:
+        message: >-
+          Image '{{request.object.spec.containers[].image}}' must use a digest
+          reference (@sha256:...) instead of a mutable tag. Example:
+          registry.example.com/image@sha256:abc123...
+        pattern:
+          spec:
+            containers:
+              - image: "*@sha256:*"
+    - name: check-init-container-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - "production"
+                - "staging"
+      validate:
+        message: >-
+          Init container image must use a digest reference (@sha256:...).
+        pattern:
+          spec:
+            =(initContainers):
+              - image: "*@sha256:*"

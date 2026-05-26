@@ -299,6 +299,48 @@ podman run --rm localhost:30000/recipe-api:latest sh -c '/usr/local/bin/backdoor
 ```
 </details>
 
+## Defense Walkthrough
+
+After executing the attack, use the following scripts and resources to understand
+how to detect and prevent base image poisoning.
+
+### Quick SBOM Comparison
+
+Compare the SBOM of the clean vs poisoned `golang:1.25-alpine` to see how
+SBOM analysis catches the injected backdoor:
+
+```bash
+bash challenges/challenge3/sbom-comparison-demo.sh
+```
+
+### Full Defense Demo
+
+Deploy the secured pipeline with all defense layers and watch it reject
+poisoned images while accepting clean, verified ones:
+
+```bash
+bash challenges/challenge3/defense-demo.sh
+```
+
+### Patched Resources
+
+| Resource | Description |
+|----------|-------------|
+| [`tekton-patched/tasks/verify-base-image-task.yaml`](tekton-patched/tasks/verify-base-image-task.yaml) | Pre-build base image verification (registry, digest, SBOM, baseline) |
+| [`tekton-patched/tasks/sign-image-keyless-task.yaml`](tekton-patched/tasks/sign-image-keyless-task.yaml) | Keyless image signing via Fulcio + Rekor |
+| [`tekton-patched/pipelines/push-build-pipeline-with-chains-secure.yaml`](tekton-patched/pipelines/push-build-pipeline-with-chains-secure.yaml) | Secured pipeline with all defense layers |
+| [`tekton-patched/Dockerfile`](tekton-patched/Dockerfile) | Digest-pinned multi-stage Dockerfile |
+| [`security/configmaps/golang-baseline-sbom.yaml`](security/configmaps/golang-baseline-sbom.yaml) | SBOM baseline for comparison |
+| [`security/conforma-policies/sbom-baseline-check.rego`](security/conforma-policies/sbom-baseline-check.rego) | Conforma Rego policy for SBOM baseline |
+| [`security/ampel-policies/verify-build-artifacts.hjson`](security/ampel-policies/verify-build-artifacts.hjson) | Ampel policy set for post-pipeline verification |
+
+Deploy the secured pipeline:
+```bash
+make setup-challenge3-tekton-secure
+```
+
+See [`SECURITY-GUIDE.md`](SECURITY-GUIDE.md) for full detection and prevention details.
+
 ## What You Learned
 
 - How base image poisoning enables supply chain attacks
@@ -306,6 +348,8 @@ podman run --rm localhost:30000/recipe-api:latest sh -c '/usr/local/bin/backdoor
 - The importance of image signing and digest verification
 - How a single compromised component can infect entire supply chains
 - Why runtime monitoring and SBOM validation are critical
+- How SBOM baseline comparison detects injected packages
+- How keyless signing provides cryptographic image integrity
 
 ## Next Challenge
 

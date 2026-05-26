@@ -1,0 +1,58 @@
+---
+# Job: generate-baseline-from-hub
+#
+# Generates a baseline SBOM from the clean golang:1.25-alpine image
+# on Docker Hub, normalizes registry references to match the internal
+# registry, and outputs the baseline JSON to stdout.
+#
+# Used in Phase 0 of the defense demo — before the pipeline runs —
+# so the verify-base-image task has a baseline to compare against.
+#
+# The baseline JSON is output between ===BASELINE_JSON_START=== and
+# ===BASELINE_JSON_END=== markers for extraction by the demo script.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: generate-baseline-from-hub
+  namespace: ctf-challenge
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: sbom-gen
+          image: alpine:3.18
+          env:
+            - name: REGISTRY
+              value: "registry.registry.svc.cluster.local:5000"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              apk add --no-cache curl jq >/dev/null 2>&1
+
+              ARCH=$(uname -m)
+              case "$ARCH" in x86_64) ARCH="amd64";; aarch64) ARCH="arm64";; esac
+
+              SYFT_VERSION="v1.44.0"
+              echo "Downloading Syft ${SYFT_VERSION}..."
+              curl -fsSL "https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/syft_${SYFT_VERSION#v}_linux_${ARCH}.tar.gz" | tar xz -C /tmp syft
+
+              echo "=== Scanning golang:1.25-alpine from Docker Hub ==="
+              /tmp/syft scan golang:1.25-alpine -o spdx-json --file /tmp/golang-sbom.json
+
+              echo "=== Generating baseline ==="
+              jq '[.packages[] | {spdxid: .SPDXID, purl: (.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator)}] | sort_by(.spdxid)' \
+                /tmp/golang-sbom.json > /tmp/baseline-packages.json
+
+              INTERNAL_DASH=$(echo "$REGISTRY" | tr ':/' '-')
+              INTERNAL_ENCODED=$(echo "$REGISTRY" | sed 's/:/%3A/g')
+              sed -i "s/DocumentRoot-Image-golang/DocumentRoot-Image-${INTERNAL_DASH}-golang/g" /tmp/baseline-packages.json
+              sed -i "s|oci/golang@|oci/${INTERNAL_ENCODED}%2Fgolang@|g" /tmp/baseline-packages.json
+
+              echo "===BASELINE_JSON_START==="
+              cat /tmp/baseline-packages.json
+              echo ""
+              echo "===BASELINE_JSON_END==="

@@ -1,0 +1,10 @@
+# Allowlist pattern: ignore everything, then allow only what's needed
+*
+!main.go
+!go.mod
+!go.sum
+!internal/
+!scripts/quality-check/
+
+<!-- # Dockerfile itself (needed by build context)
+!Dockerfile -->

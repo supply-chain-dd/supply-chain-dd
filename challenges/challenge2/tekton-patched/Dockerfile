@@ -18,7 +18,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o recipe-api main.go
 
 # Stage 2: Runtime — only the binary, no source, no .git, no .env
-FROM alpine:3.20
+FROM registry.registry.svc.cluster.local:5000/alpine:3.20
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 COPY --from=builder /app/recipe-api .
