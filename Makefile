@@ -5,7 +5,8 @@
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build trigger-challenge2-build-with-chains
 .PHONY: setup-sigstore-local verify-sigstore-local setup-challenge2-tekton-keyless trigger-challenge2-build-keyless
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3 setup-challenge3-tekton trigger-challenge3-build-with-chains
-.PHONY: setup-production-cluster setup-production-gitea seed-production-repo load-image-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
+.PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
+.PHONY: setup-release-pipeline trigger-release-pipeline
 .PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard
 
 CLUSTER_NAME ?= ctf-cluster
@@ -27,6 +28,7 @@ TUF_NODE_PORT ?= 30007
 FULCIO_NODE_PORT ?= 30008
 REGISTRY_USER ?= ctf-admin
 REGISTRY_PASS ?= CTFRegistryPass123!
+PRODUCTION_REGISTRY_NODE_PORT ?= 30082
 
 # Container runtime selection (podman or docker)
 CONTAINER_RUNTIME ?= podman
@@ -997,7 +999,7 @@ trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipelin
 # Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-challenge4 verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-challenge4 setup-release-pipeline configure-production-registry-tls verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
 	@echo ""
 	@echo "Restoring kubectl context to CTF cluster..."
 	@kubectl config use-context kind-$(CLUSTER_NAME)
@@ -1224,13 +1226,73 @@ setup-production-gitea: ## Install Gitea on production cluster
 seed-production-repo: ## Seed production-manifests repository to production Gitea
 	@./setup/scripts/seed-production-repo.sh
 
-load-image-to-production: ## Load recipe-api image into production cluster
+setup-production-registry: ## Setup Docker registry on production cluster
+	@cd setup && ./scripts/setup-production-registry.sh
+
+configure-production-registry-tls: ## Configure TLS trust for the production registry (interactive)
+	@cd setup && REGISTRY_NODE_PORT=$(PRODUCTION_REGISTRY_NODE_PORT) ./scripts/configure-registry-tls.sh certs/production-registry.crt
+
+push-recipe-api-to-production: ## Copy recipe-api image from CI registry to production registry
+	@echo "Copying recipe-api:v1.0 from CI registry to production registry..."
+	@skopeo copy \
+		--src-tls-verify=false \
+		--dest-tls-verify=false \
+		--src-creds $(REGISTRY_USER):$(REGISTRY_PASS) \
+		--dest-creds $(REGISTRY_USER):$(REGISTRY_PASS) \
+		docker://localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 \
+		docker://localhost:$(PRODUCTION_REGISTRY_NODE_PORT)/recipe-api:v1.0
+	@echo "✓ recipe-api:v1.0 copied to production registry (localhost:$(PRODUCTION_REGISTRY_NODE_PORT))"
+
+load-image-to-production: ## Load recipe-api image into production cluster (legacy)
 	@./setup/scripts/load-image-to-production.sh
 
 setup-argocd: ## Install ArgoCD on production cluster
 	@./setup/scripts/setup-argocd.sh
 
-setup-challenge4: setup-production-cluster setup-production-gitea load-image-to-production setup-argocd seed-production-repo ## Complete Challenge 4 setup
+setup-release-pipeline: ## Deploy release pipeline resources (namespace, tasks, pipeline, triggers)
+	@echo "========================================"
+	@echo "Setting up Release Pipeline"
+	@echo "========================================"
+	@kubectl --context kind-$(CLUSTER_NAME) create namespace release-pipeline 2>/dev/null || true
+	@echo "Creating CI registry credentials in release-pipeline namespace..."
+	@kubectl --context kind-$(CLUSTER_NAME) create secret docker-registry ci-registry-credentials \
+		--docker-server=registry.registry.svc.cluster.local:5000 \
+		--docker-username=$(REGISTRY_USER) \
+		--docker-password=$(REGISTRY_PASS) \
+		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
+	@echo "Creating production registry credentials in release-pipeline namespace..."
+	@kubectl --context kind-$(CLUSTER_NAME) create secret docker-registry production-registry-credentials \
+		--docker-server=ctf-production-cluster-control-plane.dns.podman:$(PRODUCTION_REGISTRY_NODE_PORT) \
+		--docker-username=$(REGISTRY_USER) \
+		--docker-password=$(REGISTRY_PASS) \
+		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
+	@echo "Creating CI registry CA cert ConfigMap..."
+	@kubectl --context kind-$(CLUSTER_NAME) create configmap ci-registry-ca-cert \
+		--from-file=ca.crt=setup/certs/registry.crt \
+		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
+	@if [ -f setup/certs/production-registry.crt ]; then \
+		echo "Creating production registry CA cert ConfigMap..."; \
+		kubectl --context kind-$(CLUSTER_NAME) create configmap production-registry-ca-cert \
+			--from-file=ca.crt=setup/certs/production-registry.crt \
+			-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -; \
+	fi
+	@echo "Creating production Gitea credentials..."
+	@kubectl --context kind-$(CLUSTER_NAME) create secret generic production-gitea-credentials \
+		--from-literal=username=ctf-admin \
+		--from-literal=password=CTFSecurePass123! \
+		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
+	@echo "Applying Tekton release pipeline resources..."
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/release-namespace.yaml
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/tasks/release-tasks.yaml
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/pipelines/release-pipeline.yaml
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/triggers/release-eventlistener.yaml
+	@echo "✓ Release pipeline resources deployed in release-pipeline namespace"
+
+trigger-release-pipeline: ## Manually trigger the release pipeline
+	@kubectl --context kind-$(CLUSTER_NAME) create -f challenges/challenge4/tekton/manual-release-pipelinerun.yaml
+	@echo "✓ Release pipeline triggered. Monitor: kubectl get pipelineruns -n release-pipeline -w"
+
+setup-challenge4: setup-production-cluster setup-production-registry setup-production-gitea push-recipe-api-to-production setup-argocd seed-production-repo ## Complete Challenge 4 setup
 	@echo ""
 	@echo "Applying ArgoCD application..."
 	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/argocd/recipe-api-application.yaml

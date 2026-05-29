@@ -104,3 +104,15 @@ spec:
       workspaces:
         - name: source
           workspace: source
+
+    - name: notify-release
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: notify-release
+      params:
+        - name: image-url
+          value: $(tasks.push-container-image.results.image-url)
+        - name: image-digest
+          value: $(tasks.push-container-image.results.image-digest)
+        - name: image-tag
+          value: $(params.image-tag)

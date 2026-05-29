@@ -51,6 +51,15 @@ nodes:
       - containerPort: 30081
         hostPort: 30081
         protocol: TCP
+      - containerPort: 30082
+        hostPort: 30082
+        protocol: TCP
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:30082"]
+    endpoint = ["https://localhost:30082"]
+  [plugins."io.containerd.grpc.v1.cri".registry.configs."localhost:30082".tls]
+    insecure_skip_verify = true
 EOF
 
 # Create the cluster

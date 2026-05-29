@@ -12,6 +12,9 @@ GITEA_URL="http://localhost:$GITEA_HTTP_PORT"
 GITEA_USER="ctf-admin"
 GITEA_PASS="CTFSecurePass123!"
 REPO_NAME="production-manifests"
+PRODUCTION_REGISTRY_NODE_PORT="${PRODUCTION_REGISTRY_NODE_PORT:-30082}"
+REGISTRY_USER="${REGISTRY_USER:-ctf-admin}"
+REGISTRY_PASS="${REGISTRY_PASS:-CTFRegistryPass123!}"
 
 echo "==> Seeding production-manifests repository to production Gitea..."
 
@@ -66,6 +69,31 @@ trap "rm -rf $TEMP_DIR" EXIT
 # Copy production manifests
 echo "Copying production manifests..."
 cp -r challenges/challenge4/production-manifests-sample/* "$TEMP_DIR/"
+
+# Query image digest from production registry and substitute placeholder
+echo "Querying image digest from production registry..."
+IMAGE_DIGEST=$(skopeo inspect --tls-verify=false \
+  --creds "${REGISTRY_USER}:${REGISTRY_PASS}" \
+  "docker://localhost:${PRODUCTION_REGISTRY_NODE_PORT}/recipe-api:v1.0" 2>/dev/null | jq -r '.Digest') || true
+
+if [ -z "$IMAGE_DIGEST" ] || [ "$IMAGE_DIGEST" = "null" ]; then
+    echo "Warning: Could not retrieve image digest from production registry."
+    echo "  Using tag-based reference instead of digest pinning."
+    sed -i 's|    digest: PLACEHOLDER_DIGEST|    newTag: v1.0|g' "$TEMP_DIR/recipe-api/kustomization.yaml"
+else
+    echo "  Image digest: $IMAGE_DIGEST"
+    sed -i "s|PLACEHOLDER_DIGEST|${IMAGE_DIGEST}|g" "$TEMP_DIR/recipe-api/kustomization.yaml"
+fi
+
+# Verify imagePullSecret exists in production namespace
+if ! kubectl get secret production-registry-auth -n production &>/dev/null; then
+    echo "Creating imagePullSecret in production namespace..."
+    kubectl create secret docker-registry production-registry-auth \
+      --docker-server="localhost:${PRODUCTION_REGISTRY_NODE_PORT}" \
+      --docker-username="${REGISTRY_USER}" \
+      --docker-password="${REGISTRY_PASS}" \
+      -n production --dry-run=client -o yaml | kubectl apply -f -
+fi
 
 # Initialize git repository
 cd "$TEMP_DIR"
