@@ -251,3 +251,15 @@ spec:
           value: $(tasks.push-container-image.results.IMAGE_URL)
         - name: IMAGE_DIGEST
           value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    - name: notify-release
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: notify-release
+      params:
+        - name: image-url
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: image-digest
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+        - name: image-tag
+          value: $(params.image-tag)

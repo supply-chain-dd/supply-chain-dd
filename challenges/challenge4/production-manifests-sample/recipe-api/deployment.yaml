@@ -20,7 +20,7 @@ spec:
       serviceAccountName: recipe-api-sa
       containers:
       - name: recipe-api
-        image: localhost:30000/recipe-api:v1.0
+        image: localhost:30082/recipe-api:v1.0
         ports:
         - containerPort: 8080
           name: http

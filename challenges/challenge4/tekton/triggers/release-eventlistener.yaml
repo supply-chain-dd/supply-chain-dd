@@ -1,0 +1,109 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: release-triggers-sa
+  namespace: release-pipeline
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: release-triggers-role
+  namespace: release-pipeline
+rules:
+  - apiGroups: ["triggers.tekton.dev"]
+    resources: ["eventlisteners", "triggerbindings", "triggertemplates"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelineruns"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: release-triggers-rolebinding
+  namespace: release-pipeline
+subjects:
+  - kind: ServiceAccount
+    name: release-triggers-sa
+    namespace: release-pipeline
+roleRef:
+  kind: Role
+  name: release-triggers-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: release-triggers-clusterbinding
+subjects:
+  - kind: ServiceAccount
+    name: release-triggers-sa
+    namespace: release-pipeline
+roleRef:
+  kind: ClusterRole
+  name: tekton-triggers-aggregate-view
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: release-pipeline-binding
+  namespace: release-pipeline
+spec:
+  params:
+    - name: image-url
+      value: $(body.image-url)
+    - name: image-digest
+      value: $(body.image-digest)
+    - name: image-tag
+      value: $(body.image-tag)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: release-pipeline-template
+  namespace: release-pipeline
+spec:
+  params:
+    - name: image-url
+    - name: image-digest
+    - name: image-tag
+      default: "v1.0"
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: release-auto-
+        namespace: release-pipeline
+        labels:
+          tekton.dev/pipeline: release-pipeline
+          trigger-type: webhook
+      spec:
+        serviceAccountName: release-pipeline-sa
+        pipelineRef:
+          name: release-pipeline
+        params:
+          - name: image-url
+            value: $(tt.params.image-url)
+          - name: image-digest
+            value: $(tt.params.image-digest)
+          - name: image-tag
+            value: $(tt.params.image-tag)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: release-pipeline-listener
+  namespace: release-pipeline
+spec:
+  serviceAccountName: release-triggers-sa
+  triggers:
+    - name: release-trigger
+      bindings:
+        - ref: release-pipeline-binding
+      template:
+        ref: release-pipeline-template

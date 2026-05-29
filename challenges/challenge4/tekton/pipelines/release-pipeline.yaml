@@ -1,0 +1,55 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: release-pipeline
+  namespace: release-pipeline
+spec:
+  description: |
+    Release pipeline that promotes an image from CI to production.
+    1. Copies the image from CI registry to production registry
+    2. Clones production-manifests and creates a PR with updated image digest
+  params:
+    - name: image-url
+      type: string
+      description: Source image URL from CI registry
+    - name: image-digest
+      type: string
+      description: Source image digest (sha256:...)
+    - name: image-tag
+      type: string
+      description: Image tag
+      default: "v1.0"
+    - name: production-registry-url
+      type: string
+      description: Production registry URL
+      default: "ctf-production-cluster-control-plane.dns.podman:30082"
+    - name: production-gitea-url
+      type: string
+      description: Production Gitea URL
+      default: "http://ctf-production-cluster-control-plane.dns.podman:30004"
+  tasks:
+    - name: copy-image-to-production
+      taskRef:
+        name: copy-image-to-production
+      params:
+        - name: source-image-url
+          value: $(params.image-url)
+        - name: source-image-digest
+          value: $(params.image-digest)
+        - name: production-registry-url
+          value: $(params.production-registry-url)
+        - name: image-tag
+          value: $(params.image-tag)
+
+    - name: clone-and-create-pr
+      runAfter: ["copy-image-to-production"]
+      taskRef:
+        name: clone-and-create-pr
+      params:
+        - name: production-gitea-url
+          value: $(params.production-gitea-url)
+        - name: image-digest
+          value: $(tasks.copy-image-to-production.results.production-image-digest)
+        - name: image-tag
+          value: $(params.image-tag)

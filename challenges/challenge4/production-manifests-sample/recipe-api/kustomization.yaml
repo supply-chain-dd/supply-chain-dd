@@ -14,5 +14,5 @@ commonLabels:
   app.kubernetes.io/part-of: recipe-platform
 
 images:
-  - name: localhost:30000/recipe-api
-    newTag: v1.0
+  - name: localhost:30082/recipe-api
+    digest: PLACEHOLDER_DIGEST

@@ -1,0 +1,262 @@
+---
+# Copy image from CI registry to production registry
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: copy-image-to-production
+  namespace: release-pipeline
+spec:
+  description: Copy a container image from CI registry to production registry using crane
+  params:
+    - name: source-image-url
+      type: string
+      description: Source image URL (CI registry)
+    - name: source-image-digest
+      type: string
+      description: Source image digest (sha256:...)
+    - name: production-registry-url
+      type: string
+      description: Production registry URL
+      default: "ctf-production-cluster-control-plane.dns.podman:30082"
+    - name: image-name
+      type: string
+      default: "recipe-api"
+    - name: image-tag
+      type: string
+      default: "v1.0"
+  results:
+    - name: production-image-digest
+      description: Digest of the image in the production registry
+  volumes:
+    - name: ci-registry-ca-cert
+      configMap:
+        name: ci-registry-ca-cert
+    - name: production-registry-ca-cert
+      configMap:
+        name: production-registry-ca-cert
+    - name: ci-registry-credentials
+      secret:
+        secretName: ci-registry-credentials
+    - name: production-registry-credentials
+      secret:
+        secretName: production-registry-credentials
+  steps:
+    - name: copy-image
+      image: alpine:3.20
+      volumeMounts:
+        - name: ci-registry-ca-cert
+          mountPath: /certs/ci
+          readOnly: true
+        - name: production-registry-ca-cert
+          mountPath: /certs/production
+          readOnly: true
+        - name: ci-registry-credentials
+          mountPath: /auth/ci
+          readOnly: true
+        - name: production-registry-credentials
+          mountPath: /auth/production
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache jq crane > /dev/null 2>&1
+
+        # Strip any tag from the source URL before appending digest
+        SOURCE_URL=$(echo "$(params.source-image-url)" | sed 's/:[^/]*$//')
+        SOURCE="${SOURCE_URL}@$(params.source-image-digest)"
+        DEST="$(params.production-registry-url)/$(params.image-name):$(params.image-tag)"
+
+        echo "============================================"
+        echo "Copying image to production registry"
+        echo "============================================"
+        echo "Source: ${SOURCE}"
+        echo "Destination: ${DEST}"
+        echo ""
+
+        # Extract credentials from dockerconfigjson secrets
+        CI_USER=$(jq -r '.auths | to_entries[0].value.auth' /auth/ci/.dockerconfigjson | base64 -d | cut -d: -f1)
+        CI_PASS=$(jq -r '.auths | to_entries[0].value.auth' /auth/ci/.dockerconfigjson | base64 -d | cut -d: -f2-)
+        PROD_USER=$(jq -r '.auths | to_entries[0].value.auth' /auth/production/.dockerconfigjson | base64 -d | cut -d: -f1)
+        PROD_PASS=$(jq -r '.auths | to_entries[0].value.auth' /auth/production/.dockerconfigjson | base64 -d | cut -d: -f2-)
+
+        # Authenticate crane to both registries
+        crane auth login "$(echo ${SOURCE_URL} | cut -d/ -f1)" -u "${CI_USER}" -p "${CI_PASS}"
+        crane auth login "$(params.production-registry-url)" -u "${PROD_USER}" -p "${PROD_PASS}"
+
+        crane copy --insecure "${SOURCE}" "${DEST}"
+
+        echo ""
+        echo "✓ Image copied to production registry"
+
+        # Get the digest on the production side
+        PROD_DIGEST=$(crane digest --insecure "${DEST}")
+
+        echo "Production image digest: ${PROD_DIGEST}"
+        printf '%s' "${PROD_DIGEST}" > /tekton/results/production-image-digest
+---
+# Clone production-manifests and create a PR with updated image digest
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: clone-and-create-pr
+  namespace: release-pipeline
+spec:
+  description: Clone production-manifests repo, update image digest, and create a PR
+  params:
+    - name: production-gitea-url
+      type: string
+      default: "http://ctf-production-cluster-control-plane.dns.podman:30004"
+    - name: image-digest
+      type: string
+      description: New image digest (sha256:...)
+    - name: image-tag
+      type: string
+      default: "v1.0"
+    - name: image-name
+      type: string
+      default: "recipe-api"
+    - name: registry-url
+      type: string
+      default: "localhost:30082"
+  volumes:
+    - name: gitea-credentials
+      secret:
+        secretName: production-gitea-credentials
+  steps:
+    - name: clone-update-pr
+      image: alpine:3.18
+      volumeMounts:
+        - name: gitea-credentials
+          mountPath: /auth/gitea
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache git curl jq > /dev/null 2>&1
+
+        GITEA_USER=$(cat /auth/gitea/username)
+        GITEA_PASS=$(cat /auth/gitea/password)
+        GITEA_URL="$(params.production-gitea-url)"
+        REPO_URL="${GITEA_URL}/ctf-admin/production-manifests.git"
+        BRANCH="release/$(params.image-tag)-$(date +%s)"
+
+        echo "============================================"
+        echo "Creating Release PR"
+        echo "============================================"
+        echo "Gitea: ${GITEA_URL}"
+        echo "Image: $(params.registry-url)/$(params.image-name)@$(params.image-digest)"
+        echo "Branch: ${BRANCH}"
+        echo ""
+
+        # Clone
+        CLONE_URL="http://${GITEA_USER}:${GITEA_PASS}@$(echo ${REPO_URL} | sed 's|http://||')"
+        git clone "${CLONE_URL}" /workspace/production-manifests
+        cd /workspace/production-manifests
+
+        git config user.name "Release Pipeline"
+        git config user.email "release@ctf.local"
+
+        # Create branch
+        git checkout -b "${BRANCH}"
+
+        # Update kustomization.yaml with new digest
+        echo "Updating kustomization.yaml with digest: $(params.image-digest)"
+        if grep -q "digest:" recipe-api/kustomization.yaml; then
+            sed -i "s|digest:.*|digest: $(params.image-digest)|" recipe-api/kustomization.yaml
+        elif grep -q "newTag:" recipe-api/kustomization.yaml; then
+            sed -i "s|newTag:.*|digest: $(params.image-digest)|" recipe-api/kustomization.yaml
+        fi
+
+        echo "Updated kustomization.yaml:"
+        cat recipe-api/kustomization.yaml
+
+        # Commit and push
+        git add .
+        git commit -m "Release $(params.image-name):$(params.image-tag) (digest: $(params.image-digest))"
+        git push origin "${BRANCH}"
+
+        echo ""
+        echo "✓ Branch pushed: ${BRANCH}"
+
+        # Create PR via Gitea API
+        echo "Creating pull request..."
+        PR_RESPONSE=$(curl -s -X POST \
+          -u "${GITEA_USER}:${GITEA_PASS}" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"title\": \"Release $(params.image-name):$(params.image-tag)\",
+            \"head\": \"${BRANCH}\",
+            \"base\": \"main\",
+            \"body\": \"Automated release from CI pipeline.\\n\\nImage: $(params.registry-url)/$(params.image-name):$(params.image-tag)\\nDigest: $(params.image-digest)\"
+          }" \
+          "${GITEA_URL}/api/v1/repos/ctf-admin/production-manifests/pulls")
+
+        PR_NUMBER=$(echo "${PR_RESPONSE}" | jq -r '.number // empty')
+
+        if [ -n "${PR_NUMBER}" ]; then
+            echo "✓ Pull request #${PR_NUMBER} created"
+            echo "  URL: ${GITEA_URL}/ctf-admin/production-manifests/pulls/${PR_NUMBER}"
+        else
+            echo "Warning: PR creation may have failed. Response:"
+            echo "${PR_RESPONSE}" | jq .
+        fi
+---
+# Notify the release pipeline EventListener (runs in ctf-challenge namespace as part of build pipeline)
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: notify-release
+  namespace: ctf-challenge
+spec:
+  description: Notify the release pipeline EventListener to trigger a release
+  params:
+    - name: image-url
+      type: string
+      description: Full image URL from build pipeline
+    - name: image-digest
+      type: string
+      description: Image digest from build pipeline
+    - name: image-tag
+      type: string
+      description: Image tag
+      default: "v1.0"
+    - name: release-listener-url
+      type: string
+      default: "http://el-release-pipeline-listener.release-pipeline.svc.cluster.local:8080"
+  steps:
+    - name: notify
+      image: curlimages/curl:latest
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "============================================"
+        echo "Notifying Release Pipeline"
+        echo "============================================"
+        echo "Image URL: $(params.image-url)"
+        echo "Image Digest: $(params.image-digest)"
+        echo "Image Tag: $(params.image-tag)"
+        echo "Listener: $(params.release-listener-url)"
+        echo ""
+
+        RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"image-url\": \"$(params.image-url)\",
+            \"image-digest\": \"$(params.image-digest)\",
+            \"image-tag\": \"$(params.image-tag)\"
+          }" \
+          "$(params.release-listener-url)" 2>/dev/null || echo -e "\n000")
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        BODY=$(echo "$RESPONSE" | head -n -1)
+
+        if [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+            echo "✓ Release pipeline triggered (HTTP ${HTTP_CODE})"
+        elif [ "$HTTP_CODE" = "000" ]; then
+            echo "⚠ Could not reach release EventListener — release pipeline may not be deployed"
+        else
+            echo "⚠ Unexpected response (HTTP ${HTTP_CODE}): ${BODY}"
+        fi
