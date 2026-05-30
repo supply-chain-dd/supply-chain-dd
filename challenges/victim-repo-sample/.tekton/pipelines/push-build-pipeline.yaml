@@ -5,7 +5,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
   name: push-build-pipeline
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Build and push pipeline that triggers on push events.

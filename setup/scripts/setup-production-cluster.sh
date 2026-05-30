@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-ctf-production-cluster}"
+CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-production-cluster}"
 KIND_VERSION="${KIND_VERSION:-v1.27.3}"
 ARGOCD_VERSION="${ARGOCD_VERSION:-5.51.0}"
 
@@ -18,6 +18,9 @@ if ! command -v kind &> /dev/null; then
     echo "Visit: https://kind.sigs.k8s.io/docs/user/quick-start/#installation"
     exit 1
 fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
 
 # Check if cluster already exists
 if kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
@@ -36,29 +39,24 @@ nodes:
   - role: control-plane
     image: kindest/node:${KIND_VERSION}
     extraPortMappings:
-      - containerPort: 30080
-        hostPort: 30080
+      # Gateway API (Envoy Gateway) — access via *.sc.local domains
+      - containerPort: ${GATEWAY_PROD_HTTP_PORT}
+        hostPort: ${GATEWAY_PROD_HTTP_PORT}
+        listenAddress: "127.0.0.1"
         protocol: TCP
-      - containerPort: 30443
-        hostPort: 30443
+      - containerPort: ${GATEWAY_PROD_HTTPS_PORT}
+        hostPort: ${GATEWAY_PROD_HTTPS_PORT}
+        listenAddress: "127.0.0.1"
         protocol: TCP
-      - containerPort: 30004
-        hostPort: 30004
-        protocol: TCP
-      - containerPort: 30005
-        hostPort: 30005
-        protocol: TCP
-      - containerPort: 30081
-        hostPort: 30081
-        protocol: TCP
-      - containerPort: 30082
-        hostPort: 30082
+      # Gitea SSH (TCP — cannot go through HTTP gateway)
+      - containerPort: ${GITEA_PROD_SSH_PORT}
+        hostPort: ${GITEA_PROD_SSH_PORT}
         protocol: TCP
 containerdConfigPatches:
 - |-
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:30082"]
-    endpoint = ["https://localhost:30082"]
-  [plugins."io.containerd.grpc.v1.cri".registry.configs."localhost:30082".tls]
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."${REGISTRY_PROD_HOST}"]
+    endpoint = ["https://${REGISTRY_PROD_HOST}"]
+  [plugins."io.containerd.grpc.v1.cri".registry.configs."${REGISTRY_PROD_HOST}".tls]
     insecure_skip_verify = true
 EOF
 

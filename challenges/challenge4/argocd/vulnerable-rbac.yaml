@@ -8,7 +8,7 @@ metadata:
   namespace: argocd
   labels:
     app.kubernetes.io/name: argocd-deployer
-    ctf-challenge: challenge4
+    sc-challenge: challenge4
 
 ---
 # VULNERABILITY: ClusterAdmin privileges for ArgoCD controller
@@ -17,7 +17,7 @@ kind: ClusterRoleBinding
 metadata:
   name: argocd-controller-admin
   labels:
-    ctf-challenge: challenge4
+    sc-challenge: challenge4
 subjects:
   - kind: ServiceAccount
     name: argocd-application-controller
@@ -35,7 +35,7 @@ metadata:
   name: argocd-deployer-admin
   namespace: production
   labels:
-    ctf-challenge: challenge4
+    sc-challenge: challenge4
 subjects:
   - kind: ServiceAccount
     name: argocd-deployer
@@ -55,7 +55,7 @@ kind: ClusterRoleBinding
 metadata:
   name: argocd-repo-server-secrets
   labels:
-    ctf-challenge: challenge4
+    sc-challenge: challenge4
 subjects:
   - kind: ServiceAccount
     name: argocd-repo-server
@@ -75,5 +75,5 @@ metadata:
   annotations:
     kubernetes.io/service-account.name: argocd-deployer
   labels:
-    ctf-challenge: challenge4
+    sc-challenge: challenge4
 type: kubernetes.io/service-account-token

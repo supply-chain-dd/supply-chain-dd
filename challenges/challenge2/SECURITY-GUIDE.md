@@ -158,7 +158,7 @@ The secret exists only for the duration of the `RUN` instruction. It is never co
 | Podman/Buildah | Yes | Yes |
 | Kaniko | **No** (archived June 2025) | Yes (with bugs) |
 
-Kaniko, used in this CTF's pipeline, was archived by Google in June 2025 and never supported secret mounts. Teams using Kaniko should migrate to Buildah for Tekton pipelines. For this CTF, `.dockerignore` and multi-stage builds are the available guardrails when using Kaniko.
+Kaniko, used in this deep dive's pipeline, was archived by Google in June 2025 and never supported secret mounts. Teams using Kaniko should migrate to Buildah for Tekton pipelines. For this deep dive, `.dockerignore` and multi-stage builds are the available guardrails when using Kaniko.
 
 ### 1.4 The Patched Dockerfile
 
@@ -256,7 +256,7 @@ Not all scanners can detect secrets in container images. Here's what each tool a
 For manual forensics after an incident, you can still extract and inspect individual layers:
 - Manual layer extraction: `podman save | tar` then `trivy fs` on each layer
 - Interactive inspection: `dive <image>` to browse individual layers
-- The approach used in the CTF challenge itself: extracting and inspecting layers
+- The approach used in the deep dive challenge itself: extracting and inspecting layers
 
 Despite the merged-filesystem limitation, Trivy image scanning is still valuable because:
 1. It catches secrets that are **still present** in the final image (e.g., `.env` files not deleted)
@@ -270,10 +270,10 @@ Despite the merged-filesystem limitation, Trivy image scanning is still valuable
 
 ```bash
 # Scan for secrets in the final image filesystem
-trivy image --scanners secret localhost:30000/recipe-api:v1.0
+trivy image --scanners secret registry.sc.local:30443/recipe-api:v1.0
 
 # Scan for secrets in image config (ENV vars, build args)
-trivy image --image-config-scanners secret localhost:30000/recipe-api:v1.0
+trivy image --image-config-scanners secret registry.sc.local:30443/recipe-api:v1.0
 
 # Combined: secrets + vulnerabilities + config secrets
 trivy image \
@@ -281,14 +281,14 @@ trivy image \
   --image-config-scanners secret \
   --format json \
   --output scan-results.json \
-  localhost:30000/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:v1.0
 
 # Generate vulnerability attestation predicate (cosign-vuln format)
 trivy image \
   --scanners vuln,secret \
   --format cosign-vuln \
   --output vuln-predicate.json \
-  localhost:30000/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:v1.0
 ```
 
 ### 2.3 Scanning Individual Layers (for Deleted Secrets)
@@ -297,7 +297,7 @@ To find secrets that were "deleted" in upper layers (the Challenge 2 attack), ex
 
 ```bash
 # Save image to tarball
-podman save localhost:30000/recipe-api:v1.0 -o recipe-api.tar
+podman save registry.sc.local:30443/recipe-api:v1.0 -o recipe-api.tar
 
 # Extract layers
 mkdir -p layers && cd layers
@@ -323,7 +323,7 @@ The [`build-tasks-with-chains.yaml`](tekton/tasks/build-tasks-with-chains.yaml) 
 4. Downloads `oras` and attaches the scan results to the image as an **unsigned OCI artifact**
 5. Emits Tekton Chains **type-hinted results** (`SCAN_RESULTS-ARTIFACT_URI` and `SCAN_RESULTS-ARTIFACT_DIGEST`) so that Chains records the scan results reference as a subject in the SLSA provenance
 
-**Why oras attach instead of cosign attest?** The signing key belongs in the `tekton-chains` namespace — not in `ctf-challenge` where the pipeline runs. Tekton Chains handles all signing centrally. The pipeline just needs to attach the raw scan results blob to the image (no signature needed at this point), and Chains will include the artifact's digest in the signed provenance it generates after the pipeline completes.
+**Why oras attach instead of cosign attest?** The signing key belongs in the `tekton-chains` namespace — not in `ci` where the pipeline runs. Tekton Chains handles all signing centrally. The pipeline just needs to attach the raw scan results blob to the image (no signature needed at this point), and Chains will include the artifact's digest in the signed provenance it generates after the pipeline completes.
 
 The scan results are discoverable via the OCI referrers API with artifact type `application/vnd.aquasecurity.trivy.report+json`.
 
@@ -404,7 +404,7 @@ TruffleHog can scan images layer-by-layer and will catch credentials stored dire
 ```bash
 # TruffleHog: scan image layers for credentials in files
 SSL_CERT_FILE=./certs/registry.crt \
-  trufflehog docker --image=localhost:30000/recipe-api:v1.0
+  trufflehog docker --image=registry.sc.local:30443/recipe-api:v1.0
 
 # Trivy Rego: catch the Dockerfile anti-pattern at source
 trivy config \
@@ -430,7 +430,7 @@ podman run --rm -i docker.io/hadolint/hadolint hadolint --format json - < <Docke
 
 Image used: `docker.io/hadolint/hadolint` (latest) or pinned `docker.io/hadolint/hadolint:v2.12.0-alpine` (~5MB).
 
-#### Findings on CTF Dockerfiles (verified 2026-05-16)
+#### Findings on project Dockerfiles (verified 2026-05-16)
 
 **Both vulnerable and patched Dockerfiles produce the same single finding:**
 
@@ -518,26 +518,26 @@ After the pipeline completes:
 # Verify image signature (created by Tekton Chains)
 cosign verify --key cosign.pub \
   --insecure-ignore-tlog=true \
-  localhost:30000/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:v1.0
 
 # Verify SLSA provenance (created by Chains — includes scan results digest)
 cosign verify-attestation --key cosign.pub \
   --type slsaprovenance \
   --insecure-ignore-tlog=true \
-  localhost:30000/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:v1.0
 
 # Verify SBOM attestation (signed by pipeline task)
 cosign verify-attestation --key cosign.pub \
   --type spdxjson \
   --insecure-ignore-tlog=true \
-  localhost:30000/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:v1.0
 
 # Discover scan results attached via oras (unsigned OCI referrer)
-oras discover localhost:30000/recipe-api:v1.0 \
+oras discover registry.sc.local:30443/recipe-api:v1.0 \
   --artifact-type application/vnd.aquasecurity.trivy.report+json
 
 # Download and inspect the scan results blob
-oras pull localhost:30000/recipe-api@<referrer-digest> \
+oras pull registry.sc.local:30443/recipe-api@<referrer-digest> \
   --output /tmp/scan-results/
 cat /tmp/scan-results/trivy-scan-results.json | jq '.Results[] | {Target, Vulnerabilities: (.Vulnerabilities // [] | length), Secrets: (.Secrets // [] | length)}'
 
@@ -545,7 +545,7 @@ cat /tmp/scan-results/trivy-scan-results.json | jq '.Results[] | {Target, Vulner
 cosign verify-attestation --key cosign.pub \
   --type slsaprovenance \
   --insecure-ignore-tlog=true \
-  localhost:30000/recipe-api:v1.0 | jq -r .payload | base64 -d | jq '.predicate.buildConfig'
+  registry.sc.local:30443/recipe-api:v1.0 | jq -r .payload | base64 -d | jq '.predicate.buildConfig'
 ```
 
 ---
@@ -587,11 +587,11 @@ Because Chains generates PipelineRun provenance only after pipeline completion, 
 ```bash
 SSL_CERT_FILE=./certs/registry.crt \
 ec validate image \
-  --image localhost:30000/recipe-api:v1.0 \
+  --image registry.sc.local:30443/recipe-api:v1.0 \
   --public-key cosign.pub \
-  --policy '{"sources":[{"name":"ctf-policy","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}' \
+  --policy '{"sources":[{"name":"sc-policy","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}' \
   --ignore-rekor \
-  --extra-rule-data 'allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","localhost:30000"]' \
+  --extra-rule-data 'allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","registry.sc.local:30443"]' \
   --output text
 ```
 
@@ -713,26 +713,26 @@ After the pipeline completes:
 
 ```bash
 # 1. Check all attestations are present
-cosign tree localhost:30000/recipe-api:v1.0
+cosign tree registry.sc.local:30443/recipe-api:v1.0
 
 # 2. Verify vulnerability scan found no critical issues
 cosign verify-attestation --key cosign.pub \
   --type vuln \
   --insecure-ignore-tlog=true \
-  localhost:30000/recipe-api:v1.0 | jq -r .payload | base64 -d | jq '.predicate.scanner'
+  registry.sc.local:30443/recipe-api:v1.0 | jq -r .payload | base64 -d | jq '.predicate.scanner'
 
 # 3. Verify SBOM lists expected packages
 cosign verify-attestation --key cosign.pub \
   --type spdxjson \
   --insecure-ignore-tlog=true \
-  localhost:30000/recipe-api:v1.0 | jq -r .payload | base64 -d | jq '.predicate.packages | length'
+  registry.sc.local:30443/recipe-api:v1.0 | jq -r .payload | base64 -d | jq '.predicate.packages | length'
 
 # 4. Run Conforma policy check
 SSL_CERT_FILE=./certs/registry.crt \
 ec validate image \
-  --image localhost:30000/recipe-api:v1.0 \
+  --image registry.sc.local:30443/recipe-api:v1.0 \
   --public-key cosign.pub \
-  --policy '{"sources":[{"name":"ctf","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}' \
+  --policy '{"sources":[{"name":"sc","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}' \
   --ignore-rekor \
   --output text
 ```

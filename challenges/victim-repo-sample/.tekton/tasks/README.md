@@ -46,7 +46,7 @@ kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks-with-chains.yaml
 make trigger-challenge2-build
 
 # Verify image signing
-kubectl get taskruns -n ctf-challenge \
+kubectl get taskruns -n ci \
   -l tekton.dev/pipelineTask=push-container-image \
   -o jsonpath='{.items[*].metadata.annotations.chains\.tekton\.dev/signed}'
 ```
@@ -70,23 +70,23 @@ After using the Chains-compatible tasks:
 
 ```bash
 # Get the latest TaskRun
-TASKRUN=$(kubectl get taskruns -n ctf-challenge \
+TASKRUN=$(kubectl get taskruns -n ci \
   -l tekton.dev/pipelineTask=push-container-image \
   --sort-by=.metadata.creationTimestamp -o name | tail -1)
 
 # Check if it was signed
-kubectl get $TASKRUN -n ctf-challenge \
+kubectl get $TASKRUN -n ci \
   -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signed}'
 
 # View image digest
-kubectl get $TASKRUN -n ctf-challenge \
+kubectl get $TASKRUN -n ci \
   -o jsonpath='{.status.taskResults[?(@.name=="IMAGE_DIGEST")].value}'
 
 # Verify signature with cosign (requires cosign CLI)
 cosign verify --insecure-ignore-tlog \
   --key k8s://tekton-chains/signing-secrets \
   --registry-cacert=setup/certs/registry.crt \
- localhost:30000/recipe-api:latest
+ registry.sc.local:30443/recipe-api:latest
 ```
 
 ## Attack Scenario Impact

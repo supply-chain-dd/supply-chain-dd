@@ -17,7 +17,7 @@ spec:
     - name: production-registry-url
       type: string
       description: Production registry URL
-      default: "ctf-production-cluster-control-plane.dns.podman:30082"
+      default: "production-cluster-control-plane.dns.podman:30082"
     - name: image-name
       type: string
       default: "recipe-api"
@@ -106,7 +106,7 @@ spec:
   params:
     - name: production-gitea-url
       type: string
-      default: "http://ctf-production-cluster-control-plane.dns.podman:30004"
+      default: "http://production-cluster-control-plane.dns.podman:30004"
     - name: image-digest
       type: string
       description: New image digest (sha256:...)
@@ -118,7 +118,7 @@ spec:
       default: "recipe-api"
     - name: registry-url
       type: string
-      default: "localhost:30082"
+      default: "registry-prod.sc.local:31443"
   volumes:
     - name: gitea-credentials
       secret:
@@ -139,7 +139,7 @@ spec:
         GITEA_USER=$(cat /auth/gitea/username)
         GITEA_PASS=$(cat /auth/gitea/password)
         GITEA_URL="$(params.production-gitea-url)"
-        REPO_URL="${GITEA_URL}/ctf-admin/production-manifests.git"
+        REPO_URL="${GITEA_URL}/sc-admin/production-manifests.git"
         BRANCH="release/$(params.image-tag)-$(date +%s)"
 
         echo "============================================"
@@ -156,7 +156,7 @@ spec:
         cd /workspace/production-manifests
 
         git config user.name "Release Pipeline"
-        git config user.email "release@ctf.local"
+        git config user.email "release@sc.local"
 
         # Create branch
         git checkout -b "${BRANCH}"
@@ -191,24 +191,24 @@ spec:
             \"base\": \"main\",
             \"body\": \"Automated release from CI pipeline.\\n\\nImage: $(params.registry-url)/$(params.image-name):$(params.image-tag)\\nDigest: $(params.image-digest)\"
           }" \
-          "${GITEA_URL}/api/v1/repos/ctf-admin/production-manifests/pulls")
+          "${GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls")
 
         PR_NUMBER=$(echo "${PR_RESPONSE}" | jq -r '.number // empty')
 
         if [ -n "${PR_NUMBER}" ]; then
             echo "✓ Pull request #${PR_NUMBER} created"
-            echo "  URL: ${GITEA_URL}/ctf-admin/production-manifests/pulls/${PR_NUMBER}"
+            echo "  URL: ${GITEA_URL}/sc-admin/production-manifests/pulls/${PR_NUMBER}"
         else
             echo "Warning: PR creation may have failed. Response:"
             echo "${PR_RESPONSE}" | jq .
         fi
 ---
-# Notify the release pipeline EventListener (runs in ctf-challenge namespace as part of build pipeline)
+# Notify the release pipeline EventListener (runs in ci namespace as part of build pipeline)
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: notify-release
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: Notify the release pipeline EventListener to trigger a release
   params:

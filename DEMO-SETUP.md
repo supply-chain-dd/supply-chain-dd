@@ -11,7 +11,7 @@ make setup-demo
 ```
 
 This will:
-1. ✅ Create KinD cluster (CTF environment)
+1. ✅ Create KinD cluster (deep dive environment)
 2. ✅ Install Gitea
 3. ✅ Install Tekton Pipelines and Triggers
 4. ✅ Setup local Docker registry with TLS
@@ -43,7 +43,7 @@ make configure-registry-tls
 make seed-legitimate-base-image
 
 # 4. Setup Challenge 1 (PR Quality Check Attack)
-make setup-ctf-challenge
+make setup-ci-pr-pipeline
 
 # 5. Setup Challenge 2 (Container Layer Leak Attack)
 make setup-challenge2-tekton
@@ -69,7 +69,7 @@ make verify-demo-readiness
 - ✅ Quality check task (vulnerable to secret theft)
 - ✅ EventListener for pull_request events
 - ✅ Gitea webhook configured automatically
-- ✅ CTF flag secret with registry credentials
+- ✅ registry credentials secret with registry credentials
 
 ### Challenge 2: Container Layer Leak Attack
 - ✅ Push build pipeline
@@ -88,8 +88,8 @@ make verify-demo-readiness
 - ℹ️ No additional resources needed (reuses Challenge 2 pipeline)
 
 ### Challenge 4: GitOps Pipeline Compromise
-- ✅ Production KinD cluster created (`ctf-production-cluster`)
-- ✅ Production Gitea installed (http://localhost:30004)
+- ✅ Production KinD cluster created (`production-cluster`)
+- ✅ Production Gitea installed (http://gitea-prod.sc.local:31080)
 - ✅ ArgoCD installed with vulnerable RBAC
 - ✅ recipe-api image loaded into production cluster
 - ✅ `production-manifests` repository seeded
@@ -108,10 +108,10 @@ After `make setup-demo` completes:
 
 | Service | Cluster | URL | Username | Password |
 |---------|---------|-----|----------|----------|
-| Gitea | CTF | http://localhost:30002 | ctf-admin | CTFSecurePass123! |
-| Registry | CTF | https://localhost:30000 | ctf-admin | CTFRegistryPass123! |
-| Gitea (production) | Production | http://localhost:30004 | ctf-admin | CTFSecurePass123! |
-| ArgoCD | Production | https://localhost:30443 | admin | admin123 |
+| Gitea | CI | http://gitea.sc.local:30080 | sc-admin | SecurePass123! |
+| Registry | CI | https://registry.sc.local:30443 | sc-admin | RegistryPass123! |
+| Gitea (production) | Production | http://gitea-prod.sc.local:31080 | sc-admin | SecurePass123! |
+| ArgoCD | Production | https://argocd.sc.local:31443 | admin | admin123 |
 
 ## Verification
 
@@ -122,7 +122,7 @@ make verify-demo-readiness
 ```
 
 This verifies:
-- ✅ CTF cluster is running
+- ✅ CI cluster is running
 - ✅ Gitea is accessible
 - ✅ Registry is accessible
 - ✅ Tekton is installed
@@ -143,12 +143,12 @@ Once setup is complete, you can start the demo immediately:
 
 ### Challenge 1: Pull Request Target Attack
 
-1. Open Gitea: http://localhost:30002
-2. Login as `ctf-admin` / `CTFSecurePass123!`
+1. Open Gitea: http://gitea.sc.local:30080
+2. Login as `sc-admin` / `SecurePass123!`
 3. Go to `recipe-api` repository
 4. Create a new branch and pull request with malicious code
-5. Watch the pipeline run: `kubectl get pipelineruns -n ctf-challenge -w`
-6. Follow the attack guide: [challenges/challenge1/CTF-CHALLENGE-GUIDE.md](challenges/challenge1/CTF-CHALLENGE-GUIDE.md)
+5. Watch the pipeline run: `kubectl get pipelineruns -n ci -w`
+6. Follow the attack guide: [challenges/challenge1/ATTACK-GUIDE.md](challenges/challenge1/ATTACK-GUIDE.md)
 
 ### Challenge 2: Container Layer Leak Attack
 
@@ -156,7 +156,7 @@ Once setup is complete, you can start the demo immediately:
 2. Pull the recipe-api image from the registry
 3. Extract git history from container layers
 4. Find leaked secrets in git history
-5. Follow the attack guide: [challenges/challenge2/CTF-CHALLENGE-GUIDE.md](challenges/challenge2/CTF-CHALLENGE-GUIDE.md)
+5. Follow the attack guide: [challenges/challenge2/ATTACK-GUIDE.md](challenges/challenge2/ATTACK-GUIDE.md)
 
 ### Challenge 3: Base Image Poisoning Attack
 
@@ -164,7 +164,7 @@ Once setup is complete, you can start the demo immediately:
 2. Create a poisoned base image with a backdoor
 3. Push it to the registry, overwriting `golang:1.25-alpine`
 4. Trigger a build pipeline to embed the malware
-5. Follow the attack guide: [challenges/challenge3/CTF-CHALLENGE-GUIDE.md](challenges/challenge3/CTF-CHALLENGE-GUIDE.md)
+5. Follow the attack guide: [challenges/challenge3/ATTACK-GUIDE.md](challenges/challenge3/ATTACK-GUIDE.md)
 
 ### Challenge 4: GitOps Pipeline Compromise
 
@@ -172,37 +172,37 @@ Once setup is complete, you can start the demo immediately:
 2. Use the leaked token to access the production ArgoCD
 3. Modify production manifests to inject malicious workloads
 4. Observe malicious deployment via ArgoCD sync
-5. Follow the attack guide: [challenges/challenge4/CTF-CHALLENGE-GUIDE.md](challenges/challenge4/CTF-CHALLENGE-GUIDE.md)
+5. Follow the attack guide: [challenges/challenge4/ATTACK-GUIDE.md](challenges/challenge4/ATTACK-GUIDE.md)
 
 ## Useful Commands
 
 ```bash
 # Monitor all pipeline runs
-kubectl get pipelineruns -n ctf-challenge -w
+kubectl get pipelineruns -n ci -w
 
 # View pipeline run logs (requires tkn CLI)
-kubectl tkn pipelinerun logs -f -n ctf-challenge
+kubectl tkn pipelinerun logs -f -n ci
 
 # List all webhooks
-curl -s -u ctf-admin:CTFSecurePass123! \
-  http://localhost:30002/api/v1/repos/ctf-admin/recipe-api/hooks | jq
+curl -s -u sc-admin:SecurePass123! \
+  http://gitea.sc.local:30080/api/v1/repos/sc-admin/recipe-api/hooks | jq
 
 # Check EventListener services
-kubectl get svc -n ctf-challenge | grep el-
+kubectl get svc -n ci | grep el-
 
 # Check registry images
-curl --cacert certs/registry.crt -u ctf-admin:CTFRegistryPass123! \
-  https://localhost:30000/v2/_catalog | jq
+curl --cacert certs/registry.crt -u sc-admin:RegistryPass123! \
+  https://registry.sc.local:30443/v2/_catalog | jq
 
 # Switch between clusters
-kubectl config use-context kind-ctf-cluster
-kubectl config use-context kind-ctf-production-cluster
+kubectl config use-context kind-ci-cluster
+kubectl config use-context kind-production-cluster
 
 # Check ArgoCD application status (Challenge 4)
-kubectl --context kind-ctf-production-cluster get applications -n argocd
+kubectl --context kind-production-cluster get applications -n argocd
 
 # Check production deployments (Challenge 4)
-kubectl --context kind-ctf-production-cluster get all -n production
+kubectl --context kind-production-cluster get all -n production
 ```
 
 ## Troubleshooting
@@ -221,8 +221,8 @@ This interactive script will help you trust the self-signed certificate.
 
 1. Verify webhooks exist:
    ```bash
-   curl -s -u ctf-admin:CTFSecurePass123! \
-     http://localhost:30002/api/v1/repos/ctf-admin/recipe-api/hooks | jq
+   curl -s -u sc-admin:SecurePass123! \
+     http://gitea.sc.local:30080/api/v1/repos/sc-admin/recipe-api/hooks | jq
    ```
 
 2. Re-create webhooks:
@@ -232,20 +232,20 @@ This interactive script will help you trust the self-signed certificate.
 
 3. Check EventListener pods:
    ```bash
-   kubectl get pods -n ctf-challenge | grep el-
+   kubectl get pods -n ci | grep el-
    ```
 
 ### Pipeline Not Starting
 
 1. Check EventListener logs:
    ```bash
-   kubectl logs -n ctf-challenge -l eventlistener=pr-quality-check-listener
-   kubectl logs -n ctf-challenge -l eventlistener=push-build-listener
+   kubectl logs -n ci -l eventlistener=pr-quality-check-listener
+   kubectl logs -n ci -l eventlistener=push-build-listener
    ```
 
 2. Verify webhook secret matches:
    ```bash
-   kubectl get secret github-webhook-secret -n ctf-challenge -o yaml
+   kubectl get secret github-webhook-secret -n ci -o yaml
    ```
 
 ## Cleanup
@@ -253,7 +253,7 @@ This interactive script will help you trust the self-signed certificate.
 Reset the environment:
 
 ```bash
-# Delete CTF cluster and all resources
+# Delete CI cluster and all resources
 make clean
 
 # Delete production cluster (Challenge 4)
@@ -288,7 +288,7 @@ This is intentional - the demo requires showing the manual attack steps!
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                 CTF Cluster (ctf-cluster)                   │
+│                 CI Cluster (ci-cluster)                   │
 │                                                             │
 │  ┌────────────┐      ┌──────────────┐     ┌─────────────┐   │
 │  │   Gitea    │────▶│   Tekton     │───▶│  Registry   │   │
@@ -303,12 +303,12 @@ This is intentional - the demo requires showing the manual attack steps!
 │  │ (.env leak)│      │  Challenge 3:│     │    alpine   │   │
 │  └────────────┘      │  (reuses C2) │     └─────────────┘   │
 │                      └──────────────┘                       │
-│  Namespace: ctf-challenge                                   │
+│  Namespace: ci                                   │
 │  • EventListeners, ServiceAccounts, Secrets                 │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│            Production Cluster (ctf-production-cluster)      │
+│            Production Cluster (production-cluster)      │
 │                                                             │
 │  ┌────────────┐      ┌──────────────┐     ┌─────────────┐   │
 │  │ Gitea      │◀────│   ArgoCD     │───▶│ Production  │   │
@@ -329,7 +329,7 @@ This is intentional - the demo requires showing the manual attack steps!
 
 ```mermaid
 graph TB
-    subgraph ctfCluster["CI Cluster <br>(ctf-cluster)"]
+    subgraph ciCluster["CI Cluster <br>(ci-cluster)"]
         direction LR
         subgraph giteaCI["gitea Namespace"]
             direction LR
@@ -347,7 +347,7 @@ graph TB
            eventsCtrl[Events Controller]
            triggersCtrl[Triggers Controller]
         end
-        subgraph ctfChallenge["ctf-challenge Namespace"]
+        subgraph ciNamespace["ci Namespace"]
             direction LR
             PRPipeline[pr-quality-check pipeline]
             PushPipeline[build-push pipeline]
@@ -357,14 +357,14 @@ graph TB
         subgraph registryNS["Registry Namespace"]
             registrySvc[Container Registry Service]
         end
-        tektonNS ~~~ ctfChallenge
-        giteaCI ~~~ ctfChallenge
-        ctfChallenge ~~~ registryNS
+        tektonNS ~~~ ciNamespace
+        giteaCI ~~~ ciNamespace
+        ciNamespace ~~~ registryNS
         webhook1 --> PRPipeline
         webhook2 --> PushPipeline
         PushPipeline <--> registrySvc
     end
-    subgraph ctfProdCluster["Prod Cluster <br>(ctf-production-cluster)"]
+    subgraph prodCluster["Prod Cluster <br>(production-cluster)"]
     direction TB
          subgraph ProdGitea["gitea Namespace"]
             direction LR
@@ -383,7 +383,7 @@ graph TB
         argocdNS -->|deploy| ProdNS
         registrySvc -.->|pulls images| argoCDCtrl
     end
-    ctfCluster ~~~ ctfProdCluster
+    ciCluster ~~~ prodCluster
 ```
 
 ## Next Steps

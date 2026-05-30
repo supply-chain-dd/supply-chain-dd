@@ -1,6 +1,6 @@
 # Supply Chain Security Tools Evaluation
 
-This document evaluates whether modern supply chain security tools (SLSA provenance, SBOMs, source verification, AMPEL, Conforma, Image Signatures, Tekton Chains) can effectively detect and prevent the attacks demonstrated in this CTF.
+This document evaluates whether modern supply chain security tools (SLSA provenance, SBOMs, source verification, AMPEL, Conforma, Image Signatures, Tekton Chains) can effectively detect and prevent the attacks demonstrated in this deep dive.
 
 ## Evaluation Criteria
 
@@ -137,7 +137,7 @@ spec:
 ```bash
 # After discovering the breach, use Chains attestation for forensics
 cosign verify-attestation --type slsaprovenance \
-  localhost:30000/victim-app:compromised-build
+  registry.sc.local:30443/victim-app:compromised-build
 
 # Attestation reveals:
 {
@@ -205,7 +205,7 @@ spec:
 
 ```bash
 # Scan cluster for excessive ServiceAccount permissions
-kubescape scan framework nsa --include-namespaces ctf-challenge
+kubescape scan framework nsa --include-namespaces ci
 
 # Would detect (after deployment):
 # - ServiceAccount with cluster-admin binding
@@ -290,7 +290,7 @@ Secrets (.env files, API keys) embedded in container image layers, exposed to an
 
 **Example**:
 ```bash
-syft localhost:30000/recipe-api:latest -o json | jq '.files[] | select(.path | contains(".env"))'
+syft registry.sc.local:30443/recipe-api:latest -o json | jq '.files[] | select(.path | contains(".env"))'
 # Would find .env files if configured properly
 ```
 
@@ -557,7 +557,7 @@ Error: admission webhook denied: image failed secret scan (see attestation)
 
 ```bash
 # Scan image for secrets before deployment
-kubescape scan image localhost:30000/recipe-api:latest \
+kubescape scan image registry.sc.local:30443/recipe-api:latest \
   --format json --output results.json
 
 # Check for secrets in layers
@@ -770,7 +770,7 @@ cosign verify-attestation --type slsaprovenance \
 ```bash
 # Compare SBOMs
 syft golang:1.23-alpine -o json > official.json
-syft localhost:30000/golang:1.25-alpine -o json > poisoned.json
+syft registry.sc.local:30443/golang:1.25-alpine -o json > poisoned.json
 diff <(jq -r '.artifacts[].name' official.json | sort) \
      <(jq -r '.artifacts[].name' poisoned.json | sort)
 # Output: unexpected packages found
@@ -867,7 +867,7 @@ cosign verify --certificate-identity-regexp=".*docker.com.*" \
 2. **Poisoned images lack valid signatures**:
 ```bash
 # Attacker's poisoned image
-cosign verify localhost:30000/golang:1.25-alpine
+cosign verify registry.sc.local:30443/golang:1.25-alpine
 # Error: no matching signatures
 ```
 
@@ -1027,7 +1027,7 @@ spec:
       description: Prevent poisoned images from local registry
       condition: |
         !attestation.predicate.materials
-          .some(m => m.uri.startsWith("docker://localhost:30000/"))
+          .some(m => m.uri.startsWith("docker://registry.sc.local:30443/"))
       severity: CRITICAL
       message: "Base image from untrusted local registry - possible poisoning attack"
 ```
@@ -1037,10 +1037,10 @@ spec:
 **Without Tekton Chains**:
 ```bash
 # Attacker pushes poisoned image
-podman push localhost:30000/golang:1.25-alpine
+podman push registry.sc.local:30443/golang:1.25-alpine
 
 # Developer builds (unknowingly using poisoned image)
-FROM localhost:30000/golang:1.25-alpine  # ❌ No verification
+FROM registry.sc.local:30443/golang:1.25-alpine  # ❌ No verification
 
 # Deploy - no attestation exists
 kubectl apply -f deployment.yaml  # ✅ Deploys with backdoor
@@ -1049,22 +1049,22 @@ kubectl apply -f deployment.yaml  # ✅ Deploys with backdoor
 **With Tekton Chains + AMPEL**:
 ```bash
 # Attacker pushes poisoned image
-podman push localhost:30000/golang:1.25-alpine
+podman push registry.sc.local:30443/golang:1.25-alpine
 
 # Tekton Pipeline builds
 # Chains generates provenance showing:
-# materials[0].uri = "docker://localhost:30000/golang:1.25-alpine"
+# materials[0].uri = "docker://registry.sc.local:30443/golang:1.25-alpine"
 
 # Developer tries to deploy
 kubectl apply -f deployment.yaml
 
 # AMPEL checks Chains attestation
-# Sees base image from "localhost:30000" (not docker.io)
+# Sees base image from "registry.sc.local:30443" (not docker.io)
 # ❌ BLOCKS deployment:
 Error: admission webhook denied: 
   Base image from untrusted local registry - possible poisoning attack
   Expected: docker.io/library/*
-  Found: localhost:30000/golang:1.25-alpine
+  Found: registry.sc.local:30443/golang:1.25-alpine
 ```
 
 **Anomaly detection**:
@@ -1074,7 +1074,7 @@ Chains also enables detecting **changes** in base images:
 ```bash
 # Compare attestations across builds
 cosign verify-attestation --type slsaprovenance \
-  localhost:30000/app:v1.0 | jq -r '.predicate.materials[] | select(.uri | startswith("docker://"))'
+  registry.sc.local:30443/app:v1.0 | jq -r '.predicate.materials[] | select(.uri | startswith("docker://"))'
 
 # Output for legitimate build:
 {
@@ -1084,7 +1084,7 @@ cosign verify-attestation --type slsaprovenance \
 
 # Output for poisoned build:
 {
-  "uri": "docker://localhost:30000/golang",  # ⚠️ DIFFERENT REGISTRY!
+  "uri": "docker://registry.sc.local:30443/golang",  # ⚠️ DIFFERENT REGISTRY!
   "digest": {"sha256": "xyz789..."}  # ⚠️ DIFFERENT DIGEST!
 }
 
@@ -1097,7 +1097,7 @@ Tekton Chains attestations can feed into Guac for supply chain graph analysis:
 
 ```bash
 # Ingest Chains attestations into Guac
-guacone collect image localhost:30000/app:v1.0
+guacone collect image registry.sc.local:30443/app:v1.0
 
 # Query: What base images are used in production?
 guacone query "
@@ -1140,7 +1140,7 @@ spec:
         - verify-base-image-signature
       params:
         - name: image
-          value: "localhost:30000/app:latest"
+          value: "registry.sc.local:30443/app:latest"
 
 # After PipelineRun completes:
 # 1. Tekton Chains automatically generates attestation
@@ -1172,7 +1172,7 @@ spec:
 
 ```bash
 # 1. Scan the suspicious base image
-kubescape scan image localhost:30000/golang:1.25-alpine \
+kubescape scan image registry.sc.local:30443/golang:1.25-alpine \
   --format json --output poisoned-scan.json
 
 # 2. Scan the official base image for comparison
@@ -1338,7 +1338,7 @@ guacone query "
 # For POISONED image:
 | image.repository    | builder.id                  | builder.verified |
 |---------------------|-----------------------------|------------------|
-| localhost:30000     | unknown                     | false            |
+| registry.sc.local:30443     | unknown                     | false            |
 
 # For OFFICIAL image:
 | image.repository    | builder.id                                    | builder.verified |
@@ -1359,7 +1359,7 @@ guacone query "
 # Output (detects attack):
 | app.name   | base.name | base.repository    | base.version  |
 |------------|-----------|-------------------|---------------|
-| recipe-api | golang    | localhost:30000   | 1.25-alpine   | ⚠️ SUSPICIOUS!
+| recipe-api | golang    | registry.sc.local:30443   | 1.25-alpine   | ⚠️ SUSPICIOUS!
 ```
 
 **Step 4: Blast radius analysis**:
@@ -1367,7 +1367,7 @@ guacone query "
 ```bash
 # Query: What applications use this poisoned base image?
 guacone query "
-  MATCH (app:Package)-[:BUILT_FROM]->(base:Package {repository: 'localhost:30000'})
+  MATCH (app:Package)-[:BUILT_FROM]->(base:Package {repository: 'registry.sc.local:30443'})
   RETURN app.name, app.version, base.name
 "
 
@@ -1386,7 +1386,7 @@ guacone query "
 guacone query "
   MATCH (deployment:Deployment)-[:USES]->(app:Package)
         -[:BUILT_FROM]->(base:Package)
-  WHERE base.repository = 'localhost:30000'
+  WHERE base.repository = 'registry.sc.local:30443'
   RETURN deployment.cluster, deployment.namespace, app.name
 "
 
@@ -1445,7 +1445,7 @@ spec:
 **Real-world detection scenario**:
 
 ```
-[Attacker pushes poisoned golang:1.25-alpine to localhost:30000]
+[Attacker pushes poisoned golang:1.25-alpine to registry.sc.local:30443]
          ↓
 [Developer builds recipe-api using poisoned base]
          ↓
@@ -1453,7 +1453,7 @@ spec:
          ↓
 [GUAC ingests provenance]
          ↓
-[GUAC builds graph: recipe-api → BUILT_FROM → golang:1.25 @ localhost:30000]
+[GUAC builds graph: recipe-api → BUILT_FROM → golang:1.25 @ registry.sc.local:30443]
          ↓
 [Security team queries GUAC]
 guacone query "MATCH (app)-[:BUILT_FROM]->(base) WHERE base.repository != 'docker.io/library' RETURN app, base"

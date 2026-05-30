@@ -9,12 +9,12 @@ clear
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd ../.. && pwd)"
-CI_CONTEXT="kind-ctf-cluster"
-PROD_CONTEXT="kind-ctf-production-cluster"
-GITEA_URL="http://localhost:30002"
-PROD_GITEA_URL="http://localhost:30004"
-GITEA_USER="ctf-admin"
-GITEA_PASS="CTFSecurePass123!"
+CI_CONTEXT="kind-ci-cluster"
+PROD_CONTEXT="kind-production-cluster"
+GITEA_URL="http://gitea.sc.local:30080"
+PROD_GITEA_URL="http://gitea-prod.sc.local:31080"
+GITEA_USER="sc-admin"
+GITEA_PASS="SecurePass123!"
 
 WORK_DIR=$(mktemp -d)
 cleanup() {
@@ -40,11 +40,11 @@ p "=== DEMO : Workflow CI/CD de bout en bout — Du code source à la production
 
 p "  PHASE 0 — État initial de la production"
 
-p "1. Interface ArgoCD : http://localhost:30080"
+p "1. Interface ArgoCD : http://argocd.sc.local:31443"
 p "→ Ouvrez l'interface ArgoCD pour suivre le déploiement en temps réel"
 
 p "2. Vérifier que l'API de production est fonctionnelle"
-pe "curl -s http://localhost:30081/recipes | jq ."
+pe "curl -s http://app.sc.local:31080/recipes | jq ."
 
 # ============================================================================
 # PHASE 1 — Modification du code source
@@ -57,12 +57,12 @@ p "3. Cloner le dépôt recipe-api depuis Gitea"
 # Git config pour éviter les problèmes d'identité
 cat > ${WORK_DIR}/.gitconfig <<EOF
 [user]
-    name = CTF Admin
-    email = ctf-admin@ctf.local
+    name = SC Admin
+    email = sc-admin@sc.local
 [credential]
     helper = store
 EOF
-echo "http://${GITEA_USER}:${GITEA_PASS}@localhost:30002" > ${WORK_DIR}/.git-credentials
+echo "http://${GITEA_USER}:${GITEA_PASS}@gitea.sc.local:30080" > ${WORK_DIR}/.git-credentials
 
 pe "GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git clone ${GITEA_URL}/${GITEA_USER}/recipe-api.git ${WORK_DIR}/recipe-api"
 
@@ -73,7 +73,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 pe "echo '// build: ${TIMESTAMP}' >> main.go"
 pe "tail -3 main.go"
 
-BEFORE_PR_COUNT=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ctf-challenge --no-headers 2>/dev/null | wc -l)
+BEFORE_PR_COUNT=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ci --no-headers 2>/dev/null | wc -l)
 
 p "5. Commit et push vers main"
 GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git add .
@@ -96,7 +96,7 @@ p "6. Attente du déclenchement de la pipeline de build..."
 TIMEOUT=60
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ]; do
-    CURRENT_COUNT=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ctf-challenge --no-headers 2>/dev/null | wc -l)
+    CURRENT_COUNT=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ci --no-headers 2>/dev/null | wc -l)
     if [ "$CURRENT_COUNT" -gt "$BEFORE_PR_COUNT" ]; then
         break
     fi
@@ -105,7 +105,7 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
 done
 
 if [ "$CURRENT_COUNT" -gt "$BEFORE_PR_COUNT" ]; then
-    pe "kubectl --context ${CI_CONTEXT} get pipelineruns -n ctf-challenge --sort-by=.metadata.creationTimestamp"
+    pe "kubectl --context ${CI_CONTEXT} get pipelineruns -n ci --sort-by=.metadata.creationTimestamp"
     p "→ Pipeline déclenchée automatiquement par le webhook"
 else
     p "⚠ Le webhook n'a pas déclenché de PipelineRun — déclenchement manuel"
@@ -113,13 +113,13 @@ else
     sleep 3
 fi
 
-BUILD_PR_NAME=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ctf-challenge \
+BUILD_PR_NAME=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ci \
   --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
 
 p "7. Suivi des logs de la pipeline de build"
-pe "tkn pr logs -f ${BUILD_PR_NAME} -n ctf-challenge --context ${CI_CONTEXT}"
+pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT}"
 
-pe "kubectl --context ${CI_CONTEXT} get pipelinerun ${BUILD_PR_NAME} -n ctf-challenge \
+pe "kubectl --context ${CI_CONTEXT} get pipelinerun ${BUILD_PR_NAME} -n ci \
   -o jsonpath='{.status.conditions[0].reason}' && echo"
 
 # ============================================================================
@@ -162,23 +162,23 @@ p "  PHASE 4 — Revue et merge de la PR de release"
 
 p "10. Lister les PR ouvertes dans production-manifests"
 pe "curl -s -u ${GITEA_USER}:${GITEA_PASS} \
-  ${PROD_GITEA_URL}/api/v1/repos/ctf-admin/production-manifests/pulls?state=open | jq '.[].title'"
+  ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls?state=open | jq '.[].title'"
 
 PR_NUMBER=$(curl -s -u ${GITEA_USER}:${GITEA_PASS} \
-  ${PROD_GITEA_URL}/api/v1/repos/ctf-admin/production-manifests/pulls?state=open \
+  ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls?state=open \
   | jq -r '.[0].number // empty' 2>/dev/null)
 
 if [ -n "$PR_NUMBER" ]; then
     p "11. Contenu de la PR #${PR_NUMBER}"
     pe "curl -s -u ${GITEA_USER}:${GITEA_PASS} \
-  ${PROD_GITEA_URL}/api/v1/repos/ctf-admin/production-manifests/pulls/${PR_NUMBER} \
+  ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls/${PR_NUMBER} \
   | jq '{title: .title, body: .body, head: .head.label, base: .base.label}'"
 
     p "12. Merger la PR"
     pe "curl -s -X POST -u ${GITEA_USER}:${GITEA_PASS} \
   -H 'Content-Type: application/json' \
   -d '{\"Do\": \"merge\"}' \
-  ${PROD_GITEA_URL}/api/v1/repos/ctf-admin/production-manifests/pulls/${PR_NUMBER}/merge \
+  ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls/${PR_NUMBER}/merge \
   | jq '.sha // .message'"
 
     p "→ PR mergée — le manifeste de production est mis à jour avec le nouveau digest"
@@ -212,10 +212,10 @@ done
 pe "kubectl --context ${PROD_CONTEXT} get application recipe-api-production -n argocd \
   -o jsonpath='{\"Sync: \"}{.status.sync.status}{\"  Health: \"}{.status.health.status}' && echo"
 
-p "→ Vérifiez dans l'interface ArgoCD : https://localhost:30443"
+p "→ Vérifiez dans l'interface ArgoCD : https://argocd.sc.local:31443"
 
 p "14. Vérifier que la nouvelle version est accessible"
-pe "curl -s http://localhost:30081/recipes | jq ."
+pe "curl -s http://app.sc.local:31080/recipes | jq ."
 
 p "→ Le workflow complet : code source → build → release → PR → merge → ArgoCD → production"
 

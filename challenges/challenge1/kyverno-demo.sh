@@ -19,7 +19,7 @@ pe "kubectl apply -f security/kyverno-policies/block-dangerous-commands.yaml"
 pe "kubectl get clusterpolicy block-dangerous-task-commands -o yaml"
 
 p "3. PolicyReports : le scan de fond a détecté des commandes dangereuses dans les Tasks"
-pe "kubectl get policyreport -n ctf-challenge -o json | jq '.items[] | select(.summary.fail > 0) | {task: .scope.name, kind: .scope.kind, failures: [.results[] | select(.result == \"fail\") | {rule, message}]}'"
+pe "kubectl get policyreport -n ci -o json | jq '.items[] | select(.summary.fail > 0) | {task: .scope.name, kind: .scope.kind, failures: [.results[] | select(.result == \"fail\") | {rule, message}]}'"
 
 p "4. Application de la politique restrict-tekton-pr-pipelines (mode Enforce)"
 p "→ Bloque la création de PipelineRun/TaskRun avec un SA non autorisé"
@@ -33,7 +33,7 @@ apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
   name: test-blocked-pr
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   pipelineRef:
     name: pr-quality-check-pipeline
@@ -66,7 +66,7 @@ apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
   name: test-allowed-pr
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   serviceAccountName: pr-pipeline-readonly
   pipelineRef:
@@ -94,6 +94,6 @@ p "→ Création autorisée avec le SA pr-pipeline-readonly"
 
 # Nettoyage
 kubectl delete clusterpolicy restrict-tekton-pr-pipelines block-dangerous-task-commands 2>/dev/null || true
-kubectl delete pipelinerun test-allowed-pr -n ctf-challenge 2>/dev/null || true
+kubectl delete pipelinerun test-allowed-pr -n ci 2>/dev/null || true
 
 p "✅"

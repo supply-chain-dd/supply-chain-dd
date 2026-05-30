@@ -5,7 +5,10 @@
 
 set -euo pipefail
 
-CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-ctf-production-cluster}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
+CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-production-cluster}"
 ARGOCD_VERSION="${ARGOCD_VERSION:-5.51.0}"
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
 
@@ -57,7 +60,7 @@ kubectl wait --for=condition=ready pod \
   -n "$ARGOCD_NAMESPACE" \
   --timeout=300s
 
-# Set admin password to "admin123" (weak password for CTF)
+# Set admin password to "admin123" (weak password for the deep dive)
 echo "Configuring admin password..."
 ADMIN_PASSWORD="admin123"
 
@@ -69,7 +72,6 @@ rm /tmp/admin-password-hash
 
 # Configure ArgoCD to accept the leaked token from Challenge 2
 echo "Configuring leaked ArgoCD token..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 "$SCRIPT_DIR/../../challenges/challenge4/scripts/setup-argocd-token.sh" "$ARGOCD_NAMESPACE"
 
 # Get the leaked token for display
@@ -79,7 +81,7 @@ echo ""
 echo "==> ArgoCD installed successfully!"
 echo ""
 echo "Access ArgoCD:"
-echo "  Web UI: https://localhost:30443"
+echo "  Web UI: https://${ARGOCD_HOST}"
 echo "  Username: admin"
 echo "  Password: $ADMIN_PASSWORD"
 echo ""
@@ -87,11 +89,11 @@ echo "Leaked ArgoCD Token (from Challenge 2 .env.production):"
 echo "  $LEAKED_TOKEN"
 echo ""
 echo "Login with CLI (password):"
-echo "  echo y | argocd login localhost:30443 --username admin --password $ADMIN_PASSWORD --insecure --grpc-web"
+echo "  echo y | argocd login ${ARGOCD_HOST} --username admin --password $ADMIN_PASSWORD --insecure --grpc-web"
 echo ""
 echo "Login with CLI (token from .env.production):"
 echo "  export ARGOCD_AUTH_TOKEN='$LEAKED_TOKEN'"
-echo "  argocd app list --auth-token=\"\$ARGOCD_AUTH_TOKEN\" --server localhost:30443 --insecure --grpc-web"
+echo "  argocd app list --auth-token=\"\$ARGOCD_AUTH_TOKEN\" --server ${ARGOCD_HOST} --insecure --grpc-web"
 echo ""
 echo "Next steps:"
 echo "  1. Create production-manifests repository in Gitea"

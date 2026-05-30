@@ -11,7 +11,7 @@
 kubectl apply -f https://raw.githubusercontent.com/kubescape/kubescape/master/deploy/kubescape.yaml
 
 # Scan a specific image
-kubescape scan image localhost:30000/recipe-api:latest
+kubescape scan image registry.sc.local:30443/recipe-api:latest
 
 # Scan all images in cluster
 kubescape scan cluster --include-namespaces production
@@ -33,7 +33,7 @@ kubescape scan cluster --include-namespaces production
 
 ```bash
 # Generate SBOM from image
-syft localhost:30000/recipe-api:latest -o spdx-json > recipe-api-sbom.json
+syft registry.sc.local:30443/recipe-api:latest -o spdx-json > recipe-api-sbom.json
 
 # Ingest into Guac for analysis
 guacone collect files recipe-api-sbom.json
@@ -77,7 +77,7 @@ scorecard --repo=github.com/docker-library/golang
 
 ```bash
 # Verify SLSA attestations for base image
-ampel verify --subject localhost:30000/golang:1.25-alpine \
+ampel verify --subject registry.sc.local:30443/golang:1.25-alpine \
   --policy policies/base-image-policy.yaml
 
 # Expected policy checks:
@@ -97,7 +97,7 @@ metadata:
 spec:
   subjects:
     - type: container-image
-      pattern: "localhost:30000/golang:*"
+      pattern: "registry.sc.local:30443/golang:*"
   
   collectors:
     - type: sigstore
@@ -175,7 +175,7 @@ kubectl logs -n falco -l app=falco -f | grep -E 'CRITICAL|backdoor'
 
 ```bash
 # Extract and inspect image layers
-podman save localhost:30000/recipe-api:latest -o recipe-api.tar
+podman save registry.sc.local:30443/recipe-api:latest -o recipe-api.tar
 tar -xf recipe-api.tar
 find . -name layer.tar | xargs -I {} tar -tvf {}
 
@@ -183,10 +183,10 @@ find . -name layer.tar | xargs -I {} tar -tvf {}
 find . -name "*backdoor*" -o -name ".*malware*" -o -name "*.sh" | grep -v ".git"
 
 # Check entrypoint modifications
-podman inspect localhost:30000/recipe-api:latest | jq '.[].Config.Entrypoint'
+podman inspect registry.sc.local:30443/recipe-api:latest | jq '.[].Config.Entrypoint'
 
 # Compare with known-good image
-diff <(podman inspect golang:1.23-alpine) <(podman inspect localhost:30000/golang:1.25-alpine)
+diff <(podman inspect golang:1.23-alpine) <(podman inspect registry.sc.local:30443/golang:1.25-alpine)
 ```
 
 ## Prevention Techniques
@@ -197,10 +197,10 @@ diff <(podman inspect golang:1.23-alpine) <(podman inspect localhost:30000/golan
 
 ```dockerfile
 # ❌ BAD - Mutable tag
-FROM localhost:30000/golang:1.25-alpine
+FROM registry.sc.local:30443/golang:1.25-alpine
 
 # ✅ GOOD - Immutable digest
-FROM localhost:30000/golang@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+FROM registry.sc.local:30443/golang@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
 ```
 
 **How to get digests:**
@@ -210,7 +210,7 @@ FROM localhost:30000/golang@sha256:abcdef1234567890abcdef1234567890abcdef1234567
 podman inspect golang:1.23-alpine --format '{{.RepoDigests}}'
 
 # Get digest from remote registry
-skopeo inspect docker://localhost:30000/golang:1.25-alpine | jq -r '.Digest'
+skopeo inspect docker://registry.sc.local:30443/golang:1.25-alpine | jq -r '.Digest'
 ```
 
 ### 2. Image Signing with Sigstore/Cosign
@@ -222,10 +222,10 @@ skopeo inspect docker://localhost:30000/golang:1.25-alpine | jq -r '.Digest'
 cosign generate-key-pair
 
 # Sign image after build
-cosign sign --key cosign.key localhost:30000/recipe-api:latest
+cosign sign --key cosign.key registry.sc.local:30443/recipe-api:latest
 
 # Verify signature before use
-cosign verify --key cosign.pub localhost:30000/recipe-api:latest
+cosign verify --key cosign.pub registry.sc.local:30443/recipe-api:latest
 ```
 
 **Enforce signature verification in Kubernetes** (using Kyverno):
@@ -247,7 +247,7 @@ spec:
                 - Pod
       verifyImages:
         - imageReferences:
-            - "localhost:30000/*"
+            - "registry.sc.local:30443/*"
           attestors:
             - count: 1
               entries:
@@ -264,10 +264,10 @@ spec:
 
 ```bash
 # Using Syft
-syft packages localhost:30000/recipe-api:latest -o spdx-json > sbom.json
+syft packages registry.sc.local:30443/recipe-api:latest -o spdx-json > sbom.json
 
 # Using Docker buildx
-docker buildx build --sbom=true -t localhost:30000/recipe-api:latest .
+docker buildx build --sbom=true -t registry.sc.local:30443/recipe-api:latest .
 ```
 
 **Validate SBOM against baseline:**
@@ -277,7 +277,7 @@ docker buildx build --sbom=true -t localhost:30000/recipe-api:latest .
 syft packages golang:1.23-alpine -o json > baseline-sbom.json
 
 # Compare current image SBOM
-syft packages localhost:30000/golang:1.25-alpine -o json > current-sbom.json
+syft packages registry.sc.local:30443/golang:1.25-alpine -o json > current-sbom.json
 
 # Find differences (should be empty for legitimate image)
 jq -r '.artifacts[].name' current-sbom.json | sort > current-packages.txt
@@ -303,7 +303,7 @@ spec:
                 - Pod
       verifyImages:
         - imageReferences:
-            - "localhost:30000/*"
+            - "registry.sc.local:30443/*"
           attestations:
             - predicateType: https://spdx.dev/Document
               conditions:
@@ -322,13 +322,13 @@ spec:
 cat > recipe-api.vex.json <<EOF
 {
   "@context": "https://openvex.dev/ns",
-  "@id": "localhost:30000/recipe-api:latest",
+  "@id": "registry.sc.local:30443/recipe-api:latest",
   "author": "Security Team",
   "timestamp": "2026-04-13T00:00:00Z",
   "statements": [
     {
       "vulnerability": "CVE-2024-XXXX",
-      "products": ["localhost:30000/recipe-api:latest"],
+      "products": ["registry.sc.local:30443/recipe-api:latest"],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path"
     }
@@ -337,14 +337,14 @@ cat > recipe-api.vex.json <<EOF
 EOF
 
 # Attach VEX to image
-cosign attest --key cosign.key --predicate recipe-api.vex.json localhost:30000/recipe-api:latest
+cosign attest --key cosign.key --predicate recipe-api.vex.json registry.sc.local:30443/recipe-api:latest
 ```
 
 **Query VEX documents:**
 
 ```bash
 # Extract VEX attestation
-cosign verify-attestation --key cosign.pub --type https://openvex.dev/ns localhost:30000/recipe-api:latest
+cosign verify-attestation --key cosign.pub --type https://openvex.dev/ns registry.sc.local:30443/recipe-api:latest
 ```
 
 ### 5. Kyverno Image Validation Policies
@@ -372,7 +372,7 @@ spec:
         pattern:
           spec:
             containers:
-              - image: "localhost:30000/*|docker.io/library/*|gcr.io/distroless/*"
+              - image: "registry.sc.local:30443/*|docker.io/library/*|gcr.io/distroless/*"
     
     # Rule 2: Disallow mutable tags (latest, stable, etc)
     - name: disallow-mutable-tags
@@ -399,7 +399,7 @@ spec:
                 - Pod
       verifyImages:
         - imageReferences:
-            - "localhost:30000/*"
+            - "registry.sc.local:30443/*"
           required: true
           attestors:
             - count: 1
@@ -417,7 +417,7 @@ spec:
 kubectl apply -f security/kyverno-policies/secure-base-images.yaml
 
 # Test policy (should block unsigned images)
-kubectl run test --image=localhost:30000/recipe-api:latest
+kubectl run test --image=registry.sc.local:30443/recipe-api:latest
 # Error: admission webhook denied the request: image signature verification failed
 ```
 
@@ -475,7 +475,7 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: build-with-verified-base
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: base-image-digest
@@ -502,7 +502,7 @@ spec:
       args:
         - --dockerfile=Dockerfile
         - --context=/workspace/source
-        - --destination=localhost:30000/recipe-api:latest
+        - --destination=registry.sc.local:30443/recipe-api:latest
         - --build-arg=BASE_IMAGE=$(params.base-image-digest)
       volumeMounts:
         - name: cosign-keys
@@ -536,13 +536,13 @@ This section documents how the Challenge 3 pipeline handles SBOM attachment and
 provenance, how it differs from the Konflux/RHTAP approach, and how Conforma
 (Enterprise Contract) discovers SBOMs for policy evaluation.
 
-### Our CTF Approach vs Konflux
+### Our Project Approach vs Konflux
 
 Both approaches produce SLSA provenance via Tekton Chains. The difference is in
 how additional artifacts (SBOM, scans) are attached and whether they are
 independently signed.
 
-| Aspect | CTF (this project) | Konflux |
+| Aspect | This project | Konflux |
 |--------|-------------------|---------|
 | SBOM generation | Trivy `--format spdx-json` | Syft SPDX JSON |
 | SBOM attachment | `oras attach` as OCI referrer (`application/spdx+json`) | `cosign attach sbom --type spdx` |
@@ -579,7 +579,7 @@ infrastructure that is not available in a local KinD cluster:
    - `tufInternalUrl` / `tufExternalUrl`
    - `defaultOIDCIssuer`
 
-3. **Our CTF Tekton Chains** is configured with `signers.x509.fulcio.enabled: false`
+3. **Our project Tekton Chains** is configured with `signers.x509.fulcio.enabled: false`
    and uses a local cosign keypair stored in the `signing-secrets` Secret in the
    `tekton-chains` namespace.
 
@@ -739,7 +739,7 @@ The digest is the **blob content digest** computed locally with `sha256sum
 sbom.json`, NOT an OCI manifest or referrer digest. This is what Konflux's
 `buildah-oci-ta` task emits.
 
-**3. OCI Referrers** (`_sboms_from_referrers`) — **used by our CTF pipeline**
+**3. OCI Referrers** (`_sboms_from_referrers`) — **used by our project pipeline**
 
 Uses the OCI Referrers API to discover artifacts attached to the image with
 recognized SBOM media types:
@@ -825,8 +825,8 @@ complementary tools can enforce policies:
 **Conforma (Konflux pattern):**
 ```bash
 ec validate image \
-  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v3.0@sha256:DIGEST"}]}' \
-  --policy '{"sources":[{"name":"ctf","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"]}}]}' \
+  --images '{"components":[{"name":"recipe-api","containerImage":"registry.sc.local:30443/recipe-api:v3.0@sha256:DIGEST"}]}' \
+  --policy '{"sources":[{"name":"sc","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"]}}]}' \
   --ignore-rekor \
   --output text
 ```
@@ -836,7 +836,7 @@ ec validate image \
 SSL_CERT_FILE=setup/certs/registry.crt ampel verify \
   sha256:DIGEST \
   --policy challenges/challenge3/security/ampel-policies/verify-build-artifacts.hjson \
-  --collector "coci:localhost:30000/recipe-api@sha256:DIGEST" \
+  --collector "coci:registry.sc.local:30443/recipe-api@sha256:DIGEST" \
   --context "builderId:https://tekton.dev/chains/v2" \
   --format tty
 ```
@@ -882,7 +882,7 @@ kubectl get clusterpolicy secure-base-images
 kubectl describe clusterpolicy secure-base-images
 
 # 2. Test unsigned image rejection
-kubectl run test-unsigned --image=localhost:30000/golang:latest
+kubectl run test-unsigned --image=registry.sc.local:30443/golang:latest
 # Expected: Error from admission webhook
 
 # 3. Verify network policy blocks egress
@@ -916,10 +916,10 @@ If base image poisoning is detected:
    kubectl scale deploy/recipe-api --replicas=0 -n production
    
    # Pull and analyze malicious image for forensics
-   podman save localhost:30000/recipe-api:latest -o evidence.tar
+   podman save registry.sc.local:30443/recipe-api:latest -o evidence.tar
    
    # Delete poisoned image from registry
-   skopeo delete docker://localhost:30000/golang:1.25-alpine
+   skopeo delete docker://registry.sc.local:30443/golang:1.25-alpine
    ```
 
 2. **Investigation:**
@@ -937,11 +937,11 @@ If base image poisoning is detected:
    skopeo inspect docker://docker.io/library/golang:1.23-alpine | jq .Digest
    
    # Push verified image to registry
-   podman tag golang:1.23-alpine localhost:30000/golang:1.25-alpine
-   podman push localhost:30000/golang:1.25-alpine
+   podman tag golang:1.23-alpine registry.sc.local:30443/golang:1.25-alpine
+   podman push registry.sc.local:30443/golang:1.25-alpine
    
    # Rebuild all affected applications
-   kubectl delete pipelinerun --all -n ctf-challenge
+   kubectl delete pipelinerun --all -n ci
    kubectl create -f clean-rebuild-pipeline.yaml
    ```
 

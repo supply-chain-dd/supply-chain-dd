@@ -42,11 +42,11 @@ kubectl get namespace gitea >/dev/null 2>&1 && {
     echo -e "${GREEN}✓${NC} Labeled gitea namespace"
 } || echo -e "${YELLOW}⚠${NC} Gitea namespace not found (will be labeled when created)"
 
-# Label ctf-challenge namespace
-kubectl get namespace ctf-challenge >/dev/null 2>&1 && {
-    kubectl label namespace ctf-challenge kubernetes.io/metadata.name=ctf-challenge --overwrite
-    echo -e "${GREEN}✓${NC} Labeled ctf-challenge namespace"
-} || echo -e "${YELLOW}⚠${NC} CTF challenge namespace not found (will be labeled when created)"
+# Label ci namespace
+kubectl get namespace ci >/dev/null 2>&1 && {
+    kubectl label namespace ci kubernetes.io/metadata.name=ci --overwrite
+    echo -e "${GREEN}✓${NC} Labeled ci namespace"
+} || echo -e "${YELLOW}⚠${NC} deep dive challenge namespace not found (will be labeled when created)"
 
 # Label tekton-pipelines namespace
 kubectl get namespace tekton-pipelines >/dev/null 2>&1 && {
@@ -108,12 +108,12 @@ if [ -d "${SECURITY_DIR}/network-policies" ]; then
         echo -e "${YELLOW}⚠${NC} tekton-pipelines namespace not found (run: make setup-tekton)"
     fi
 
-    # Apply to ctf-challenge namespace if it exists
-    if kubectl get namespace ctf-challenge >/dev/null 2>&1; then
-        echo "Network policies for ctf-challenge are in the same file"
-        echo -e "${GREEN}✓${NC} Network policies configured for ctf-challenge"
+    # Apply to ci namespace if it exists
+    if kubectl get namespace ci >/dev/null 2>&1; then
+        echo "Network policies for ci are in the same file"
+        echo -e "${GREEN}✓${NC} Network policies configured for ci"
     else
-        echo -e "${YELLOW}⚠${NC} ctf-challenge namespace not found (run: make setup-ctf-challenge)"
+        echo -e "${YELLOW}⚠${NC} ci namespace not found (run: make setup-ci-pr-pipeline)"
     fi
 
     # List installed network policies
@@ -135,8 +135,8 @@ echo -e "${BLUE}[4/4] Applying RBAC configurations...${NC}"
 echo "------------------------------------------------"
 
 if [ -f "${SECURITY_DIR}/rbac/minimal-serviceaccounts.yaml" ]; then
-    # Create ctf-challenge namespace if it doesn't exist
-    kubectl create namespace ctf-challenge 2>/dev/null || true
+    # Create ci namespace if it doesn't exist
+    kubectl create namespace ci 2>/dev/null || true
 
     # Apply RBAC configs
     kubectl apply -f "${SECURITY_DIR}/rbac/minimal-serviceaccounts.yaml"
@@ -144,12 +144,12 @@ if [ -f "${SECURITY_DIR}/rbac/minimal-serviceaccounts.yaml" ]; then
 
     # Show created ServiceAccounts
     echo ""
-    echo "ServiceAccounts in ctf-challenge namespace:"
-    kubectl get sa -n ctf-challenge -o custom-columns=NAME:.metadata.name,SECRETS:.secrets[*].name 2>/dev/null || echo "  None found"
+    echo "ServiceAccounts in ci namespace:"
+    kubectl get sa -n ci -o custom-columns=NAME:.metadata.name,SECRETS:.secrets[*].name 2>/dev/null || echo "  None found"
 
     echo ""
     echo "Roles and RoleBindings:"
-    kubectl get role,rolebinding -n ctf-challenge -o custom-columns=KIND:.kind,NAME:.metadata.name 2>/dev/null || echo "  None found"
+    kubectl get role,rolebinding -n ci -o custom-columns=KIND:.kind,NAME:.metadata.name 2>/dev/null || echo "  None found"
 else
     echo -e "${RED}✗${NC} RBAC configuration file not found: ${SECURITY_DIR}/rbac/minimal-serviceaccounts.yaml"
     exit 1

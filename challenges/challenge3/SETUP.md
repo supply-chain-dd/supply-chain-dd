@@ -3,7 +3,7 @@
 ## Prerequisites
 
 Before starting this challenge, you must complete:
-- ✅ **Challenge 1**: To obtain registry credentials (`ctf-admin` / `CTFRegistryPass123!`)
+- ✅ **Challenge 1**: To obtain registry credentials (`sc-admin` / `RegistryPass123!`)
 - ✅ **Challenge 2**: Legitimate base image `golang:1.25-alpine` seeded to registry during Challenge 2 setup
 - ✅ **Environment setup**: KinD cluster, registry, Gitea, and Tekton installed
 
@@ -14,12 +14,12 @@ This challenge demonstrates a **base image poisoning attack** where an attacker 
 ## Attack Prerequisites
 
 From **Challenge 1**, you should have:
-- Registry URL: `https://localhost:30000`
-- Registry credentials: `ctf-admin` / `CTFRegistryPass123!`
+- Registry URL: `https://registry.sc.local:30443`
+- Registry credentials: `sc-admin` / `RegistryPass123!`
 - Registry certificate: `certs/registry.crt`
 
 From **Challenge 2**, the registry should contain:
-- Legitimate base image: `localhost:30000/golang:1.25-alpine`
+- Legitimate base image: `registry.sc.local:30443/golang:1.25-alpine`
 
 ## Initial State Setup
 
@@ -27,12 +27,12 @@ From **Challenge 2**, the registry should contain:
 
 ```bash
 # Login to the registry with stolen credentials from Challenge 1
-podman login localhost:30000 -u ctf-admin -p CTFRegistryPass123!
+podman login registry.sc.local:30443 -u sc-admin -p RegistryPass123!
 
 # Verify you can push images
 podman pull golang:1.23-alpine
-podman tag golang:1.23-alpine localhost:30000/test-image:latest
-podman push localhost:30000/test-image:latest
+podman tag golang:1.23-alpine registry.sc.local:30443/test-image:latest
+podman push registry.sc.local:30443/test-image:latest
 ```
 
 
@@ -43,8 +43,8 @@ The legitimate base image should already exist from Challenge 2 setup:
 ```bash
 # Verify the base image is in the registry
 # From the repo's root
-curl --cacert setup/certs/registry.crt -u ctf-admin:CTFRegistryPass123! \
-  https://localhost:30000/v2/golang/tags/list
+curl --cacert setup/certs/registry.crt -u sc-admin:RegistryPass123! \
+  https://registry.sc.local:30443/v2/golang/tags/list
 
 # Expected output: {"name":"golang","tags":["1.25-alpine"]}
 ```
@@ -57,9 +57,9 @@ make seed-legitimate-base-image
 
 # Or do it manually:
 podman pull golang:1.25-alpine
-podman tag golang:1.25-alpine localhost:30000/golang:1.25-alpine
-podman login localhost:30000 --tls-verify=false -u ctf-admin -p CTFRegistryPass123!
-podman push localhost:30000/golang:1.25-alpine 
+podman tag golang:1.25-alpine registry.sc.local:30443/golang:1.25-alpine
+podman login registry.sc.local:30443 --tls-verify=false -u sc-admin -p RegistryPass123!
+podman push registry.sc.local:30443/golang:1.25-alpine 
 ```
 
 ### 4. Verify Pipeline Configuration
@@ -68,10 +68,10 @@ The Tekton pipeline should build the `recipe-api` using this Dockerfile:
 
 ```bash
 # Check current pipeline runs
-kubectl get pipelineruns -n ctf-challenge
+kubectl get pipelineruns -n ci
 
 # Verify the build task pulls from registry.registry.svc.cluster.local:5000
-tkn pr logs <latest-run> -n ctf-challenge | grep -A5 " from registry "
+tkn pr logs <latest-run> -n ci | grep -A5 " from registry "
 ```
 
 ## Attack Surface
@@ -87,13 +87,13 @@ tkn pr logs <latest-run> -n ctf-challenge | grep -A5 " from registry "
 ## Environment State After Setup
 
 ✅ Registry accessible with valid credentials  
-✅ Legitimate base image `localhost:30000/golang:1.25-alpine` exists  
+✅ Legitimate base image `registry.sc.local:30443/golang:1.25-alpine` exists  
 ✅ Victim repository Dockerfile references local registry base image  
 ✅ Pipeline configured to build from local registry  
 
 ## Next Steps
 
-Proceed to [CTF-CHALLENGE-GUIDE.md](CTF-CHALLENGE-GUIDE.md) to execute the attack.
+Proceed to [ATTACK-GUIDE.md](ATTACK-GUIDE.md) to execute the attack.
 
 ## Troubleshooting
 
@@ -103,21 +103,21 @@ Proceed to [CTF-CHALLENGE-GUIDE.md](CTF-CHALLENGE-GUIDE.md) to execute the attac
 make configure-registry-tls
 
 # Or copy certificate manually
-sudo cp certs/registry.crt /etc/containers/certs.d/localhost:30000/ca.crt
+sudo cp certs/registry.crt /etc/containers/certs.d/registry.sc.local:30443/ca.crt
 ```
 
 ### Base image doesn't exist
 ```bash
 # Re-seed the legitimate base image
 podman pull golang:1.23-alpine
-podman tag golang:1.23-alpine localhost:30000/golang:1.25-alpine
-podman push localhost:30000/golang:1.25-alpine
+podman tag golang:1.23-alpine registry.sc.local:30443/golang:1.25-alpine
+podman push registry.sc.local:30443/golang:1.25-alpine
 ```
 
 ### Can't verify Dockerfile in Gitea
 ```bash
 # Clone the recipe-api repository locally
-git clone http://localhost:30002/ctf-admin/recipe-api.git
+git clone http://gitea.sc.local:30080/sc-admin/recipe-api.git
 cd recipe-api
 cat Dockerfile
 ```

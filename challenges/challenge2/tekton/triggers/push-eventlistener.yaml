@@ -5,7 +5,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
   name: push-build-listener
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   serviceAccountName: tekton-triggers-sa
   triggers:
@@ -30,7 +30,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
 metadata:
   name: push-build-binding
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     # Gitea push webhook format
@@ -50,7 +50,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
   name: push-build-template
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: repo-url
@@ -72,7 +72,7 @@ spec:
       kind: PipelineRun
       metadata:
         generateName: push-build-
-        namespace: ctf-challenge
+        namespace: ci
         labels:
           tekton.dev/pipeline: push-build-pipeline
           git.pusher: $(tt.params.pusher)
@@ -110,14 +110,14 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: tekton-triggers-sa
-  namespace: ctf-challenge
+  namespace: ci
 ---
 # Role with minimal permissions for EventListener
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: tekton-triggers-role
-  namespace: ctf-challenge
+  namespace: ci
 rules:
 # Read Tekton Triggers resources (needed to process webhooks)
 - apiGroups: ["triggers.tekton.dev"]
@@ -161,13 +161,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: tekton-triggers-sa
-    namespace: ctf-challenge
+    namespace: ci
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: tekton-triggers-rolebinding
-  namespace: ctf-challenge
+  namespace: ci
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -175,7 +175,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: tekton-triggers-sa
-    namespace: ctf-challenge
+    namespace: ci
 ---
 # Role for default ServiceAccount (used by TaskRuns)
 # Allows reading secrets for registry authentication
@@ -183,7 +183,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: taskrun-role
-  namespace: ctf-challenge
+  namespace: ci
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
@@ -196,7 +196,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: default-taskrun-rolebinding
-  namespace: ctf-challenge
+  namespace: ci
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -204,14 +204,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: default
-    namespace: ctf-challenge
+    namespace: ci
 ---
 # GitHub/Gitea webhook secret
 apiVersion: v1
 kind: Secret
 metadata:
   name: github-webhook-secret
-  namespace: ctf-challenge
+  namespace: ci
 type: Opaque
 stringData:
   secretToken: "change-me-in-production"

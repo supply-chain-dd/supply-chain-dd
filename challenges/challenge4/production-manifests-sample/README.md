@@ -22,7 +22,7 @@ production-manifests/
     └── kustomization.yaml    # Kustomize configuration
 ```
 
-## Setup Instructions (For CTF Organizers)
+## Setup Instructions (For Organizers)
 
 ### Automated Setup (Recommended)
 
@@ -30,7 +30,7 @@ The easiest way to set up the production-manifests repository is via the automat
 
 ```bash
 # Ensure you're on the production cluster context
-kubectl config use-context kind-ctf-production-cluster
+kubectl config use-context kind-production-cluster
 
 # Seed the repository (creates repo and pushes manifests automatically)
 make seed-production-repo
@@ -47,7 +47,7 @@ If you prefer to set up manually:
 
 #### Step 1: Create Repository in Gitea
 
-1. Log into production Gitea at http://localhost:30004 (not port 30002!)
+1. Log into production Gitea at http://gitea-prod.sc.local:31080 (not port 30002!)
 2. Create a new repository named `production-manifests`
 3. Initialize it as a **public** repository (for easier access)
 
@@ -62,7 +62,7 @@ git add .
 git commit -m "Initial production manifests"
 
 # Add production Gitea remote (port 30004!)
-git remote add origin http://localhost:30004/ctf-admin/production-manifests.git
+git remote add origin http://gitea-prod.sc.local:31080/sc-admin/production-manifests.git
 
 # Push to Gitea
 git push -u origin main
@@ -72,12 +72,12 @@ git push -u origin main
 
 ```bash
 # Clone the repository to verify
-git clone http://localhost:30004/ctf-admin/production-manifests.git /tmp/verify-manifests
+git clone http://gitea-prod.sc.local:31080/sc-admin/production-manifests.git /tmp/verify-manifests
 cd /tmp/verify-manifests
 ls -la recipe-api/
 ```
 
-## For CTF Participants
+## For Participants
 
 You will need to:
 1. Complete Challenge #2 to extract `.env.production` from container image layers
@@ -92,11 +92,11 @@ See `../SETUP.md` for detailed instructions.
 ### Production Namespace
 
 All resources are deployed to the `production` namespace on a separate KinD cluster  
-(`ctf-production-cluster`).
+(`production-cluster`).
 
 ### Application Configuration
 
-- **Image**: `localhost:30000/recipe-api:v1.0` (from Challenge 2)
+- **Image**: `registry.sc.local:30443/recipe-api:v1.0` (from Challenge 2)
 - **Replicas**: 3 (for high availability)
 - **Resources**: CPU 100m-500m, Memory 128Mi-256Mi
 - **Security**: Non-root user, read-only filesystem, dropped capabilities

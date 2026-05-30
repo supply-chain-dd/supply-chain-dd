@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-ctf-production-cluster}"
-REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-registry}"
-REGISTRY_NODE_PORT="${PRODUCTION_REGISTRY_NODE_PORT:-30082}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
 
-REGISTRY_USER="${REGISTRY_USER:-ctf-admin}"
-REGISTRY_PASS="${REGISTRY_PASS:-CTFRegistryPass123!}"
+CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-production-cluster}"
+REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-registry}"
+
+REGISTRY_USER="${REGISTRY_USER:-sc-admin}"
+REGISTRY_PASS="${REGISTRY_PASS:-RegistryPass123!}"
 
 CERT_DIR="$(mktemp -d)"
 trap "rm -rf ${CERT_DIR}" EXIT
@@ -46,9 +48,9 @@ distinguished_name = dn
 
 [dn]
 C = US
-ST = CTF
-L = CTF
-O = CTF Production Registry
+ST = SC
+L = SC
+O = Supply Chain Production Registry
 OU = Security
 CN = localhost
 
@@ -62,7 +64,8 @@ DNS.2 = registry
 DNS.3 = registry.${REGISTRY_NAMESPACE}
 DNS.4 = registry.${REGISTRY_NAMESPACE}.svc
 DNS.5 = registry.${REGISTRY_NAMESPACE}.svc.cluster.local
-DNS.6 = ctf-production-cluster-control-plane.dns.podman
+DNS.6 = ${REGISTRY_PROD_HOST}
+DNS.7 = production-cluster-control-plane.dns.podman
 IP.1 = 127.0.0.1
 EOF
 
@@ -265,14 +268,13 @@ metadata:
   labels:
     app: registry
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: registry
   ports:
   - name: registry
     port: 5000
     targetPort: 5000
-    nodePort: ${REGISTRY_NODE_PORT}
     protocol: TCP
 EOF
 
@@ -285,7 +287,7 @@ metadata:
   namespace: kube-public
 data:
   localRegistryHosting.v1: |
-    host: "https://localhost:${REGISTRY_NODE_PORT}"
+    host: "https://${REGISTRY_PROD_HOST}"
     hostFromContainerRuntime: "https://registry.${REGISTRY_NAMESPACE}.svc.cluster.local:5000"
     hostFromClusterNetwork: "https://registry.${REGISTRY_NAMESPACE}.svc.cluster.local:5000"
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
@@ -300,7 +302,7 @@ kubectl wait --for=condition=ready --timeout=120s pod -l app=registry -n "${REGI
 echo "Creating production namespace and imagePullSecret..."
 kubectl create namespace production 2>/dev/null || echo "  Namespace 'production' already exists"
 kubectl create secret docker-registry production-registry-auth \
-  --docker-server=localhost:${REGISTRY_NODE_PORT} \
+  --docker-server=${REGISTRY_PROD_HOST} \
   --docker-username="${REGISTRY_USER}" \
   --docker-password="${REGISTRY_PASS}" \
   -n production \
@@ -311,9 +313,8 @@ echo "✓ Production registry setup complete!"
 echo ""
 echo "Registry Access Information:"
 echo "============================"
-echo "External (from host):     https://localhost:${REGISTRY_NODE_PORT}"
+echo "External (via Gateway):   https://${REGISTRY_PROD_HOST}"
 echo "Internal (from cluster):  https://registry.${REGISTRY_NAMESPACE}.svc.cluster.local:5000"
-echo "Cross-cluster (podman):   https://ctf-production-cluster-control-plane.dns.podman:${REGISTRY_NODE_PORT}"
 echo ""
 echo "Registry Credentials:"
 echo "===================="

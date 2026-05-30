@@ -6,7 +6,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
   name: pr-quality-check-pipeline
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Quality check pipeline that runs on pull requests.

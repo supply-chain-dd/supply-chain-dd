@@ -5,7 +5,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: quality-check-task
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Runs quality checks on the codebase.

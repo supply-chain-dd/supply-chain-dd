@@ -54,7 +54,7 @@
                                      │  .att (in-toto)   │
                                      └──────────────────┘
 
-  Key insight for your CTF project
+  Key insight for your deep dive project
 
   In your current supply-chain-dd setup, Tekton Chains and the cosign signing key are deployed into the same cluster. The difference from Konflux's production model is:
 

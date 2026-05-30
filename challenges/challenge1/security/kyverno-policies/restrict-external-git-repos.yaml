@@ -22,7 +22,7 @@ spec:
           kinds:
           - PipelineRun
           namespaces:
-          - ctf-challenge
+          - ci
     validate:
       message: >-
         Only internal Gitea repositories are allowed for PR pipelines.

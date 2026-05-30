@@ -45,7 +45,7 @@ make setup-challenge2-tekton
 make trigger-challenge2-build-with-chains
 
 # 4. Verify image was signed
-kubectl get taskruns -n ctf-challenge \
+kubectl get taskruns -n ci \
   -l tekton.dev/pipelineTask=push-container-image \
   -o jsonpath='{.items[*].metadata.annotations.chains\.tekton\.dev/signed}'
 ```
@@ -97,17 +97,17 @@ Tekton Chains uses **simple signing** (similar to Cosign v1):
 
 ```bash
 # Get latest TaskRun that pushed an image
-TASKRUN=$(kubectl get taskruns -n ctf-challenge \
+TASKRUN=$(kubectl get taskruns -n ci \
   -l tekton.dev/pipelineTask=push-container-image \
   --sort-by=.metadata.creationTimestamp -o name | tail -1)
 
 # Check signature status
-kubectl get $TASKRUN -n ctf-challenge \
+kubectl get $TASKRUN -n ci \
   -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signed}'
 # Output: "true" if signed
 
 # View image digest
-kubectl get $TASKRUN -n ctf-challenge \
+kubectl get $TASKRUN -n ci \
   -o jsonpath='{.status.taskResults[?(@.name=="IMAGE_DIGEST")].value}'
 # Output: sha256:abc123...
 ```
@@ -120,10 +120,10 @@ cosign verify \
   --insecure-ignore-tlog \
   --key cosign.pub \
   --registry-cacert=setup/certs/registry.crt \
-  localhost:30000/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:v1.0
 
 # List OCI referrers (SBOM + Source VSA)
-oras discover localhost:30000/recipe-api:v1.0 \
+oras discover registry.sc.local:30443/recipe-api:v1.0 \
   --registry-config ~/.docker/config.json \
   --ca-file setup/certs/registry.crt
 
@@ -133,7 +133,7 @@ cosign verify-attestation \
   --key cosign.pub \
   --type https://slsa.dev/provenance/v0.2 \
   --registry-cacert=setup/certs/registry.crt \
-  localhost:30000/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:v1.0
 ```
 
 ---

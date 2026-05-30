@@ -4,7 +4,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: build-go-app
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Builds the Go application and produces a binary.
@@ -45,7 +45,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: build-container-image
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Builds a container image using Kaniko (rootless builder).
@@ -112,7 +112,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: push-container-image
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Pushes a container image to the local registry using Kaniko.

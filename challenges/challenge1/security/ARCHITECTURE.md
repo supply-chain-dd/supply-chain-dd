@@ -51,7 +51,7 @@ This document visualizes how the security layers work together to prevent the Te
 │ LAYER 3: Network Segmentation (NetworkPolicy)                               │
 │ ────────────────────────────────────────────────────────────────────────    │
 │                                                                               │
-│  Pipeline Pods (ctf-challenge namespace)                                    │
+│  Pipeline Pods (ci namespace)                                    │
 │  ┌─────────────────────────────────────────┐                                │
 │  │                                          │                                │
 │  │  Allowed Egress:                         │                                │
@@ -116,7 +116,7 @@ This document visualizes how the security layers work together to prevent the Te
 
 5. Malicious init() function runs
    ├─> Reads: /var/run/secrets/kubernetes.io/serviceaccount/token
-   └─> Calls K8s API: GET /api/v1/namespaces/ctf-challenge/secrets/ctf-flag
+   └─> Calls K8s API: GET /api/v1/namespaces/ci/secrets/registry-credentials
        └─> Response: {"data": {"flag": "RkxBR3t0M2t0MG5fcHduX3IzcXUzc3RfMXNfZDRuZzNyMHVzfQ=="}}
 
 6. Exfiltrates stolen secret
@@ -157,11 +157,11 @@ This document visualizes how the security layers work together to prevent the Te
 
 6. Malicious init() function runs
    ├─> Reads: /var/run/secrets/kubernetes.io/serviceaccount/token
-   └─> Calls K8s API: GET /api/v1/namespaces/ctf-challenge/secrets/ctf-flag
+   └─> Calls K8s API: GET /api/v1/namespaces/ci/secrets/registry-credentials
 
    ❌ BLOCKED by RBAC Layer 2
    └─> HTTP 403 Forbidden
-       "User system:serviceaccount:ctf-challenge:pr-pipeline-readonly
+       "User system:serviceaccount:ci:pr-pipeline-readonly
         cannot get resource 'secrets'"
 
 7. Attacker tries alternative: exfiltrate environment variables
@@ -316,7 +316,7 @@ Security Posture Metrics:
 
 ## 🎓 Learning Path
 
-### For CTF Participants
+### For Participants
 
 1. **Beginner**: Understand the attack
    - Read ATTACK-ANALYSIS.md

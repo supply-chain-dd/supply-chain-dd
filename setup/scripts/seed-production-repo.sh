@@ -6,15 +6,16 @@
 
 set -euo pipefail
 
-CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-ctf-production-cluster}"
-GITEA_HTTP_PORT="${GITEA_HTTP_PORT:-30004}"
-GITEA_URL="http://localhost:$GITEA_HTTP_PORT"
-GITEA_USER="ctf-admin"
-GITEA_PASS="CTFSecurePass123!"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
+CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-production-cluster}"
+GITEA_URL="http://${GITEA_PROD_HOST}"
+GITEA_USER="sc-admin"
+GITEA_PASS="SecurePass123!"
 REPO_NAME="production-manifests"
-PRODUCTION_REGISTRY_NODE_PORT="${PRODUCTION_REGISTRY_NODE_PORT:-30082}"
-REGISTRY_USER="${REGISTRY_USER:-ctf-admin}"
-REGISTRY_PASS="${REGISTRY_PASS:-CTFRegistryPass123!}"
+REGISTRY_USER="${REGISTRY_USER:-sc-admin}"
+REGISTRY_PASS="${REGISTRY_PASS:-RegistryPass123!}"
 
 echo "==> Seeding production-manifests repository to production Gitea..."
 
@@ -74,7 +75,7 @@ cp -r challenges/challenge4/production-manifests-sample/* "$TEMP_DIR/"
 echo "Querying image digest from production registry..."
 IMAGE_DIGEST=$(skopeo inspect --tls-verify=false \
   --creds "${REGISTRY_USER}:${REGISTRY_PASS}" \
-  "docker://localhost:${PRODUCTION_REGISTRY_NODE_PORT}/recipe-api:v1.0" 2>/dev/null | jq -r '.Digest') || true
+  "docker://${REGISTRY_PROD_HOST}/recipe-api:v1.0" 2>/dev/null | jq -r '.Digest') || true
 
 if [ -z "$IMAGE_DIGEST" ] || [ "$IMAGE_DIGEST" = "null" ]; then
     echo "Warning: Could not retrieve image digest from production registry."
@@ -89,7 +90,7 @@ fi
 if ! kubectl get secret production-registry-auth -n production &>/dev/null; then
     echo "Creating imagePullSecret in production namespace..."
     kubectl create secret docker-registry production-registry-auth \
-      --docker-server="localhost:${PRODUCTION_REGISTRY_NODE_PORT}" \
+      --docker-server="${REGISTRY_PROD_HOST}" \
       --docker-username="${REGISTRY_USER}" \
       --docker-password="${REGISTRY_PASS}" \
       -n production --dry-run=client -o yaml | kubectl apply -f -
@@ -98,8 +99,8 @@ fi
 # Initialize git repository
 cd "$TEMP_DIR"
 git init
-git config user.name "CTF Admin"
-git config user.email "ctf-admin@ctf.local"
+git config user.name "SC Admin"
+git config user.email "sc-admin@sc.local"
 git add .
 git commit -m "Initial production manifests for recipe-api"
 

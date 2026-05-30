@@ -6,7 +6,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: git-clone
-  namespace: ctf-challenge
+  namespace: ci
   annotations:
     security/trust-level: "untrusted-input"
     description: "Clones git repositories including untrusted PR forks"
@@ -62,7 +62,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: print-info
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: Print PR information
   params:
@@ -95,7 +95,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: print-results
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: Print quality check results
   workspaces:
@@ -117,7 +117,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: build-go-app
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Builds the Go application and produces a binary.

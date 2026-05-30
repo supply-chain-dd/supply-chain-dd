@@ -17,7 +17,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: verify-source-provenance
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: repo-url
@@ -136,7 +136,7 @@ spec:
         echo ""
 
         cat > /tmp/source-vsa.json <<EOF
-        {"_type":"https://in-toto.io/Statement/v1","subject":[{"uri":"git+${VERIFIED_URL}","digest":{"gitCommit":"${VERIFIED_COMMIT}"}}],"predicateType":"https://slsa.dev/verification_summary/v1","predicate":{"verifier":{"id":"https://ctf-cluster/tekton-source-verifier"},"timeVerified":"${TIMESTAMP}","resourceUri":"git+${VERIFIED_URL}","verifiedLevels":["SLSA_SOURCE_LEVEL_1"],"policy":{"uri":"ctf-challenge/source-verification-policy"},"verificationResult":"PASSED"}}
+        {"_type":"https://in-toto.io/Statement/v1","subject":[{"uri":"git+${VERIFIED_URL}","digest":{"gitCommit":"${VERIFIED_COMMIT}"}}],"predicateType":"https://slsa.dev/verification_summary/v1","predicate":{"verifier":{"id":"https://ci-cluster/tekton-source-verifier"},"timeVerified":"${TIMESTAMP}","resourceUri":"git+${VERIFIED_URL}","verifiedLevels":["SLSA_SOURCE_LEVEL_1"],"policy":{"uri":"ci/source-verification-policy"},"verificationResult":"PASSED"}}
         EOF
 
         echo "Source VSA:"
@@ -161,7 +161,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: create-source-vsa
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: IMAGE_URL

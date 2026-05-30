@@ -4,7 +4,7 @@ metadata:
   name: argocd
   labels:
     name: argocd
-    ctf-challenge: challenge4
+    sc-challenge: challenge4
 
 ---
 apiVersion: v1
@@ -14,4 +14,4 @@ metadata:
   labels:
     name: production
     environment: production
-    ctf-challenge: challenge4
+    sc-challenge: challenge4

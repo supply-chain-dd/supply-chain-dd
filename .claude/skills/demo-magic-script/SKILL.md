@@ -1,11 +1,11 @@
 ---
 name: demo-magic-script
-description: Create demo-magic interactive demo scripts for the supply-chain-dd CTF project. Use this skill whenever the user asks to create a demo script, a demo-magic script, a walkthrough script, a presentation script, or any interactive step-by-step bash demo. Also use when the user says "create a demo for challenge X", "write a demo script", "make a demo-magic script", or references *-demo.sh files.
+description: Create demo-magic interactive demo scripts for the supply-chain-dd deep dive project. Use this skill whenever the user asks to create a demo script, a demo-magic script, a walkthrough script, a presentation script, or any interactive step-by-step bash demo. Also use when the user says "create a demo for challenge X", "write a demo script", "make a demo-magic script", or references *-demo.sh files.
 ---
 
 # Demo-Magic Script Creator
 
-Create interactive step-by-step demo scripts using the demo-magic framework for the supply-chain-dd CTF project.
+Create interactive step-by-step demo scripts using the demo-magic framework for the supply-chain-dd deep dive project.
 
 ## Key Rules
 
@@ -55,7 +55,7 @@ fi
 p "Titre principal de la démo"
 
 p "1. Première étape — description en français"
-pe "kubectl get pods -n ctf-challenge"
+pe "kubectl get pods -n ci"
 
 p "2. Deuxième étape"
 pe "some-command --flag value"
@@ -68,7 +68,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: demo
-  namespace: ctf-challenge
+  namespace: ci
 YAML
 
 pe "kubectl apply -f /tmp/demo-resource.yaml"
@@ -110,11 +110,11 @@ p "  PHASE 3 — APRÈS : Vérification"
 ### Dynamic values
 Extract values from the cluster for use in later commands:
 ```bash
-POD_NAME=$(kubectl get pods -n ctf-challenge -l app=victim -o name 2>/dev/null | head -1)
+POD_NAME=$(kubectl get pods -n ci -l app=victim -o name 2>/dev/null | head -1)
 if [ -z "$POD_NAME" ]; then
     echo "⚠ Aucun pod trouvé."
 else
-    pe "kubectl describe ${POD_NAME} -n ctf-challenge"
+    pe "kubectl describe ${POD_NAME} -n ci"
 fi
 ```
 
@@ -126,7 +126,7 @@ apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
   name: test-demo
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   # ...
 YAML
@@ -137,13 +137,13 @@ Use `<<'YAML'` (single-quoted delimiter) when the content has no variable substi
 ### Error handling
 Use `|| true` for commands that might fail but shouldn't stop the demo:
 ```bash
-pe "kubectl delete pipelinerun old-run -n ctf-challenge 2>/dev/null || true"
+pe "kubectl delete pipelinerun old-run -n ci 2>/dev/null || true"
 ```
 
 ### Makefile integration
 Reference Makefile targets when they exist:
 ```bash
-pe "make -C ${PROJECT_ROOT} setup-ctf-challenge-secure"
+pe "make -C ${PROJECT_ROOT} setup-ci-pr-pipeline-secure"
 ```
 
 ### Next-step pointers

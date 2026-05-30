@@ -124,14 +124,14 @@ make setup-challenge2-tekton   # Creates secrets and deploys tasks
 make trigger-challenge2-build-with-chains
 
 # Monitor
-tkn pipelinerun logs -f -n ctf-challenge
+tkn pipelinerun logs -f -n ci
 
 # After the pipeline finishes, validate with Conforma:
 SSL_CERT_FILE=certs/registry.crt \
 ec validate image \
-  --image localhost:30000/recipe-api:v1.0@sha256:<digest> \
+  --image registry.sc.local:30443/recipe-api:v1.0@sha256:<digest> \
   --public-key cosign.pub \
-  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
+  --policy '{"sources":[{"name":"sc-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
   --ignore-rekor --output text
 ```
 
@@ -157,26 +157,26 @@ After running the Chains-compatible pipeline:
 
 ```bash
 # Check that the push TaskRun was signed by Chains
-TASKRUN=$(kubectl get taskruns -n ctf-challenge \
+TASKRUN=$(kubectl get taskruns -n ci \
   -l tekton.dev/pipelineTask=push-container-image \
   --sort-by=.metadata.creationTimestamp -o name | tail -1)
 
-kubectl get $TASKRUN -n ctf-challenge \
+kubectl get $TASKRUN -n ci \
   -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signed}'
 # Expected: "true"
 
 # View the image digest from the task result
-kubectl get $TASKRUN -n ctf-challenge \
+kubectl get $TASKRUN -n ci \
   -o jsonpath='{.status.taskResults[?(@.name=="IMAGE_DIGEST")].value}'
 
 # Verify cosign signature from the host (requires cosign CLI)
 cosign verify --insecure-ignore-tlog \
   --key cosign.pub \
   --registry-cacert certs/registry.crt \
-  localhost:30000/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:v1.0
 
 # List OCI referrers (SBOM + Source VSA)
-oras discover localhost:30000/recipe-api:v1.0 \
+oras discover registry.sc.local:30443/recipe-api:v1.0 \
   --registry-config ~/.docker/config.json \
   --ca-file certs/registry.crt
 ```

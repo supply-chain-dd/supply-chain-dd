@@ -8,16 +8,15 @@
 clear
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../../setup/scripts/domains.sh"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REGISTRY_CA="${REPO_ROOT}/setup/certs/registry.crt"
-REGISTRY_URL="localhost:30000"
+REGISTRY_URL="${REGISTRY_HOST}"
 IMAGE_NAME="recipe-api"
 IMAGE_TAG="v2.0"
 IMAGE_REF="${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}"
-REKOR_NODE_PORT="${REKOR_NODE_PORT:-30006}"
-TUF_NODE_PORT="${TUF_NODE_PORT:-30007}"
-REKOR_URL_LOCAL="http://localhost:${REKOR_NODE_PORT}"
-TUF_MIRROR_LOCAL="http://localhost:${TUF_NODE_PORT}"
+REKOR_URL_LOCAL="http://${REKOR_HOST}"
+TUF_MIRROR_LOCAL="http://${TUF_HOST}"
 
 if ! command -v cosign &>/dev/null; then
     echo "cosign n'est pas installe. Voir: https://docs.sigstore.dev/cosign/installation/"
@@ -90,9 +89,9 @@ p "Pas de cle privee a gerer — le certificat est ephemere (10 min)"
 p "  SECTION 4 — Integration dans la pipeline"
 p "Chains surveille les TaskRuns qui emettent deux resultats : IMAGE_URL et IMAGE_DIGEST"
 
-pe "kubectl get task push-container-image-with-chains -n ctf-challenge -oyaml"
+pe "kubectl get task push-container-image-with-chains -n ci -oyaml"
 
-pe "kubectl get pipeline push-build-pipeline-with-chains -n ctf-challenge -o jsonpath='{.spec.results[*].name}' && echo"
+pe "kubectl get pipeline push-build-pipeline-with-chains -n ci -o jsonpath='{.spec.results[*].name}' && echo"
 p "CHAINS-GIT_COMMIT et CHAINS-GIT_URL sont des type hints pour la provenance SLSA"
 p "Chains les inclut automatiquement dans les 'materials' de l'attestation"
 
@@ -106,23 +105,23 @@ p "Declenchons la pipeline avec Chains et observons les artefacts generes"
 pe "kubectl create -f ${SCRIPT_DIR}/tekton/manual-pipelinerun-with-chains.yaml"
 
 sleep 3
-LATEST_PR=$(kubectl get pipelineruns -n ctf-challenge --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+LATEST_PR=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
 
 p "Suivi des logs en temps reel..."
 if command -v tkn &>/dev/null; then
-    pei "tkn pr logs -f ${LATEST_PR} -n ctf-challenge"
+    pei "tkn pr logs -f ${LATEST_PR} -n ci"
 else
     p "tkn non disponible — attente de la fin de la pipeline..."
-    kubectl wait --for=condition=Succeeded pipelinerun/${LATEST_PR} -n ctf-challenge --timeout=600s 2>/dev/null || true
+    kubectl wait --for=condition=Succeeded pipelinerun/${LATEST_PR} -n ci --timeout=600s 2>/dev/null || true
 fi
 
-pe "kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.status.conditions[0].reason}' && echo"
+pe "kubectl get pipelinerun ${LATEST_PR} -n ci -o jsonpath='{.status.conditions[0].reason}' && echo"
 
 p "La pipeline est terminee — Tekton Chains signe maintenant l'image en arriere-plan"
 p "Attente de la signature par Chains..."
 
 for i in $(seq 1 12); do
-    SIGNED=$(kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signed}' 2>/dev/null)
+    SIGNED=$(kubectl get pipelinerun ${LATEST_PR} -n ci -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signed}' 2>/dev/null)
     [ "$SIGNED" = "true" ] && break
     sleep 5
 done
@@ -138,18 +137,18 @@ fi
 p "  SECTION 6 — Artefacts generes par Tekton Chains"
 
 p "6.1 Annotations Chains sur le PipelineRun"
-pe "kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.metadata.annotations}' | jq '{\"chains.tekton.dev/signed\": .[\"chains.tekton.dev/signed\"], \"chains.tekton.dev/transparency\": .[\"chains.tekton.dev/transparency\"]}'"
+pe "kubectl get pipelinerun ${LATEST_PR} -n ci -o jsonpath='{.metadata.annotations}' | jq '{\"chains.tekton.dev/signed\": .[\"chains.tekton.dev/signed\"], \"chains.tekton.dev/transparency\": .[\"chains.tekton.dev/transparency\"]}'"
 p "chains.tekton.dev/signed: true — Chains a signe ce PipelineRun"
 
 p "6.2 Resultats IMAGE_URL et IMAGE_DIGEST de la pipeline"
-pe "kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.status.results}' | jq '.[] | select(.name==\"IMAGE_URL\" or .name==\"IMAGE_DIGEST\") | {name, value}'"
+pe "kubectl get pipelinerun ${LATEST_PR} -n ci -o jsonpath='{.status.results}' | jq '.[] | select(.name==\"IMAGE_URL\" or .name==\"IMAGE_DIGEST\") | {name, value}'"
 
-IMAGE_DIGEST=$(kubectl get pipelinerun ${LATEST_PR} -n ctf-challenge -o jsonpath='{.status.results[?(@.name=="IMAGE_DIGEST")].value}' 2>/dev/null)
+IMAGE_DIGEST=$(kubectl get pipelinerun ${LATEST_PR} -n ci -o jsonpath='{.status.results[?(@.name=="IMAGE_DIGEST")].value}' 2>/dev/null)
 
 p "6.3 Verification keyless de la signature de l'image avec cosign"
 p "Initialisation du TUF root pour faire confiance au Fulcio/Rekor local"
 TUF_ROOT_FILE=$(mktemp)
-kubectl get configmap sigstore-tuf-root -n ctf-challenge -o jsonpath='{.data.root\.json}' > "${TUF_ROOT_FILE}"
+kubectl get configmap sigstore-tuf-root -n ci -o jsonpath='{.data.root\.json}' > "${TUF_ROOT_FILE}"
 pe "cosign initialize --mirror=${TUF_MIRROR_LOCAL} --root=${TUF_ROOT_FILE}"
 
 pe "cosign verify \

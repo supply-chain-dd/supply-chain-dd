@@ -6,11 +6,13 @@
 
 set -euo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-ctf-cluster}"
-GITEA_HTTP_PORT="${GITEA_HTTP_PORT:-30002}"
-GITEA_URL="http://localhost:$GITEA_HTTP_PORT"
-GITEA_USER="${GITEA_USER:-ctf-admin}"
-GITEA_PASS="${GITEA_PASS:-CTFSecurePass123!}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
+CLUSTER_NAME="${CLUSTER_NAME:-ci-cluster}"
+GITEA_URL="http://${GITEA_HOST}"
+GITEA_USER="${GITEA_USER:-sc-admin}"
+GITEA_PASS="${GITEA_PASS:-SecurePass123!}"
 REPO_NAME="${REPO_NAME:-recipe-api}"
 WEBHOOK_SECRET="${WEBHOOK_SECRET:-change-me-in-production}"
 
@@ -22,7 +24,7 @@ echo ""
 # Verify we're on the right cluster
 CURRENT_CONTEXT=$(kubectl config current-context)
 if [[ ! "$CURRENT_CONTEXT" =~ "$CLUSTER_NAME" ]]; then
-    echo "❌ Error: Not on CTF cluster context."
+    echo "❌ Error: Not on CI cluster context."
     echo "Current context: $CURRENT_CONTEXT"
     echo "Expected: kind-$CLUSTER_NAME"
     echo ""
@@ -56,18 +58,18 @@ echo "Getting Tekton EventListener endpoints..."
 
 # Get PR EventListener endpoint (Challenge 1)
 # EventListeners use ClusterIP services, so we use cluster-internal DNS
-if kubectl get svc el-pr-quality-check-listener -n ctf-challenge >/dev/null 2>&1; then
-    PR_LISTENER_URL="http://el-pr-quality-check-listener.ctf-challenge.svc.cluster.local:8080"
+if kubectl get svc el-pr-quality-check-listener -n ci >/dev/null 2>&1; then
+    PR_LISTENER_URL="http://el-pr-quality-check-listener.ci.svc.cluster.local:8080"
     echo "  ✓ PR Listener: $PR_LISTENER_URL"
 else
     echo "⚠  Warning: PR EventListener not found (Challenge 1)"
-    echo "   Run: make setup-ctf-challenge"
+    echo "   Run: make setup-ci-pr-pipeline"
     PR_LISTENER_URL=""
 fi
 
 # Get Push EventListener endpoint (Challenge 2)
-if kubectl get svc el-push-build-listener -n ctf-challenge >/dev/null 2>&1; then
-    PUSH_LISTENER_URL="http://el-push-build-listener.ctf-challenge.svc.cluster.local:8080"
+if kubectl get svc el-push-build-listener -n ci >/dev/null 2>&1; then
+    PUSH_LISTENER_URL="http://el-push-build-listener.ci.svc.cluster.local:8080"
     echo "  ✓ Push Listener: $PUSH_LISTENER_URL"
 else
     echo "⚠  Warning: Push EventListener not found (Challenge 2)"
@@ -174,5 +176,5 @@ echo "  • Challenge 1: Create a pull request in Gitea"
 echo "  • Challenge 2: Push a commit to main branch"
 echo ""
 echo "Monitor pipeline runs:"
-echo "  kubectl get pipelineruns -n ctf-challenge -w"
+echo "  kubectl get pipelineruns -n ci -w"
 echo ""

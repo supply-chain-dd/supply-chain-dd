@@ -23,7 +23,7 @@ spec:
           - Task
           - TaskRun
           namespaces:
-          - ctf-challenge
+          - ci
     validate:
       message: >-
         WARNING: Task contains 'go run' command which executes arbitrary code.
@@ -42,7 +42,7 @@ spec:
           kinds:
           - Task
           namespaces:
-          - ctf-challenge
+          - ci
     validate:
       message: >-
         WARNING: Task executes scripts directly from checked-out repository.

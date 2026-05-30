@@ -6,13 +6,16 @@
 
 set -euo pipefail
 
-CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-ctf-production-cluster}"
-GITEA_HELM_VERSION="${GITEA_HELM_VERSION:-v12.5.0}"  # Same version as CTF cluster
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
+CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-production-cluster}"
+GITEA_HELM_VERSION="${GITEA_HELM_VERSION:-v12.5.0}"  # Same version as CI cluster
 GITEA_NAMESPACE="gitea"
-GITEA_ADMIN_USER="ctf-admin"
-GITEA_ADMIN_PASSWORD="CTFSecurePass123!"
-GITEA_HTTP_PORT="${GITEA_HTTP_PORT:-30004}"  # Different port to avoid conflict with CTF cluster
-GITEA_SSH_PORT="${GITEA_SSH_PORT:-30005}"
+GITEA_ADMIN_USER="sc-admin"
+GITEA_ADMIN_PASSWORD="SecurePass123!"
+PRODUCTION_GITEA_HTTP_PORT="${PRODUCTION_GITEA_HTTP_PORT:-30004}"  # NodePort for Helm config
+PRODUCTION_GITEA_SSH_PORT="${GITEA_PROD_SSH_PORT}"  # From domains.sh
 
 echo "==> Installing Gitea on production cluster..."
 
@@ -48,12 +51,12 @@ helm upgrade --install gitea gitea-charts/gitea \
   --version "$GITEA_HELM_VERSION" \
   --namespace "$GITEA_NAMESPACE" \
   --set service.http.type=NodePort \
-  --set service.http.nodePort="$GITEA_HTTP_PORT" \
+  --set service.http.nodePort="$PRODUCTION_GITEA_HTTP_PORT" \
   --set service.ssh.type=NodePort \
-  --set service.ssh.nodePort="$GITEA_SSH_PORT" \
+  --set service.ssh.nodePort="$PRODUCTION_GITEA_SSH_PORT" \
   --set gitea.admin.username="$GITEA_ADMIN_USER" \
   --set gitea.admin.password="$GITEA_ADMIN_PASSWORD" \
-  --set gitea.admin.email="admin@ctf.local" \
+  --set gitea.admin.email="admin@sc.local" \
   --set redis-cluster.enabled=false \
   --set postgresql-ha.enabled=false \
   --set postgresql.enabled=false \
@@ -77,15 +80,15 @@ echo ""
 echo "✓ Gitea $GITEA_HELM_VERSION installed successfully on production cluster!"
 echo ""
 echo "Access Gitea:"
-echo "  Web UI: http://localhost:$GITEA_HTTP_PORT"
-echo "  SSH: ssh://git@localhost:$GITEA_SSH_PORT"
-echo "  Username: ctf-admin"
-echo "  Password: CTFSecurePass123!"
+echo "  Web UI: http://${GITEA_PROD_HOST}"
+echo "  SSH: ssh://git@${GITEA_PROD_HOST}:${GITEA_PROD_SSH_PORT}"
+echo "  Username: sc-admin"
+echo "  Password: SecurePass123!"
 echo ""
 echo "Internal cluster URL (for ArgoCD):"
 echo "  http://gitea-http.gitea.svc.cluster.local:3000"
 echo ""
 echo "Next steps:"
 echo "  1. Seed production-manifests repository: make seed-production-repo"
-echo "  2. Configure ArgoCD application: kubectl apply -f challenges/challenge4/argocd/recipe-api-application.yaml"
+echo "  2. Configure ArgoCD application: kubectl apply -f challenges/e2e-scenario/argocd/recipe-api-application.yaml"
 echo ""

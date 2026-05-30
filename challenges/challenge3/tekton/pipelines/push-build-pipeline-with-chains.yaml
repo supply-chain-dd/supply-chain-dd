@@ -40,14 +40,14 @@
 #   - Tasks: push-container-image-with-chains, scan-image, scan-vulnerabilities,
 #            generate-sbom (build-tasks-with-chains.yaml in this repo)
 #   - All other tasks: git-clone, build-go-app, quality-check-task
-#   - Secret:    cosign-signing-secret in ctf-challenge (cosign.key + cosign.password)
-#   - ConfigMap: registry-ca-cert      in ctf-challenge (key: ca.crt)
-#   - Secret:    registry-docker-config in ctf-challenge
+#   - Secret:    cosign-signing-secret in ci (cosign.key + cosign.password)
+#   - ConfigMap: registry-ca-cert      in ci (key: ca.crt)
+#   - Secret:    registry-docker-config in ci
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
   name: push-build-pipeline-with-chains
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: repo-url
@@ -60,7 +60,7 @@ spec:
     - name: trusted-repo-url
       type: string
       description: Trusted source repository URL (source verification checks repo-url against this)
-      default: "http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git"
+      default: "http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git"
     - name: image-name
       type: string
       description: Container image name

@@ -21,12 +21,12 @@
 
 * De l’IA dans tout ça : Mytho! 😂 https://www.redhat.com/en/blog/navigating-mythos-haunted-world-platform-security?sc_cid=701f2000000txokAAA&utm_source=bambu&utm_medium=organic_social 
 
-## on CTF preparation
+## on CTF preparation (external references)
 
 * https://www.skybound.link/2025/11/kubecon-na-2025-ctf-writeup/ 
 * https://blog.martino.wtf/posts/kubecon-in-25-ctf/ 
 * https://hackrocks.com/blog/tips-and-tactics-for-creating-your-own-capture-the-flag-ctf 
-* [KCD Denmark 2024: KubeCapture: Audience Driven Capture the Flag Session - Jonas Felix A real CTF of the supply chain attack](https://www.youtube.com/watch?v=wiP6hvRKNDg)
+* [KCD Denmark 2024: KubeCapture: Audience Driven Capture the Flag Session - Jonas Felix](https://www.youtube.com/watch?v=wiP6hvRKNDg)
 
 ## on Kubernetes security
 

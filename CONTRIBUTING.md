@@ -1,6 +1,6 @@
-# Contributing to Supply Chain CTF
+# Contributing to Supply Chain Deep Dive
 
-Thank you for your interest in contributing to this supply chain security CTF project! This guide will help you understand the project structure and contribution workflow.
+Thank you for your interest in contributing to this supply chain security deep dive project! This guide will help you understand the project structure and contribution workflow.
 
 ## Getting Started
 
@@ -16,7 +16,7 @@ Thank you for your interest in contributing to this supply chain security CTF pr
 
 ```
 ├── setup/                    # Environment provisioning scripts
-├── challenges/               # CTF challenges
+├── challenges/               # deep dive challenges
 │   └── challenge*/          # Individual challenge directories
 ├── CLAUDE.md                # AI agent instructions
 ├── AGENTS.md                # Detailed AI agent guidelines
@@ -36,7 +36,7 @@ Each challenge directory **must** contain these documentation files:
    - Configuration steps for attack preparation
    - Verification commands
 
-2. **CTF-CHALLENGE-GUIDE.md**
+2. **ATTACK-GUIDE.md**
    - Step-by-step attack walkthrough for participants
    - Commands to execute the attack
    - Expected outputs and flags
@@ -67,7 +67,7 @@ Each challenge directory **must** contain these documentation files:
 | Change Type | Update This File |
 |-------------|------------------|
 | Environment setup steps | `SETUP.md` |
-| Attack execution steps | `CTF-CHALLENGE-GUIDE.md` |
+| Attack execution steps | `ATTACK-GUIDE.md` |
 | Attack explanation or real-world examples | `ATTACK-ANALYSIS.md` |
 | Detection/prevention methods | `SECURITY-GUIDE.md` |
 
@@ -103,8 +103,8 @@ Before submitting a pull request:
 
 2. **Challenge test** (if applicable):
    ```bash
-   make setup-ctf-challenge
-   # Follow steps in CTF-CHALLENGE-GUIDE.md
+   make setup-ci-pr-pipeline
+   # Follow steps in ATTACK-GUIDE.md
    ```
 
 3. **Security tools test** (if applicable):
@@ -121,7 +121,7 @@ Before submitting a pull request:
 ## Adding a New Challenge
 
 1. Create challenge directory: `challenges/challengeN/`
-2. Create all required documentation files (SETUP.md, CTF-CHALLENGE-GUIDE.md, ATTACK-ANALYSIS.md, SECURITY-GUIDE.md)
+2. Create all required documentation files (SETUP.md, ATTACK-GUIDE.md, ATTACK-ANALYSIS.md, SECURITY-GUIDE.md)
 3. Add vulnerable configurations in `tekton/`
 4. Add security controls in `security/` and `tekton-patched/`
 5. Create Makefile targets:
@@ -176,7 +176,7 @@ fix: Correct registry TLS configuration in setup-registry.sh
 
 ## Security Considerations
 
-- **Never commit real secrets or credentials** (use placeholders like `CTF*` patterns)
+- **Never commit real secrets or credentials** (use placeholders like placeholder patterns)
 - Ensure vulnerable configurations are **clearly marked** and isolated
 - Test security policies don't break legitimate workflows
 - Document security tool findings and remediation
@@ -203,7 +203,7 @@ fix: Correct registry TLS configuration in setup-registry.sh
 - Be respectful and inclusive
 - Provide constructive feedback
 - Focus on learning and improving security knowledge
-- This is an educational CTF project—help others learn!
+- This is an educational deep dive project—help others learn!
 
 ---
 

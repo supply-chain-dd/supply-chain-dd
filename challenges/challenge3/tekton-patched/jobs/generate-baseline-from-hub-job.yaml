@@ -14,7 +14,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: generate-baseline-from-hub
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 300

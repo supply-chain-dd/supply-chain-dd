@@ -16,7 +16,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: push-container-image-with-chains
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Pushes a container image to the local registry using Kaniko and emits
@@ -97,7 +97,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: wait-for-chains
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Waits a configurable number of seconds for Tekton Chains to sign the pushed image
@@ -136,18 +136,18 @@ spec:
 # Functionally equivalent to the official task:
 #   IMAGES → ec --image  (ApplicationSnapshot JSON stripped to containerImage)
 #   PUBLIC_KEY → --public-key  (cosign.pub mounted from Secret cosign-public-key)
-#   IGNORE_REKOR → --ignore-rekor  (Rekor not deployed in CTF cluster)
+#   IGNORE_REKOR → --ignore-rekor  (Rekor not deployed in CI cluster)
 #   CA_TRUST_* → SSL_CERT_DIR  (local registry self-signed CA)
 #   STRICT → --strict  (false = report only; true = fail pipeline)
 #
 # Prerequisites (created by make setup-challenge2-tekton):
-#   Secret    cosign-public-key  in ctf-challenge  (key: cosign.pub)
-#   ConfigMap registry-ca-cert   in ctf-challenge  (key: ca.crt)
+#   Secret    cosign-public-key  in ci  (key: cosign.pub)
+#   ConfigMap registry-ca-cert   in ci  (key: ca.crt)
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: verify-with-conforma
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Validates a container image against Conforma policy using the public ec CLI binary.
@@ -162,13 +162,13 @@ spec:
       type: string
       description: Inline policy JSON or conforma/config path (e.g. github.com/conforma/config//minimal)
       default: >-
-        {"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}
+        {"sources":[{"name":"sc-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":[]}}]}
     - name: PUBLIC_KEY
       type: string
       description: >-
         cosign k8s reference to the signing public key Secret,
-        e.g. k8s://ctf-challenge/cosign-public-key
-      default: "k8s://ctf-challenge/cosign-public-key"
+        e.g. k8s://ci/cosign-public-key
+      default: "k8s://ci/cosign-public-key"
     - name: IGNORE_REKOR
       type: string
       description: Skip Rekor transparency log checks (true | false)
@@ -195,7 +195,7 @@ spec:
         Extra rule data for the policy evaluator. Format: key=value.
         Multiple entries can be passed via repeated --extra-rule-data flags.
       default: >-
-        allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","localhost:30000","docker.io","gcr.io","golang"]
+        allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","registry.sc.local:30443","docker.io","gcr.io","golang"]
     - name: CONFORMA_VERSION
       type: string
       description: Conforma CLI GitHub release tag
@@ -293,7 +293,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: generate-sbom
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Generates an SPDX JSON SBOM for a container image using Trivy, then
@@ -502,7 +502,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: scan-image
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Scans a container image for secrets using Trivy.

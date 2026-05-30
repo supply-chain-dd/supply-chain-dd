@@ -1,7 +1,7 @@
 package main
 
 /*
- * MALICIOUS PAYLOAD EXAMPLE - FOR CTF EDUCATIONAL PURPOSES ONLY
+ * MALICIOUS PAYLOAD EXAMPLE - FOR EDUCATIONAL PURPOSES ONLY
  *
  * This demonstrates the token theft attack in Tekton Pipelines
  * Similar to the GitHub Actions "Pwn Request" vulnerability

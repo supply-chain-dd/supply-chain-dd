@@ -24,12 +24,12 @@ This will create:
 
 Set up a webhook on the `recipe-api` repository to trigger the pipeline on push events:
 
-1. **Access Gitea**: Navigate to http://localhost:30002/ctf-admin/recipe-api/settings/hooks
+1. **Access Gitea**: Navigate to http://gitea.sc.local:30080/sc-admin/recipe-api/settings/hooks
 
 2. **Add Webhook**: Click "Add Webhook" → "Gitea"
 
 3. **Configure Webhook** with these settings:
-   - **Target URL**: `http://el-push-build-listener.ctf-challenge.svc.cluster.local:8080`
+   - **Target URL**: `http://el-push-build-listener.ci.svc.cluster.local:8080`
    - **HTTP Method**: `POST`
    - **POST Content Type**: `application/json`
    - **Secret**: `change-me-in-production` (value from `github-webhook-secret`)
@@ -40,7 +40,7 @@ Set up a webhook on the `recipe-api` repository to trigger the pipeline on push 
 
 **Get the webhook secret value:**
 ```bash
-kubectl get secret github-webhook-secret -n ctf-challenge -o jsonpath='{.data.secretToken}' | base64 -d
+kubectl get secret github-webhook-secret -n ci -o jsonpath='{.data.secretToken}' | base64 -d
 ```
 
 ### Step 3: Trigger Initial Build to Populate Registry
@@ -53,11 +53,11 @@ Push a commit to the `recipe-api` main branch to trigger the pipeline and build 
 cd /tmp/gitea/recipe-api
 
 # Make a change and push
-git commit --allow-empty -m "Initial build for CTF"
+git commit --allow-empty -m "Initial build for the deep dive"
 git push origin main
 
 # Monitor the pipeline
-kubectl get pipelineruns -n ctf-challenge -w
+kubectl get pipelineruns -n ci -w
 ```
 
 **Option B: Manual Trigger**
@@ -66,7 +66,7 @@ kubectl get pipelineruns -n ctf-challenge -w
 make trigger-challenge2-build
 
 # Monitor progress
-tkn pipelinerun logs -f -n ctf-challenge
+tkn pipelinerun logs -f -n ci
 ```
 
 ### Step 3b (Optional): Trigger Supply-Chain-Aware Build
@@ -90,7 +90,7 @@ make setup-challenge2-tekton
 make trigger-challenge2-build-with-chains
 
 # Monitor progress (the verify-enterprise-contract step takes ~60s)
-tkn pipelinerun logs -f -n ctf-challenge
+tkn pipelinerun logs -f -n ci
 ```
 
 The pipeline stages are:
@@ -110,28 +110,28 @@ without blocking the build. Challenge 3 sets `strict=true` to enforce policy.
 cd challenges/victim-repo-sample
 
 # Build the image with git history
-podman build -t localhost:30000/recipe-api:v1.0 -f Dockerfile .
+podman build -t registry.sc.local:30443/recipe-api:v1.0 -f Dockerfile .
 
 # Login to registry
-podman login localhost:30000 --tls-verify=false \
-  -u ctf-admin -p CTFRegistryPass123!
+podman login registry.sc.local:30443 --tls-verify=false \
+  -u sc-admin -p RegistryPass123!
 
 # Push the vulnerable image
-podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman push registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 ```
 
 ### Step 4: Verify Setup
 
 ```bash
 # Check that the image is in the registry
-curl -k -u ctf-admin:CTFRegistryPass123! \
-  https://localhost:30000/v2/recipe-api/tags/list
+curl -k -u sc-admin:RegistryPass123! \
+  https://registry.sc.local:30443/v2/recipe-api/tags/list
 
 # Should return: {"name":"recipe-api","tags":["v1.0"]}
 
 # Verify git history is leaked in the image
-podman pull localhost:30000/recipe-api:v1.0 --tls-verify=false
-podman save localhost:30000/recipe-api:v1.0 -o /tmp/test-image.tar
+podman pull registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
+podman save registry.sc.local:30443/recipe-api:v1.0 -o /tmp/test-image.tar
 tar -tf /tmp/test-image.tar | grep -q "\.git" && echo "✓ Git history present in image layers"
 ```
 
@@ -150,16 +150,16 @@ The environment is now ready for participants to exploit!
 
 ## Attack Scenario
 
-After successfully exploiting the Tekton pipeline in Attack #1, the attacker has obtained registry credentials from the `ctf-flag` secret:
+After successfully exploiting the Tekton pipeline in Attack #1, the attacker has obtained registry credentials from the `registry-credentials` secret:
 
 ```bash
 # From Attack #1 flag:
 FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}
 
-# Registry credentials available in ctf-flag secret:
-registry-url: https://localhost:30000
-registry-user: ctf-admin
-registry-password: CTFRegistryPass123!
+# Registry credentials available in registry-credentials secret:
+registry-url: https://registry.sc.local:30443
+registry-user: sc-admin
+registry-password: RegistryPass123!
 next-target: recipe-api:v1.0
 ```
 
@@ -207,12 +207,12 @@ Container images are built using a **layered filesystem**:
 - Layer N+1: `RUN rm -rf .git` → Only marks `.git` as deleted in THIS layer
 - Result: `.git` content is **still extractable** from Layer N
 
-## Setup (For CTF Organizers)
+## Setup (For Organizers)
 
 The attack is already set up if you've completed the initial environment setup:
 
-1. **Registry is running** on `https://localhost:30000`
-2. **Image is built and pushed** to `localhost:30000/recipe-api:v1.0`
+1. **Registry is running** on `https://registry.sc.local:30443`
+2. **Image is built and pushed** to `registry.sc.local:30443/recipe-api:v1.0`
 3. **Flag is updated** in Attack #1 to include registry credentials
 4. **Git history** contains `.env.production` with secrets
 
@@ -223,8 +223,8 @@ The attack is already set up if you've completed the initial environment setup:
 kubectl get pods -n registry
 
 # Verify image exists
-curl -k -u ctf-admin:CTFRegistryPass123! \
-  https://localhost:30000/v2/_catalog
+curl -k -u sc-admin:RegistryPass123! \
+  https://registry.sc.local:30443/v2/_catalog
 
 # Should show: {"repositories":["recipe-api"]}
 ```
@@ -235,18 +235,18 @@ curl -k -u ctf-admin:CTFRegistryPass123! \
 # 1. Build the image (from this directory)
 cd /home/skhoury/go/src/github.com/sherine-k/supply-chain-dd/challenges/victim-repo-sample
 
-podman build -t localhost:30000/recipe-api:v1.0 -f Dockerfile .
+podman build -t registry.sc.local:30443/recipe-api:v1.0 -f Dockerfile .
 
 # 2. Login to registry
-podman login localhost:30000 --tls-verify=false \
-  -u ctf-admin \
-  -p CTFRegistryPass123!
+podman login registry.sc.local:30443 --tls-verify=false \
+  -u sc-admin \
+  -p RegistryPass123!
 
 # 3. Push the image
-podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman push registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 ```
 
-## For CTF Participants
+## For Participants
 
 ### Starting Point
 
@@ -257,11 +257,11 @@ FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}
 
 The flag hints at: `registry_layer_leak`
 
-You also have access to the `ctf-flag` secret in the `ctf-challenge` namespace:
+You also have access to the `registry-credentials` secret in the `ci` namespace:
 
 ```bash
 # Retrieve registry credentials
-kubectl get secret ctf-flag -n ctf-challenge -o json | jq -r '.data | map_values(@base64d)'
+kubectl get secret registry-credentials -n ci -o json | jq -r '.data | map_values(@base64d)'
 ```
 
 ### Your Mission
@@ -285,14 +285,14 @@ See [ATTACK2-EXPLOITATION-GUIDE.md](./ATTACK2-EXPLOITATION-GUIDE.md) for:
 
 ```bash
 # 1. Login to registry
-podman login localhost:30000 --tls-verify=false \
-  -u ctf-admin -p CTFRegistryPass123!
+podman login registry.sc.local:30443 --tls-verify=false \
+  -u sc-admin -p RegistryPass123!
 
 # 2. Pull the image
-podman pull localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman pull registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 
 # 3. Save as tar
-podman save localhost:30000/recipe-api:v1.0 -o recipe-api.tar
+podman save registry.sc.local:30443/recipe-api:v1.0 -o recipe-api.tar
 
 # 4. Extract
 mkdir extracted && tar -xf recipe-api.tar -C extracted/

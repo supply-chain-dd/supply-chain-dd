@@ -23,11 +23,11 @@ spec:
     - name: production-registry-url
       type: string
       description: Production registry URL
-      default: "ctf-production-cluster-control-plane.dns.podman:30082"
+      default: "production-cluster-control-plane.dns.podman:30082"
     - name: production-gitea-url
       type: string
       description: Production Gitea URL
-      default: "http://ctf-production-cluster-control-plane.dns.podman:30004"
+      default: "http://production-cluster-control-plane.dns.podman:30004"
   tasks:
     - name: copy-image-to-production
       taskRef:

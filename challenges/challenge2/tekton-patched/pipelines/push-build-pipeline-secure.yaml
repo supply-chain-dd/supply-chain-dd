@@ -20,13 +20,13 @@
 #   - Tasks: verify-source-provenance, create-source-vsa (verify-source-task.yaml)
 #   - Tasks: push-container-image-with-chains, scan-image (build-tasks-with-chains.yaml)
 #   - Tasks: git-clone, build-go-app, quality-check-task (supporting-tasks.yaml, build-tasks.yaml)
-#   - Secret:    registry-docker-config in ctf-challenge
-#   - ConfigMap: registry-ca-cert       in ctf-challenge
+#   - Secret:    registry-docker-config in ci
+#   - ConfigMap: registry-ca-cert       in ci
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
   name: push-build-pipeline-secure
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Secured build pipeline with source verification and image scanning.
@@ -42,7 +42,7 @@ spec:
     - name: trusted-repo-url
       type: string
       description: Trusted source repository URL (source verification checks repo-url against this)
-      default: "http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git"
+      default: "http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git"
     - name: image-name
       type: string
       description: Container image name

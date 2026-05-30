@@ -6,7 +6,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
   name: push-build-listener
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   serviceAccountName: tekton-triggers-sa
   triggers:
@@ -31,7 +31,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
 metadata:
   name: push-build-binding
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: repo-url
@@ -51,7 +51,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
   name: push-build-template
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: repo-url
@@ -73,7 +73,7 @@ spec:
       kind: PipelineRun
       metadata:
         generateName: push-build-secure-
-        namespace: ctf-challenge
+        namespace: ci
         labels:
           tekton.dev/pipeline: push-build-pipeline-with-chains-secure
           git.pusher: $(tt.params.pusher)
@@ -115,14 +115,14 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: tekton-triggers-sa
-  namespace: ctf-challenge
+  namespace: ci
 ---
 # Role with minimal permissions for EventListener
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: tekton-triggers-role
-  namespace: ctf-challenge
+  namespace: ci
 rules:
 - apiGroups: ["triggers.tekton.dev"]
   resources: ["triggerbindings", "triggertemplates", "eventlisteners", "interceptors", "triggers"]
@@ -159,13 +159,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: tekton-triggers-sa
-    namespace: ctf-challenge
+    namespace: ci
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: tekton-triggers-rolebinding
-  namespace: ctf-challenge
+  namespace: ci
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -173,14 +173,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: tekton-triggers-sa
-    namespace: ctf-challenge
+    namespace: ci
 ---
 # GitHub/Gitea webhook secret
 apiVersion: v1
 kind: Secret
 metadata:
   name: github-webhook-secret
-  namespace: ctf-challenge
+  namespace: ci
 type: Opaque
 stringData:
   secretToken: "change-me-in-production"

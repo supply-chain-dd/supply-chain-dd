@@ -11,7 +11,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: quality-check-task
-  namespace: ctf-challenge
+  namespace: ci
   annotations:
     security/trust-level: "untrusted-execution"
     security/required-serviceaccount: "pr-pipeline-readonly"
