@@ -69,7 +69,7 @@ trap "rm -rf $TEMP_DIR" EXIT
 
 # Copy production manifests
 echo "Copying production manifests..."
-cp -r challenges/challenge4/production-manifests-sample/* "$TEMP_DIR/"
+cp -r challenges/e2e-scenario/production-manifests-sample/* "$TEMP_DIR/"
 
 # Query image digest from production registry and substitute placeholder
 echo "Querying image digest from production registry..."
@@ -123,6 +123,6 @@ echo "  Clone URL (external): $GITEA_URL/$GITEA_USER/$REPO_NAME.git"
 echo "  Clone URL (internal): http://gitea-http.gitea.svc.cluster.local:3000/$GITEA_USER/$REPO_NAME.git"
 echo ""
 echo "Next steps:"
-echo "  1. Apply ArgoCD application: kubectl apply -f challenges/challenge4/argocd/recipe-api-application.yaml"
+echo "  1. Apply ArgoCD application: kubectl apply -f challenges/e2e-scenario/argocd/recipe-api-application.yaml"
 echo "  2. Verify ArgoCD sync: kubectl get applications -n argocd"
 echo ""

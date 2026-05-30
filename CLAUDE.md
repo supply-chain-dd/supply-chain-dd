@@ -141,7 +141,8 @@ Each challenge must contain:
 │   │       │   └── sbom-baseline-check.rego
 │   │       └── ampel-policies/
 │   │           └── verify-build-artifacts.hjson
-│   ├── challenge4/                 # Attack #4: GitOps Compromise (Coming soon)
+│   ├── challenge4/                 # Attack #4: GitOps Compromise (security/attack content)
+│   ├── e2e-scenario/               # E2E workflow demo (Tekton release pipeline, ArgoCD, production manifests)
 │   └── victim-repo-sample/         # Shared victim application
 ├── gitea/                          # Gitea configurations
 ├── certs/                          # Registry TLS certificates (generated)

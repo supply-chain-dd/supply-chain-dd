@@ -5,7 +5,7 @@
 .PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build trigger-challenge2-build-with-chains
 .PHONY: setup-sigstore-local verify-sigstore-local setup-challenge2-tekton-keyless trigger-challenge2-build-keyless
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3 setup-challenge3-tekton trigger-challenge3-build-with-chains
-.PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
+.PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-e2e-scenario verify-e2e-scenario clean-e2e-scenario apply-challenge4-security test-challenge4-attack
 .PHONY: setup-release-pipeline trigger-release-pipeline
 .PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard
 .PHONY: setup-gateway setup-gateway-production configure-hosts
@@ -1009,7 +1009,7 @@ trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipelin
 # Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ci-pr-pipeline setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-challenge4 setup-release-pipeline configure-production-registry-tls verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ci-pr-pipeline setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-e2e-scenario setup-release-pipeline configure-production-registry-tls verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
 	@echo ""
 	@echo "Restoring kubectl context to CI cluster..."
 	@kubectl config use-context kind-$(CLUSTER_NAME)
@@ -1292,26 +1292,26 @@ setup-release-pipeline: ## Deploy release pipeline resources (namespace, tasks, 
 		--from-literal=password=SecurePass123! \
 		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
 	@echo "Applying Tekton release pipeline resources..."
-	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/release-namespace.yaml
-	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/tasks/release-tasks.yaml
-	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/pipelines/release-pipeline.yaml
-	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/triggers/release-eventlistener.yaml
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/e2e-scenario/tekton/release-namespace.yaml
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/e2e-scenario/tekton/tasks/release-tasks.yaml
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/e2e-scenario/tekton/pipelines/release-pipeline.yaml
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/e2e-scenario/tekton/triggers/release-eventlistener.yaml
 	@echo "✓ Release pipeline resources deployed in release-pipeline namespace"
 
 trigger-release-pipeline: ## Manually trigger the release pipeline
-	@kubectl --context kind-$(CLUSTER_NAME) create -f challenges/challenge4/tekton/manual-release-pipelinerun.yaml
+	@kubectl --context kind-$(CLUSTER_NAME) create -f challenges/e2e-scenario/tekton/manual-release-pipelinerun.yaml
 	@echo "✓ Release pipeline triggered. Monitor: kubectl get pipelineruns -n release-pipeline -w"
 
-setup-challenge4: setup-production-cluster setup-production-registry setup-gateway-production setup-production-gitea push-recipe-api-to-production setup-argocd seed-production-repo ## Complete Challenge 4 setup
+setup-e2e-scenario: setup-production-cluster setup-production-registry setup-gateway-production setup-production-gitea push-recipe-api-to-production setup-argocd seed-production-repo ## Complete Challenge 4 setup
 	@echo ""
 	@echo "Applying ArgoCD application..."
-	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/argocd/recipe-api-application.yaml
+	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/e2e-scenario/argocd/recipe-api-application.yaml
 	@echo ""
 	@echo "Waiting for ArgoCD to sync application..."
 	@sleep 5
 	@echo ""
 	@echo "========================================"
-	@echo "Challenge 4 Setup Complete"
+	@echo "E2E Scenario Setup Complete"
 	@echo "========================================"
 	@echo ""
 	@echo "✓ Production KinD cluster created: $(PRODUCTION_CLUSTER_NAME)"
@@ -1322,13 +1322,13 @@ setup-challenge4: setup-production-cluster setup-production-registry setup-gatew
 	@echo "✓ ArgoCD application deployed (recipe-api-production)"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  1. Verify setup: make verify-challenge4"
+	@echo "  1. Verify setup: make verify-e2e-scenario"
 	@echo "  2. Check ArgoCD sync status: kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get applications -n argocd"
-	@echo "  3. Start the attack: challenges/challenge4/ATTACK-GUIDE.md"
+	@echo "  3. Run the E2E demo: challenges/e2e-scenario/e2e-demo.sh"
 	@echo ""
 
-verify-challenge4: ## Verify Challenge 4 setup
-	@echo "Verifying Challenge 4 setup..."
+verify-e2e-scenario: ## Verify E2E scenario setup
+	@echo "Verifying E2E scenario setup..."
 	@echo ""
 	@echo "Production Cluster:"
 	@kind get clusters | grep -q "$(PRODUCTION_CLUSTER_NAME)" && echo "  ✓ Production cluster exists" || echo "  ❌ Production cluster not found"
@@ -1349,8 +1349,8 @@ verify-challenge4: ## Verify Challenge 4 setup
 	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get deployment -n production 2>/dev/null || echo "  ⚠ No deployments in production namespace yet"
 	@echo ""
 
-clean-challenge4: ## Cleanup Challenge 4 (delete production cluster)
-	@echo "Cleaning up Challenge 4..."
+clean-e2e-scenario: ## Cleanup E2E scenario (delete production cluster)
+	@echo "Cleaning up E2E scenario..."
 	@kind delete cluster --name $(PRODUCTION_CLUSTER_NAME) 2>/dev/null || true
 	@echo "✓ Production cluster deleted"
 

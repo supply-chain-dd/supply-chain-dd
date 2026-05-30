@@ -268,13 +268,14 @@ metadata:
   labels:
     app: registry
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: registry
   ports:
   - name: registry
     port: 5000
     targetPort: 5000
+    nodePort: 30082
     protocol: TCP
 EOF
 

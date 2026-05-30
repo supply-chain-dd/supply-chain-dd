@@ -38,20 +38,20 @@ helm repo update
 
 # Create namespaces
 echo "Creating namespaces..."
-kubectl apply -f challenges/challenge4/argocd/namespace.yaml
+kubectl apply -f challenges/e2e-scenario/argocd/namespace.yaml
 
 # Install ArgoCD with vulnerable configuration
 echo "Installing ArgoCD..."
 helm install argocd argo/argo-cd \
   --namespace "$ARGOCD_NAMESPACE" \
   --version "$ARGOCD_VERSION" \
-  --values challenges/challenge4/argocd/argocd-values.yaml \
+  --values challenges/e2e-scenario/argocd/argocd-values.yaml \
   --wait \
   --timeout 5m
 
 # Apply vulnerable RBAC
 echo "Applying vulnerable RBAC configuration..."
-kubectl apply -f challenges/challenge4/argocd/vulnerable-rbac.yaml
+kubectl apply -f challenges/e2e-scenario/argocd/vulnerable-rbac.yaml
 
 # Wait for ArgoCD to be ready
 echo "Waiting for ArgoCD to be ready..."
@@ -72,7 +72,7 @@ rm /tmp/admin-password-hash
 
 # Configure ArgoCD to accept the leaked token from Challenge 2
 echo "Configuring leaked ArgoCD token..."
-"$SCRIPT_DIR/../../challenges/challenge4/scripts/setup-argocd-token.sh" "$ARGOCD_NAMESPACE"
+"$SCRIPT_DIR/../../challenges/e2e-scenario/scripts/setup-argocd-token.sh" "$ARGOCD_NAMESPACE"
 
 # Get the leaked token for display
 LEAKED_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjpsb2dpbiIsIm5iZiI6MTcxMjMyMTQwMCwiaWF0IjoxNzEyMzIxNDAwLCJqdGkiOiJjdGYtZGVwbG95ZXIifQ.Q3RGX0RlcGxveV9Ub2tlbl9TdXBlclNlY3JldCE"
@@ -121,5 +121,5 @@ echo "  argocd app list --auth-token=\"\$ARGOCD_AUTH_TOKEN\" --server ${ARGOCD_H
 echo ""
 echo "Next steps:"
 echo "  1. Create production-manifests repository in Gitea"
-echo "  2. Apply ArgoCD application: kubectl apply -f challenges/challenge4/argocd/recipe-api-application.yaml"
+echo "  2. Apply ArgoCD application: kubectl apply -f challenges/e2e-scenario/argocd/recipe-api-application.yaml"
 echo ""
