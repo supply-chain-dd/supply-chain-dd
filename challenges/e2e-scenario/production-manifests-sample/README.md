@@ -54,7 +54,7 @@ If you prefer to set up manually:
 #### Step 2: Push Manifests to Gitea
 
 ```bash
-cd challenges/challenge4/production-manifests-sample
+cd challenges/e2e-scenario/production-manifests-sample
 
 # Initialize git repository
 git init
