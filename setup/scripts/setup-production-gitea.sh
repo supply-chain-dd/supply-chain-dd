@@ -85,6 +85,30 @@ echo "  SSH: ssh://git@${GITEA_PROD_HOST}:${GITEA_PROD_SSH_PORT}"
 echo "  Username: sc-admin"
 echo "  Password: SecurePass123!"
 echo ""
+# Create Gateway HTTPRoute for production Gitea
+if kubectl get gateway sc-local -n envoy-gateway-system &>/dev/null; then
+    echo "Creating Gateway HTTPRoute for production Gitea..."
+    kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gitea-prod
+  namespace: gitea
+spec:
+  parentRefs:
+  - name: sc-local
+    namespace: envoy-gateway-system
+    sectionName: http
+  hostnames:
+  - "${GITEA_PROD_DOMAIN}"
+  rules:
+  - backendRefs:
+    - name: gitea-http
+      port: 3000
+EOF
+    echo "  ✓ Gitea Gateway route created"
+fi
+
 echo "Internal cluster URL (for ArgoCD):"
 echo "  http://gitea-http.gitea.svc.cluster.local:3000"
 echo ""

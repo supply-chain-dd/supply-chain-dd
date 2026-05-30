@@ -8,7 +8,7 @@
 .PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
 .PHONY: setup-release-pipeline trigger-release-pipeline
 .PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard
-.PHONY: setup-gateway configure-hosts
+.PHONY: setup-gateway setup-gateway-production configure-hosts
 
 CLUSTER_NAME ?= ci-cluster
 GITEA_HELM_VERSION ?= v12.5.0
@@ -293,8 +293,11 @@ setup-registry: ## Setup local Docker registry with authentication
 configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 	@cd setup && ./scripts/configure-registry-tls.sh
 
-setup-gateway: ## Deploy Gateway API with Envoy Gateway for *.sc.local domains
+setup-gateway: ## Deploy Gateway API with Envoy Gateway for *.sc.local domains (ci cluster)
 	@cd setup && ./scripts/setup-gateway.sh ci
+
+setup-gateway-production: ## Deploy Gateway API with Envoy Gateway for *.sc.local domains (production cluster)
+	@cd setup && ./scripts/setup-gateway.sh production
 
 configure-hosts: ## Configure /etc/hosts for *.sc.local domain resolution
 	@./setup/scripts/configure-hosts.sh
@@ -1025,7 +1028,7 @@ setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-securi
 	@echo ""
 	@echo "  Production Cluster (Challenge 4):"
 	@echo "    Gitea:    http://gitea-prod.sc.local:31080"
-	@echo "    ArgoCD:   https://argocd.sc.local:31443"
+	@echo "    ArgoCD:   http://argocd.sc.local:31080"
 	@echo "    Username: sc-admin / admin (ArgoCD)"
 	@echo "    Password: SecurePass123! / admin123 (ArgoCD)"
 	@echo ""
@@ -1299,7 +1302,7 @@ trigger-release-pipeline: ## Manually trigger the release pipeline
 	@kubectl --context kind-$(CLUSTER_NAME) create -f challenges/challenge4/tekton/manual-release-pipelinerun.yaml
 	@echo "✓ Release pipeline triggered. Monitor: kubectl get pipelineruns -n release-pipeline -w"
 
-setup-challenge4: setup-production-cluster setup-production-registry setup-production-gitea push-recipe-api-to-production setup-argocd seed-production-repo ## Complete Challenge 4 setup
+setup-challenge4: setup-production-cluster setup-production-registry setup-gateway-production setup-production-gitea push-recipe-api-to-production setup-argocd seed-production-repo ## Complete Challenge 4 setup
 	@echo ""
 	@echo "Applying ArgoCD application..."
 	@kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) apply -f challenges/challenge4/argocd/recipe-api-application.yaml

@@ -106,8 +106,13 @@ git commit -m "Initial production manifests for recipe-api"
 
 # Push to Gitea
 echo "Pushing to production Gitea..."
-git remote add origin "$GITEA_URL/$GITEA_USER/$REPO_NAME.git"
-git push -u origin main
+#git remote add origin "$GITEA_URL/$GITEA_USER/$REPO_NAME.git"
+#git push -u origin main
+# Construct URL with embedded credentials
+GITEA_URL_WITH_CREDS="http://$GITEA_USER:$GITEA_PASS@${GITEA_PROD_HOST}"
+git remote add origin "$GITEA_URL_WITH_CREDS/$GITEA_USER/$REPO_NAME.git" 2>/dev/null || \
+    git remote set-url origin "$GITEA_URL_WITH_CREDS/$GITEA_USER/$REPO_NAME.git"
+git push -u origin main --force
 
 echo ""
 echo "==> Production-manifests repository seeded successfully!"

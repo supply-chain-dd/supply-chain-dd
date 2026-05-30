@@ -308,7 +308,7 @@ kubectl wait --for=condition=ready --timeout=120s pod -l app=registry -n "${REGI
 if kubectl get gateway sc-local -n envoy-gateway-system &>/dev/null; then
     echo "Creating Gateway TLSRoute for registry..."
     kubectl apply -f - <<EOF
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: registry
