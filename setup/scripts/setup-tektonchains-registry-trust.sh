@@ -6,16 +6,16 @@ echo "Configuring Tekton Chains Registry Trust"
 echo "=========================================="
 echo ""
 
-# Check if registry CA cert exists in ctf-challenge namespace
-if ! kubectl get configmap registry-ca-cert -n ctf-challenge &>/dev/null; then
-    echo "❌ registry-ca-cert ConfigMap not found in ctf-challenge namespace"
+# Check if registry CA cert exists in ci namespace
+if ! kubectl get configmap registry-ca-cert -n ci &>/dev/null; then
+    echo "❌ registry-ca-cert ConfigMap not found in ci namespace"
     echo "   Please run: make setup-registry"
     exit 1
 fi
 
 echo "Step 1: Copying registry CA certificate to tekton-chains namespace..."
-kubectl get configmap registry-ca-cert -n ctf-challenge -o yaml | \
-    sed 's/namespace: ctf-challenge/namespace: tekton-chains/' | \
+kubectl get configmap registry-ca-cert -n ci -o yaml | \
+    sed 's/namespace: ci/namespace: tekton-chains/' | \
     kubectl apply -f -
 echo "  ✓ ConfigMap copied to tekton-chains namespace"
 

@@ -11,14 +11,14 @@
 #   4. SBOM SPDX ID + name pairs match baseline (detects image tampering)
 #
 # Prerequisites:
-#   - ConfigMap: registry-ca-cert      in ctf-challenge (ca.crt)
-#   - Secret:    registry-docker-config in ctf-challenge
-#   - ConfigMap: golang-baseline-sbom   in ctf-challenge (baseline-spdx-packages.json)
+#   - ConfigMap: registry-ca-cert      in ci (ca.crt)
+#   - Secret:    registry-docker-config in ci
+#   - ConfigMap: golang-baseline-sbom   in ci (baseline-spdx-packages.json)
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: verify-base-image
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: |
     Verifies base images referenced in the Dockerfile before the build step.

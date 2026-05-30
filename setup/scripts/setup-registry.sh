@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-ctf-cluster}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
+CLUSTER_NAME="${CLUSTER_NAME:-ci-cluster}"
 REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-registry}"
-REGISTRY_NODE_PORT="${REGISTRY_NODE_PORT:-30000}"
 
 # Registry credentials
-REGISTRY_USER="${REGISTRY_USER:-ctf-admin}"
-REGISTRY_PASS="${REGISTRY_PASS:-CTFRegistryPass123!}"
+REGISTRY_USER="${REGISTRY_USER:-sc-admin}"
+REGISTRY_PASS="${REGISTRY_PASS:-RegistryPass123!}"
 
 # TLS configuration
 CERT_DIR="$(mktemp -d)"
@@ -40,9 +42,9 @@ distinguished_name = dn
 
 [dn]
 C = US
-ST = CTF
-L = CTF
-O = CTF Registry
+ST = SC
+L = SC
+O = Supply Chain Registry
 OU = Security
 CN = localhost
 
@@ -56,6 +58,7 @@ DNS.2 = registry
 DNS.3 = registry.${REGISTRY_NAMESPACE}
 DNS.4 = registry.${REGISTRY_NAMESPACE}.svc
 DNS.5 = registry.${REGISTRY_NAMESPACE}.svc.cluster.local
+DNS.6 = ${REGISTRY_DOMAIN}
 IP.1 = 127.0.0.1
 EOF
 
@@ -270,14 +273,13 @@ metadata:
   labels:
     app: registry
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: registry
   ports:
   - name: registry
     port: 5000
     targetPort: 5000
-    nodePort: ${REGISTRY_NODE_PORT}
     protocol: TCP
 EOF
 
@@ -291,7 +293,7 @@ metadata:
   namespace: kube-public
 data:
   localRegistryHosting.v1: |
-    host: "https://localhost:${REGISTRY_NODE_PORT}"
+    host: "https://${REGISTRY_HOST}"
     hostFromContainerRuntime: "https://registry.${REGISTRY_NAMESPACE}.svc.cluster.local:5000"
     hostFromClusterNetwork: "https://registry.${REGISTRY_NAMESPACE}.svc.cluster.local:5000"
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
@@ -302,14 +304,37 @@ echo "Waiting for registry to be ready..."
 kubectl wait --for=condition=available --timeout=120s deployment/registry -n "${REGISTRY_NAMESPACE}"
 kubectl wait --for=condition=ready --timeout=120s pod -l app=registry -n "${REGISTRY_NAMESPACE}"
 
+# Create Gateway TLSRoute if Gateway exists
+if kubectl get gateway sc-local -n envoy-gateway-system &>/dev/null; then
+    echo "Creating Gateway TLSRoute for registry..."
+    kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  name: registry
+  namespace: ${REGISTRY_NAMESPACE}
+spec:
+  parentRefs:
+  - name: sc-local
+    namespace: envoy-gateway-system
+    sectionName: registry-passthrough
+  hostnames:
+  - "${REGISTRY_DOMAIN}"
+  rules:
+  - backendRefs:
+    - name: registry
+      port: 5000
+EOF
+    echo "  ✓ Registry Gateway route created"
+fi
+
 echo ""
 echo "✓ Registry setup complete!"
 echo ""
 echo "Registry Access Information:"
 echo "============================"
-echo "External (from host):     https://localhost:${REGISTRY_NODE_PORT}"
+echo "External (via Gateway):   https://${REGISTRY_HOST}"
 echo "Internal (from cluster):  https://registry.${REGISTRY_NAMESPACE}.svc.cluster.local:5000"
-echo "Internal (short):         https://registry.${REGISTRY_NAMESPACE}:5000"
 echo ""
 echo "Registry Credentials:"
 echo "===================="
@@ -320,45 +345,14 @@ echo "TLS Certificate:"
 echo "================"
 echo "Location: ${CERTS_OUTPUT_DIR}/registry.crt"
 echo ""
-echo "⚠️  IMPORTANT: Configure TLS trust before using the registry!"
-echo ""
-echo "For Podman (recommended):"
-echo "-------------------------"
-echo "  # Create certificates directory"
-echo "  sudo mkdir -p /etc/containers/certs.d/localhost:${REGISTRY_NODE_PORT}"
-echo "  sudo cp ${CERTS_OUTPUT_DIR}/registry.crt /etc/containers/certs.d/localhost:${REGISTRY_NODE_PORT}/ca.crt"
-echo ""
-echo "  # Alternative: System-wide trust (Fedora/RHEL)"
-echo "  sudo cp ${CERTS_OUTPUT_DIR}/registry.crt /etc/pki/ca-trust/source/anchors/registry.crt"
-echo "  sudo update-ca-trust"
-echo ""
-echo "For Docker:"
-echo "-----------"
-echo "  # Create certificates directory"
-echo "  sudo mkdir -p /etc/docker/certs.d/localhost:${REGISTRY_NODE_PORT}"
-echo "  sudo cp ${CERTS_OUTPUT_DIR}/registry.crt /etc/docker/certs.d/localhost:${REGISTRY_NODE_PORT}/ca.crt"
-echo "  sudo systemctl restart docker"
-echo ""
-echo "  # Alternative: Insecure registry (NOT RECOMMENDED)"
-echo "  # Add to /etc/docker/daemon.json:"
-echo "  # {\"insecure-registries\": [\"localhost:${REGISTRY_NODE_PORT}\"]}"
+echo "⚠  Configure TLS trust before using the registry:"
+echo "  make configure-registry-tls"
 echo ""
 echo "Test registry access:"
 echo "====================="
-echo "  # After configuring TLS, test with your container runtime:"
-echo "  # Using Podman:"
-echo "  podman login localhost:${REGISTRY_NODE_PORT} -u ${REGISTRY_USER} -p ${REGISTRY_PASS}"
-echo "  podman tag nginx:latest localhost:${REGISTRY_NODE_PORT}/nginx:test"
-echo "  podman push localhost:${REGISTRY_NODE_PORT}/nginx:test"
+echo "  podman login ${REGISTRY_HOST} -u ${REGISTRY_USER} -p ${REGISTRY_PASS}"
+echo "  podman tag nginx:latest ${REGISTRY_HOST}/nginx:test"
+echo "  podman push ${REGISTRY_HOST}/nginx:test"
 echo ""
-echo "  # Using Docker:"
-echo "  docker login localhost:${REGISTRY_NODE_PORT} -u ${REGISTRY_USER} -p ${REGISTRY_PASS}"
-echo "  docker tag nginx:latest localhost:${REGISTRY_NODE_PORT}/nginx:test"
-echo "  docker push localhost:${REGISTRY_NODE_PORT}/nginx:test"
-echo ""
-echo "  # List images in registry:"
-echo "  curl --cacert ${CERTS_OUTPUT_DIR}/registry.crt -u ${REGISTRY_USER}:${REGISTRY_PASS} https://localhost:${REGISTRY_NODE_PORT}/v2/_catalog"
-echo ""
-echo "  # Or bypass TLS verification (testing only):"
-echo "  curl -k -u ${REGISTRY_USER}:${REGISTRY_PASS} https://localhost:${REGISTRY_NODE_PORT}/v2/_catalog"
+echo "  curl --cacert ${CERTS_OUTPUT_DIR}/registry.crt -u ${REGISTRY_USER}:${REGISTRY_PASS} https://${REGISTRY_HOST}/v2/_catalog"
 echo ""

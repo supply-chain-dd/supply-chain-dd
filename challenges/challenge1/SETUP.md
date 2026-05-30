@@ -1,6 +1,6 @@
 # Challenge 1: Tekton Token Theft - Setup Guide
 
-This guide walks you through setting up the victim repository and webhook configuration for the Tekton PWN Request CTF challenge.
+This guide walks you through setting up the victim repository and webhook configuration for the Tekton PWN Request deep dive challenge.
 
 ## Prerequisites
 
@@ -9,12 +9,12 @@ Before proceeding, ensure you have completed the main environment setup:
 ```bash
 make setup                    # Setup cluster, Gitea, Tekton, and registry
 make configure-registry-tls   # Configure registry TLS trust
-make setup-ctf-challenge      # Deploy CTF challenge resources
+make setup-ci-pr-pipeline      # Deploy deep dive challenge resources
 ```
 
-The `make setup-ctf-challenge` command has already:
+The `make setup-ci-pr-pipeline` command has already:
 - ✓ Deployed vulnerable Tekton resources (EventListener, Pipeline, Tasks)
-- ✓ Created the CTF flag secret with registry credentials
+- ✓ Created the registry credentials secret with registry credentials
 - ✓ Prepared the victim repository at `/tmp/gitea/recipe-api`
 - ✓ Configured Git credentials for Gitea access
 - ✓ Created the recipe-api repository on the Gitea instance
@@ -25,18 +25,18 @@ The `make setup-ctf-challenge` command has already:
 
 Open your browser and navigate to:
 ```
-http://localhost:30002
+http://gitea.sc.local:30080
 ```
 
 Login with:
-- **Username**: `ctf-admin`
-- **Password**: `CTFSecurePass123!`
+- **Username**: `sc-admin`
+- **Password**: `SecurePass123!`
 
 
 
 ### 1.2 Verify Repository
 
-Refresh the Gitea web UI (http://localhost:30002/ctf-admin/recipe-api). You should now see:
+Refresh the Gitea web UI (http://gitea.sc.local:30080/sc-admin/recipe-api). You should now see:
 - ✓ Source code files (`main.go`, `Dockerfile`, etc.)
 - ✓ Complete Git history with multiple commits
 - ✓ `.tekton/` directory with Tekton pipeline configuration
@@ -51,7 +51,7 @@ To trigger the vulnerable Tekton pipeline automatically when pull requests are c
 First, find the EventListener service URL. Run:
 
 ```bash
-kubectl get svc -n ctf-challenge el-pr-quality-check-listener
+kubectl get svc -n ci el-pr-quality-check-listener
 ```
 
 **Expected output:**
@@ -62,7 +62,7 @@ el-pr-quality-check-listener   ClusterIP   10.96.X.X       <none>        8080/TC
 
 The EventListener is running inside the cluster. Since Gitea is also running in the cluster, it can access it via:
 ```
-http://el-pr-quality-check-listener.ctf-challenge.svc.cluster.local:8080
+http://el-pr-quality-check-listener.ci.svc.cluster.local:8080
 ```
 
 ### 2.2 Add Webhook in Gitea
@@ -76,7 +76,7 @@ http://el-pr-quality-check-listener.ctf-challenge.svc.cluster.local:8080
    **Webhook Configuration:**
    - **Target URL**: 
      ```
-     http://el-pr-quality-check-listener.ctf-challenge.svc.cluster.local:8080
+     http://el-pr-quality-check-listener.ci.svc.cluster.local:8080
      ```
    - **HTTP Method**: `POST`
    - **POST Content Type**: `application/json`
@@ -102,14 +102,14 @@ To verify the webhook works end-to-end, create a test pull request:
 rm -rf /tmp/gitea/recipe-api
 mkdir -p /tmp/gitea
 cd /tmp/gitea
-git clone http://ctf-admin:CTFSecurePass123\!@localhost:30002/ctf-admin/recipe-api
+git clone http://sc-admin:SecurePass123\!@gitea.sc.local:30080/sc-admin/recipe-api
 echo "Creating Git credentials for Gitea access..."
 echo "[user]" > /tmp/gitea/.gitconfig
-echo "	name = CTF Admin" >> /tmp/gitea/.gitconfig
-echo "	email = ctf-admin@localhost" >> /tmp/gitea/.gitconfig
+echo "	name = SC Admin" >> /tmp/gitea/.gitconfig
+echo "	email = sc-admin@localhost" >> /tmp/gitea/.gitconfig
 echo "[credential]" >> /tmp/gitea/.gitconfig
 echo "	helper = store --file /tmp/gitea/.git-credentials" >> /tmp/gitea/.gitconfig
-echo "http://ctf-admin:CTFSecurePass123\!@localhost:30002" > /tmp/gitea/.git-credentials
+echo "http://sc-admin:SecurePass123\!@gitea.sc.local:30080" > /tmp/gitea/.git-credentials
 chmod 600 /tmp/gitea/.git-credentials
 ```
 ### 3.1 Create a Test Branch and Push
@@ -134,12 +134,12 @@ GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push --set-ups
 After pushing, Gitea will show a helpful message:
 ```
 remote: Create a new pull request for 'test-webhook':        
-remote:   http://localhost:30002/ctf-admin/recipe-api/pulls/new/test-webhook
+remote:   http://gitea.sc.local:30080/sc-admin/recipe-api/pulls/new/test-webhook
 ```
 
 **Create the PR via web UI**:
 
-1. Go to http://localhost:30002/ctf-admin/recipe-api
+1. Go to http://gitea.sc.local:30080/sc-admin/recipe-api
 2. You should see a banner: **"test-webhook had recent pushes"** with a **"Compare & pull request"** button
 3. Click **"Compare & pull request"**
 4. Fill in:
@@ -148,7 +148,7 @@ remote:   http://localhost:30002/ctf-admin/recipe-api/pulls/new/test-webhook
 5. Click **"Create Pull Request"**
 
 **Or use the direct URL**:
-- http://localhost:30002/ctf-admin/recipe-api/compare/main...test-webhook
+- http://gitea.sc.local:30080/sc-admin/recipe-api/compare/main...test-webhook
 
 ### 3.3 Verify Pipeline Started
 
@@ -156,13 +156,13 @@ Once you create the PR, the webhook should trigger immediately. Check if a Pipel
 
 ```bash
 # Watch for new PipelineRuns
-kubectl get pipelinerun -n ctf-challenge --watch
+kubectl get pipelinerun -n ci --watch
 
 # Or check the latest PipelineRun
-kubectl get pipelinerun -n ctf-challenge --sort-by=.metadata.creationTimestamp | tail -5
+kubectl get pipelinerun -n ci --sort-by=.metadata.creationTimestamp | tail -5
 
 # View PipelineRun logs (if you have tkn CLI)
-tkn pipelinerun logs -n ctf-challenge --last -f
+tkn pipelinerun logs -n ci --last -f
 ```
 
 You should see a PipelineRun with a name like `pr-quality-check-xxxxx` that was automatically created by the webhook.
@@ -174,28 +174,28 @@ You should see a PipelineRun with a name like `pr-quality-check-xxxxx` that was 
 Run the verification command:
 
 ```bash
-make verify-ctf
+make verify-ci-pr-pipeline
 ```
 
 **Expected output:**
 ```
-Verifying Tekton CTF Challenge...
+Verifying Tekton Deep Dive Challenge...
 
 Tekton Pipelines:
   (list of Tekton pods)
 
-CTF Pipeline:
+CI Pipeline:
 NAME                         AGE
 pr-quality-check-pipeline    Xm
 
-CTF Tasks:
+CI Tasks:
   (list of tasks)
 
 EventListener:
 NAME                        ADDRESS                                               AVAILABLE   REASON
-pr-quality-check-listener   http://el-pr-quality-check-listener.ctf-challenge... True        MinimumReplicasAvailable
+pr-quality-check-listener   http://el-pr-quality-check-listener.ci... True        MinimumReplicasAvailable
 
-CTF Flag Secret:
+Registry Credentials Secret:
   ✓ Flag secret exists
 
 ✓ Verification complete
@@ -207,7 +207,7 @@ Verify the victim repository is accessible:
 
 ```bash
 # Check repository in web UI
-# Visit: http://localhost:30002/ctf-admin/recipe-api
+# Visit: http://gitea.sc.local:30080/sc-admin/recipe-api
 
 # Or test git connectivity
 cd /tmp/gitea/recipe-api
@@ -218,7 +218,7 @@ GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git fetch origin
 
 In Gitea, verify webhook deliveries are successful:
 
-1. Go to: http://localhost:30002/ctf-admin/recipe-api/settings/hooks/1
+1. Go to: http://gitea.sc.local:30080/sc-admin/recipe-api/settings/hooks/1
 2. Scroll down to **"Recent Deliveries"**
 3. You should see successful deliveries (green checkmarks) for your Pull Request events
 4. Click on a delivery to see the request/response details
@@ -241,7 +241,7 @@ The Tekton pipeline is configured with the **"Pwn Request"** vulnerability:
 
 2. **Overprivileged ServiceAccount** ([vulnerable-eventlistener.yaml:164-189](tekton/triggers/vulnerable-eventlistener.yaml#L164-L189)):
    - The `default` ServiceAccount (used by TaskRuns) has `get` and `list` permissions on **all secrets**
-   - This allows malicious code to read the `ctf-flag` secret
+   - This allows malicious code to read the `registry-credentials` secret
 
 3. **No Code Isolation**:
    - Attacker's code runs in the same namespace as the flag secret
@@ -257,7 +257,7 @@ The Tekton pipeline is configured with the **"Pwn Request"** vulnerability:
 5. EventListener creates PipelineRun with attacker's code (pr-repo-url, pr-sha)
 6. Pipeline clones attacker's fork
 7. Pipeline runs attacker's malicious quality-check script
-8. Malicious script uses ServiceAccount token to read ctf-flag secret
+8. Malicious script uses ServiceAccount token to read registry-credentials secret
 9. Flag exfiltrated!
 ```
 
@@ -265,7 +265,7 @@ The Tekton pipeline is configured with the **"Pwn Request"** vulnerability:
 
 Participants should now:
 
-1. **Review the challenge guide**: [CTF-CHALLENGE-GUIDE.md](CTF-CHALLENGE-GUIDE.md)
+1. **Review the challenge guide**: [ATTACK-GUIDE.md](ATTACK-GUIDE.md)
 2. **Understand the vulnerability**: [ATTACK-ANALYSIS.md](ATTACK-ANALYSIS.md)
 3. **Test the attack**: Fork the repo, modify the code, create a PR
 4. **Capture the flag**: Extract the flag from the secret
@@ -276,10 +276,10 @@ Participants should now:
 
 ```bash
 # Check EventListener logs
-kubectl logs -l eventlistener=pr-quality-check-listener -n ctf-challenge -f
+kubectl logs -l eventlistener=pr-quality-check-listener -n ci -f
 
 # Check EventListener service
-kubectl get svc -n ctf-challenge el-pr-quality-check-listener
+kubectl get svc -n ci el-pr-quality-check-listener
 
 # Test webhook delivery from Gitea UI (Settings → Webhooks → Test Delivery)
 ```
@@ -288,13 +288,13 @@ kubectl get svc -n ctf-challenge el-pr-quality-check-listener
 
 ```bash
 # Check PipelineRuns
-kubectl get pipelinerun -n ctf-challenge
+kubectl get pipelinerun -n ci
 
 # Check TriggerBinding and TriggerTemplate
-kubectl get triggerbinding,triggertemplate -n ctf-challenge
+kubectl get triggerbinding,triggertemplate -n ci
 
 # Check ServiceAccount permissions
-kubectl auth can-i create pipelineruns --as=system:serviceaccount:ctf-challenge:tekton-triggers-sa -n ctf-challenge
+kubectl auth can-i create pipelineruns --as=system:serviceaccount:ci:tekton-triggers-sa -n ci
 ```
 
 ### Repository push fails or hangs
@@ -306,36 +306,36 @@ If `git push` hangs or fails with "could not read Username", it means git isn't 
 cat /tmp/gitea/.git-credentials
 
 # Verify Gitea is accessible
-curl http://localhost:30002
+curl http://gitea.sc.local:30080
 
 # Always use the environment variables when running git commands
 cd /tmp/gitea/recipe-api
 GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git push -u origin main
 
 # Or create an alias for convenience
-alias git-ctf='GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git'
-git-ctf push -u origin main
+alias git-sc='GIT_CONFIG_GLOBAL=/tmp/gitea/.gitconfig GIT_TERMINAL_PROMPT=0 git'
+git-sc push -u origin main
 
 # Check Gitea repository exists in web UI
-# Visit http://localhost:30002/ctf-admin/recipe-api
+# Visit http://gitea.sc.local:30080/sc-admin/recipe-api
 ```
 
 ### Flag secret not found
 
 ```bash
 # Verify secret exists
-kubectl get secret ctf-flag -n ctf-challenge
+kubectl get secret registry-credentials -n ci
 
 # Check secret contents (base64 encoded)
-kubectl get secret ctf-flag -n ctf-challenge -o yaml
+kubectl get secret registry-credentials -n ci -o yaml
 
 # Verify ServiceAccount has permissions
-kubectl auth can-i get secrets --as=system:serviceaccount:ctf-challenge:default -n ctf-challenge
+kubectl auth can-i get secrets --as=system:serviceaccount:ci:default -n ci
 ```
 
 ## Security Notes
 
-**For CTF Organizers:**
+**For Organizers:**
 
 This is a **deliberately vulnerable** configuration for educational purposes:
 - ✗ Default ServiceAccount has excessive permissions
@@ -351,7 +351,7 @@ To see the **secure** version, check:
 
 ## Additional Resources
 
-- [CTF Challenge Guide](CTF-CHALLENGE-GUIDE.md) - Participant walkthrough
+- [Deep Dive Challenge Guide](ATTACK-GUIDE.md) - Participant walkthrough
 - [Attack Analysis](ATTACK-ANALYSIS.md) - Technical deep-dive comparing vulnerable vs. secure
 - [Security Architecture](security/ARCHITECTURE.md) - Prevention and detection layers
 - [Victim Repository Sample](../recipe-api-sample/) - Source code with attack vectors

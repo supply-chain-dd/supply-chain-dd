@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
 CONFORMA_VERSION="${CONFORMA_VERSION:-v0.9.25}"
 
 # ============================================================
@@ -69,12 +72,12 @@ echo ""
 echo "Usage — validate a signed image from the host:"
 echo "  SSL_CERT_FILE=${REPO_ROOT}/setup/certs/registry.crt \\"
 echo "  ec validate image \\"
-echo "    --images '{\"components\":[{\"name\":\"recipe-api\",\"containerImage\":\"localhost:30000/recipe-api:v1.0\",\"source\":{\"git\":{\"url\":\"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git\",\"revision\":\"ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e\"}}}]}' \\"
+echo "    --images '{\"components\":[{\"name\":\"recipe-api\",\"containerImage\":\"${REGISTRY_HOST}/recipe-api:v1.0\",\"source\":{\"git\":{\"url\":\"http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git\",\"revision\":\"ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e\"}}}]}' \\"
 echo "    --public-key ${PUBKEY_FILE} \\"
-echo "    --policy '{\"sources\":[{\"name\":\"ctf-minimal\",\"policy\":[\"github.com/conforma/policy//policy/lib\",\"github.com/conforma/policy//policy/release\"],\"config\":{\"include\":[\"@minimal\"],\"exclude\":[\"base_image_registries.base_image_info_found\",\"cve.cve_results_found\"]}}]}' \\"
+echo "    --policy '{\"sources\":[{\"name\":\"sc-minimal\",\"policy\":[\"github.com/conforma/policy//policy/lib\",\"github.com/conforma/policy//policy/release\"],\"config\":{\"include\":[\"@minimal\"],\"exclude\":[\"base_image_registries.base_image_info_found\",\"cve.cve_results_found\"]}}]}' \\"
 echo "    --ignore-rekor \\"
 echo "    --extra-rule-data allowed_registry_prefixes=registry.registry.svc.cluster.local:5000 \\"
-echo "    --extra-rule-data allowed_registry_prefixes=localhost:30000 \\"
+echo "    --extra-rule-data allowed_registry_prefixes=${REGISTRY_HOST} \\"
 echo "    --extra-rule-data allowed_registry_prefixes=docker.io \\"
 echo "    --extra-rule-data allowed_registry_prefixes=gcr.io \\"
 echo "    --extra-rule-data allowed_registry_prefixes=golang \\"

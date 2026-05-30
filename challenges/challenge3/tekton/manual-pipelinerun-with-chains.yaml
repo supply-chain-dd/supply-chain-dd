@@ -15,7 +15,7 @@ apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
   generateName: push-build-chains-manual-
-  namespace: ctf-challenge
+  namespace: ci
   labels:
     tekton.dev/pipeline: push-build-pipeline-with-chains
     trigger-type: manual
@@ -25,11 +25,11 @@ spec:
     name: push-build-pipeline-with-chains
   params:
     - name: repo-url
-      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
+      value: http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git
     - name: revision
       value: main
     - name: trusted-repo-url
-      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
+      value: http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git
     - name: image-name
       value: recipe-api
     - name: image-tag

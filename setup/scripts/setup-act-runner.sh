@@ -2,8 +2,8 @@
 set -euo pipefail
 
 GITEA_NAMESPACE="gitea"
-GITEA_ADMIN_USER="ctf-admin"
-GITEA_ADMIN_PASSWORD="CTFSecurePass123!"
+GITEA_ADMIN_USER="sc-admin"
+GITEA_ADMIN_PASSWORD="SecurePass123!"
 GITEA_HTTP_PORT="${GITEA_HTTP_PORT:-30002}"
 ACT_RUNNER_VERSION="${ACT_RUNNER_VERSION:-0.2.11}"
 
@@ -59,7 +59,7 @@ spec:
           curl -X POST "http://${GITEA_SERVICE}/api/v1/user/repos" \
             -u '${GITEA_ADMIN_USER}:${GITEA_ADMIN_PASSWORD}' \
             -H "Content-Type: application/json" \
-            -d '{"name":"supply-chain-dd","description":"Supply Chain Security CTF Repository","private":false,"auto_init":true}' \
+            -d '{"name":"supply-chain-dd","description":"Supply Chain Security Deep Dive Repository","private":false,"auto_init":true}' \
             2>/dev/null || echo "Repository may already exist, continuing..."
 
           # Wait a moment for repository to be fully created
@@ -202,7 +202,7 @@ spec:
               name: gitea-runner-token
               key: token
         - name: GITEA_RUNNER_NAME
-          value: "ctf-k8s-runner"
+          value: "sc-k8s-runner"
         - name: GITEA_RUNNER_LABELS
           value: "ubuntu-latest,ubuntu-22.04,ubuntu-20.04"
         - name: CONFIG_FILE

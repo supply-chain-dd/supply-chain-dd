@@ -1,6 +1,6 @@
 # Local Docker Registry Setup
 
-This project includes a local Docker registry (registry:3) deployed within the Kubernetes cluster to support the CTF environment.
+This project includes a local Docker registry (registry:3) deployed within the Kubernetes cluster to support the deep dive environment.
 
 ## Overview
 
@@ -9,7 +9,7 @@ The registry is deployed as a Kubernetes Deployment in its own namespace with:
 - **Authentication**: Basic auth with username/password
 - **Storage**: Persistent volume for image storage
 - **Access**: Available both internally (from pods) and externally (from host)
-- **Integration**: Registry credentials stored in ctf-flag secret
+- **Integration**: Registry credentials stored in registry-credentials secret
 
 ## Setup
 
@@ -24,21 +24,21 @@ make configure-registry-tls
 
 # Or manually configure (choose one):
 # For Podman:
-sudo mkdir -p /etc/containers/certs.d/localhost:30000
-sudo cp certs/registry.crt /etc/containers/certs.d/localhost:30000/ca.crt
+sudo mkdir -p /etc/containers/certs.d/registry.sc.local:30443
+sudo cp certs/registry.crt /etc/containers/certs.d/registry.sc.local:30443/ca.crt
 
 # For Docker:
-sudo mkdir -p /etc/docker/certs.d/localhost:30000
-sudo cp certs/registry.crt /etc/docker/certs.d/localhost:30000/ca.crt
+sudo mkdir -p /etc/docker/certs.d/registry.sc.local:30443
+sudo cp certs/registry.crt /etc/docker/certs.d/registry.sc.local:30443/ca.crt
 sudo systemctl restart docker
 
 # Verify it's working
 make verify-registry
 
 # Login and test
-podman login localhost:30000 -u ctf-admin -p CTFRegistryPass123!
-podman tag nginx:latest localhost:30000/nginx:test
-podman push localhost:30000/nginx:test
+podman login registry.sc.local:30443 -u sc-admin -p RegistryPass123!
+podman tag nginx:latest registry.sc.local:30443/nginx:test
+podman push registry.sc.local:30443/nginx:test
 ```
 
 ### Manual Deployment
@@ -67,7 +67,7 @@ cd setup
 
 | Location | URL | Port |
 |----------|-----|------|
-| External (host) | `https://localhost:30000` | 30000 (NodePort) |
+| External (host) | `https://registry.sc.local:30443` | 30000 (NodePort) |
 | Internal (cluster) | `https://registry.registry.svc.cluster.local:5000` | 5000 |
 | Internal (short) | `https://registry.registry:5000` | 5000 |
 
@@ -114,9 +114,9 @@ If you prefer manual configuration:
 
 **Option 1: Per-registry configuration (Recommended)**
 ```bash
-# Create certificates directory for localhost:30000
-sudo mkdir -p /etc/containers/certs.d/localhost:30000
-sudo cp certs/registry.crt /etc/containers/certs.d/localhost:30000/ca.crt
+# Create certificates directory for registry.sc.local:30443
+sudo mkdir -p /etc/containers/certs.d/registry.sc.local:30443
+sudo cp certs/registry.crt /etc/containers/certs.d/registry.sc.local:30443/ca.crt
 ```
 
 **Option 2: System-wide trust (Fedora/RHEL/CentOS)**
@@ -137,9 +137,9 @@ sudo update-ca-certificates
 
 **Option 1: Per-registry configuration (Recommended)**
 ```bash
-# Create certificates directory for localhost:30000
-sudo mkdir -p /etc/docker/certs.d/localhost:30000
-sudo cp certs/registry.crt /etc/docker/certs.d/localhost:30000/ca.crt
+# Create certificates directory for registry.sc.local:30443
+sudo mkdir -p /etc/docker/certs.d/registry.sc.local:30443
+sudo cp certs/registry.crt /etc/docker/certs.d/registry.sc.local:30443/ca.crt
 sudo systemctl restart docker
 ```
 
@@ -148,7 +148,7 @@ sudo systemctl restart docker
 # Edit /etc/docker/daemon.json
 sudo tee /etc/docker/daemon.json <<EOF
 {
-  "insecure-registries": ["localhost:30000"]
+  "insecure-registries": ["registry.sc.local:30443"]
 }
 EOF
 sudo systemctl restart docker
@@ -157,8 +157,8 @@ sudo systemctl restart docker
 ## Authentication
 
 Default credentials (can be customized via environment variables):
-- **Username**: `ctf-admin`
-- **Password**: `CTFRegistryPass123!`
+- **Username**: `sc-admin`
+- **Password**: `RegistryPass123!`
 
 ### Custom Credentials
 
@@ -178,36 +178,36 @@ REGISTRY_USER=myuser REGISTRY_PASS=mypass make setup-registry
 
 ```bash
 # After configuring TLS trust, login
-podman login localhost:30000 -u ctf-admin -p CTFRegistryPass123!
+podman login registry.sc.local:30443 -u sc-admin -p RegistryPass123!
 
 # Tag an image
-podman tag nginx:latest localhost:30000/nginx:test
+podman tag nginx:latest registry.sc.local:30443/nginx:test
 
 # Push to registry
-podman push localhost:30000/nginx:test
+podman push registry.sc.local:30443/nginx:test
 
 # Pull from registry
-podman pull localhost:30000/nginx:test
+podman pull registry.sc.local:30443/nginx:test
 
 # List images in registry (with certificate)
-curl --cacert certs/registry.crt -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog
+curl --cacert certs/registry.crt -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/_catalog
 
 # Or bypass TLS verification (testing only)
-curl -k -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog
+curl -k -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/_catalog
 ```
 
 #### Using Docker
 
 ```bash
 # After configuring TLS trust, login
-docker login localhost:30000 -u ctf-admin -p CTFRegistryPass123!
+docker login registry.sc.local:30443 -u sc-admin -p RegistryPass123!
 
 # Tag and push
-docker tag nginx:latest localhost:30000/nginx:test
-docker push localhost:30000/nginx:test
+docker tag nginx:latest registry.sc.local:30443/nginx:test
+docker push registry.sc.local:30443/nginx:test
 
 # Pull from registry
-docker pull localhost:30000/nginx:test
+docker pull registry.sc.local:30443/nginx:test
 ```
 
 ### From Within Cluster
@@ -221,7 +221,7 @@ Pods within the cluster can access the registry via HTTPS. Since the certificate
 ```bash
 # Test registry access (skipping TLS verification)
 kubectl run test-registry --image=curlimages/curl:latest --rm -it --restart=Never -- \
-  sh -c 'curl -k -u ctf-admin:CTFRegistryPass123! https://registry.registry.svc.cluster.local:5000/v2/_catalog'
+  sh -c 'curl -k -u sc-admin:RegistryPass123! https://registry.registry.svc.cluster.local:5000/v2/_catalog'
 ```
 
 #### Using the CA certificate in a Pod
@@ -239,7 +239,7 @@ spec:
     args:
     - |
       curl --cacert /certs/ca.crt \
-        -u ctf-admin:CTFRegistryPass123! \
+        -u sc-admin:RegistryPass123! \
         https://registry.registry.svc.cluster.local:5000/v2/_catalog
     volumeMounts:
     - name: registry-ca
@@ -276,8 +276,8 @@ For pulling images that require authentication:
 ```bash
 kubectl create secret docker-registry registry-pull-secret \
   --docker-server=registry.registry.svc.cluster.local:5000 \
-  --docker-username=ctf-admin \
-  --docker-password=CTFRegistryPass123! \
+  --docker-username=sc-admin \
+  --docker-password=RegistryPass123! \
   -n your-namespace
 ```
 
@@ -285,7 +285,7 @@ kubectl create secret docker-registry registry-pull-secret \
 
 ### In Tekton Pipelines
 
-The registry credentials are automatically available in the `ctf-flag` secret in the `ctf-challenge` namespace:
+The registry credentials are automatically available in the `registry-credentials` secret in the `ci` namespace:
 
 ```yaml
 apiVersion: tekton.dev/v1beta1
@@ -301,17 +301,17 @@ spec:
       - name: REGISTRY_URL
         valueFrom:
           secretKeyRef:
-            name: ctf-flag
+            name: registry-credentials
             key: registry-url
       - name: REGISTRY_USER
         valueFrom:
           secretKeyRef:
-            name: ctf-flag
+            name: registry-credentials
             key: registry-user
       - name: REGISTRY_PASS
         valueFrom:
           secretKeyRef:
-            name: ctf-flag
+            name: registry-credentials
             key: registry-password
       script: |
         echo "${REGISTRY_PASS}" | crane auth login "${REGISTRY_URL}" -u "${REGISTRY_USER}" --password-stdin
@@ -337,26 +337,26 @@ kubectl describe pvc registry-storage -n registry
 
 ```bash
 # Using curl with CA certificate
-curl --cacert certs/registry.crt -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog
+curl --cacert certs/registry.crt -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/_catalog
 
 # Or skip certificate verification (testing only)
-curl -k -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog
+curl -k -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/_catalog
 
 # Get tags for a specific image
-curl -k -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/nginx/tags/list
+curl -k -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/nginx/tags/list
 ```
 
 ### Delete an Image
 
 ```bash
 # First, get the digest
-curl -k -v -u ctf-admin:CTFRegistryPass123! \
+curl -k -v -u sc-admin:RegistryPass123! \
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-  https://localhost:30000/v2/nginx/manifests/test 2>&1 | grep Docker-Content-Digest
+  https://registry.sc.local:30443/v2/nginx/manifests/test 2>&1 | grep Docker-Content-Digest
 
 # Then delete using the digest
-curl -k -u ctf-admin:CTFRegistryPass123! \
-  -X DELETE https://localhost:30000/v2/nginx/manifests/sha256:DIGEST_HERE
+curl -k -u sc-admin:RegistryPass123! \
+  -X DELETE https://registry.sc.local:30443/v2/nginx/manifests/sha256:DIGEST_HERE
 ```
 
 ### Restart Registry
@@ -389,10 +389,10 @@ kubectl describe pod -n registry -l app=registry
 ls -l certs/registry.crt
 
 # Check if certificate is configured (Podman)
-ls -l /etc/containers/certs.d/localhost:30000/ca.crt
+ls -l /etc/containers/certs.d/registry.sc.local:30443/ca.crt
 
 # Check if certificate is configured (Docker)
-ls -l /etc/docker/certs.d/localhost:30000/ca.crt
+ls -l /etc/docker/certs.d/registry.sc.local:30443/ca.crt
 ```
 
 **Then verify service accessibility:**
@@ -405,10 +405,10 @@ kubectl run test-registry --image=curlimages/curl:latest --rm -it --restart=Neve
   curl -k -v https://registry.registry.svc.cluster.local:5000/v2/
 
 # Test from host (skip cert verification)
-curl -k -v https://localhost:30000/v2/
+curl -k -v https://registry.sc.local:30443/v2/
 
 # Test with certificate
-curl --cacert certs/registry.crt -v https://localhost:30000/v2/
+curl --cacert certs/registry.crt -v https://registry.sc.local:30443/v2/
 ```
 
 **Common TLS errors:**
@@ -427,7 +427,7 @@ kubectl get secret registry-auth -n registry -o jsonpath='{.data.username}' | ba
 kubectl get secret registry-auth -n registry -o jsonpath='{.data.password}' | base64 -d
 
 # Test authentication (skip TLS verification for testing)
-curl -k -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog
+curl -k -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/_catalog
 ```
 
 ### Storage Issues
@@ -451,11 +451,11 @@ The following environment variables can be set when running `make setup-registry
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLUSTER_NAME` | `ctf-cluster` | Name of the kind cluster |
+| `CLUSTER_NAME` | `ci-cluster` | Name of the kind cluster |
 | `REGISTRY_NAMESPACE` | `registry` | Kubernetes namespace for registry |
 | `REGISTRY_NODE_PORT` | `30000` | NodePort for external access |
-| `REGISTRY_USER` | `ctf-admin` | Registry username |
-| `REGISTRY_PASS` | `CTFRegistryPass123!` | Registry password |
+| `REGISTRY_USER` | `sc-admin` | Registry username |
+| `REGISTRY_PASS` | `RegistryPass123!` | Registry password |
 
 ### Registry Configuration
 
@@ -493,7 +493,7 @@ make clean
 
 ## Security Considerations
 
-1. **Self-Signed Certificate**: This setup uses a self-signed certificate suitable for development/CTF environments. For production, use certificates from a trusted CA.
+1. **Self-Signed Certificate**: This setup uses a self-signed certificate suitable for development/deep dive environments. For production, use certificates from a trusted CA.
 2. **Default Credentials**: Change default credentials in production environments
 3. **Network Policies**: Consider adding network policies to restrict access
 4. **Certificate Management**: The TLS certificate is valid for 365 days. Regenerate before expiration.
@@ -501,23 +501,23 @@ make clean
 6. **RBAC**: Registry service account has minimal permissions
 7. **Certificate Storage**: The `certs/` directory contains the CA certificate - keep it secure if used in production
 
-## Integration with CTF Challenges
+## Integration with Deep Dive Challenges
 
-The registry credentials are automatically included in the `ctf-flag` secret when you run:
+The registry credentials are automatically included in the `registry-credentials` secret when you run:
 
 ```bash
-make setup-ctf-challenge
+make setup-ci-pr-pipeline
 # or
-make setup-ctf-challenge-secure
+make setup-ci-pr-pipeline-secure
 ```
 
 The secret contains:
-- `flag`: The CTF flag
+- `flag`: The registry credentials
 - `registry-url`: Registry URL for internal cluster access
 - `registry-user`: Registry username
 - `registry-password`: Registry password
 
-This allows CTF challenges to interact with the registry for scenarios involving container image manipulation.
+This allows deep dive challenges to interact with the registry for scenarios involving container image manipulation.
 
 ## References
 

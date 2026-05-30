@@ -6,13 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Capture The Flag (CTF) environment setup project focused on supply chain security. The project provides automated scripts to provision a complete Kubernetes environment for CTF participants, including:
+This is a supply chain security deep dive environment setup project focused on supply chain security. The project provides automated scripts to provision a complete Kubernetes environment for participants, including:
 
 - A KinD (Kubernetes in Docker) cluster
 - Gitea self-hosted Git service for Git-based supply chain scenarios
 - A container registry
 - A CI/CD Tekton pipeline
-- Pre-configured repositories and CTF challenges
+- Pre-configured repositories and deep dive challenges
 - Step-by-step (demo-magic) scripts to show-case the attacks, then to detect and prevent them
 
 ## Attacks show-cased
@@ -30,7 +30,7 @@ This is a Capture The Flag (CTF) environment setup project focused on supply cha
 ## # Challenge structure
 Each challenge must contain:
 * A `SETUP.md` file that explains what needs to be setup in the environment so that the attack can be performed 
-* A `CTF-CHALLENGE-GUIDE.md` that explains how to conduct the attack
+* A `ATTACK-GUIDE.md` that explains how to conduct the attack
 * A `ATTACK-ANALYSIS.md` that explains the attack, eventually contains real world attack examples of the same type
 * A `SECURITY-GUIDE.md` that explains how to detect it and prevent it
 * All scripts, source code, manifests needed to setup the attack, conduct it, detect and prevent it
@@ -44,20 +44,20 @@ Each challenge must contain:
 
 2. **Gitea**: Self-hosted Git service (similar to GitHub/GitLab)
    - Installed via Helm chart
-   - Web UI accessible at http://localhost:30002
-   - SSH access available at ssh://git@localhost:30003
+   - Web UI accessible at http://gitea.sc.local:30080
+   - SSH access available at ssh://git@gitea.sc.local:30003
    - SQLite database for simplicity (no PostgreSQL dependency)
    - Persistent storage for Git repositories
-   - Pre-configured admin credentials for CTF environment
+   - Pre-configured admin credentials for deep dive environment
 
 3. **Docker Registry**: Local container registry (registry:3)
    - Deployed as Kubernetes Deployment in `registry` namespace
    - TLS/HTTPS with self-signed certificate
    - Basic authentication with configurable credentials
-   - Accessible externally at https://localhost:30000
+   - Accessible externally at https://registry.sc.local:30443
    - Accessible internally at https://registry.registry.svc.cluster.local:5000
    - Persistent storage via PersistentVolumeClaim (10Gi)
-   - Credentials stored in ctf-flag secret for CTF challenge integration
+   - Credentials stored in registry-credentials secret for deep dive challenge integration
    - CA certificate saved to `certs/registry.crt` for client configuration
 
 4. **Tekton Pipeline**: Cloud-native, CI/CD pipeline 
@@ -76,10 +76,10 @@ Each challenge must contain:
 │       ├── setup-registry.sh       # Registry deployment with TLS
 │       ├── configure-registry-tls.sh # TLS trust configuration helper
 │       └── cleanup.sh              # Environment teardown
-├── challenges/                     # CTF Challenges
+├── challenges/                     # Deep Dive Challenges
 │   ├── challenge1/                 # Attack #1: Tekton Token Theft
 │   │   ├── SETUP.md                # Challenge setup instructions
-│   │   ├── CTF-CHALLENGE-GUIDE.md  # Participant walkthrough
+│   │   ├── ATTACK-GUIDE.md  # Participant walkthrough
 │   │   ├── ATTACK-ANALYSIS.md      # Technical analysis
 │   │   ├── SECURITY-GUIDE.md       # Detection and prevention
 │   │   ├── tekton/                 # Vulnerable Tekton resources
@@ -93,7 +93,7 @@ Each challenge must contain:
 │   │   └── tekton-patched/         # Secured configurations
 │   ├── challenge2/                 # Attack #2: Container Layer Leak
 │   │   ├── ATTACK-ANALYSIS.md
-│   │   ├── CTF-CHALLENGE-GUIDE.md
+│   │   ├── ATTACK-GUIDE.md
 │   │   ├── SETUP.md
 │   │   ├── SECURITY-GUIDE.md
 │   │   ├── tekton/
@@ -114,7 +114,7 @@ Each challenge must contain:
 │   │   └── test-attack2.sh
 │   ├── challenge3/                 # Attack #3: Base Image Poisoning
 │   │   ├── ATTACK-ANALYSIS.md      # Technical analysis and real-world examples
-│   │   ├── CTF-CHALLENGE-GUIDE.md  # Step-by-step attack execution + defense walkthrough
+│   │   ├── ATTACK-GUIDE.md  # Step-by-step attack execution + defense walkthrough
 │   │   ├── SETUP.md                # Environment setup for attack
 │   │   ├── SECURITY-GUIDE.md       # Detection, prevention, interactive demos
 │   │   ├── sbom-comparison-demo.sh # SBOM comparison demo (clean vs poisoned)
@@ -185,19 +185,19 @@ cd setup && ./scripts/cleanup.sh  # Alternative cleanup method
 
 ### Configuration Variables
 Environment variables that control setup:
-- `CLUSTER_NAME` (default: `ctf-cluster`) - KinD cluster name
+- `CLUSTER_NAME` (default: `ci-cluster`) - KinD cluster name
 - `GITEA_VERSION` (default: `10.6.1`) - Gitea Helm chart version
 - `GITEA_HTTP_PORT` (default: `30002`) - Gitea web UI port
 - `GITEA_SSH_PORT` (default: `30003`) - Gitea SSH port
 - `KIND_VERSION` (default: `v1.27.3`) - Kubernetes version for KinD
 - `TEKTON_CHAINS_VERSION` (default: `v0.26.3`) - Tekton Chains version
 - `REGISTRY_NODE_PORT` (default: `30000`) - Registry external access port
-- `REGISTRY_USER` (default: `ctf-admin`) - Registry username
-- `REGISTRY_PASS` (default: `CTFRegistryPass123!`) - Registry password
+- `REGISTRY_USER` (default: `sc-admin`) - Registry username
+- `REGISTRY_PASS` (default: `RegistryPass123!`) - Registry password
 
 Example:
 ```bash
-CLUSTER_NAME=my-ctf GITEA_VERSION=10.5.0 make setup
+CLUSTER_NAME=my-cluster GITEA_VERSION=10.5.0 make setup
 ```
 
 
@@ -217,7 +217,7 @@ CLUSTER_NAME=my-ctf GITEA_VERSION=10.5.0 make setup
 - Installs Gitea via Helm with custom values:
   - NodePort service type for local access
   - Ports 30002 (HTTP) and 30003 (SSH)
-  - Custom admin credentials (ctf-admin / CTFSecurePass123!)
+  - Custom admin credentials (sc-admin / SecurePass123!)
   - SQLite database (no PostgreSQL dependency)
   - Persistent storage enabled
 - Waits for all pods to be ready before completing
@@ -288,8 +288,8 @@ The Makefile provides a clean interface for common operations:
 - `setup-tektonchains`         - Install and configure Tekton Chains for supply chain security
 - `setup-registry`             - Setup local Docker registry with authentication
 - `configure-registry-tls`     - Configure TLS trust for the registry (interactive)
-- `setup-ctf-challenge`        - Install Tekton CTF challenge resources (VULNERABLE version)
-- `setup-ctf-challenge-secure` - Install Tekton CTF challenge with SECURE configuration
+- `setup-ci-pr-pipeline`        - Install Tekton deep dive challenge resources (VULNERABLE version)
+- `setup-ci-pr-pipeline-secure` - Install Tekton deep dive challenge with SECURE configuration
 - `setup-challenge2-tekton`    - Deploy challenge2 Tekton resources including Chains-aware pipeline
 - `setup-challenge3-tekton-secure` - Deploy Challenge 3 secured Tekton resources (verify-base-image + keyless signing)
 
@@ -312,7 +312,7 @@ The Makefile provides a clean interface for common operations:
 
 **Verification:**
 - `status`               - Show environment status
-- `verify-ctf`           - Verify Tekton CTF challenge installation
+- `verify-ci-pr-pipeline`           - Verify Tekton deep dive challenge installation
 - `verify-registry`      - Verify registry is working correctly
 - `verify-tektonchains`  - Verify Tekton Chains installation and configuration
 - `verify-conforma`      - Verify Conforma (ec CLI) installation and policy resources
@@ -324,7 +324,7 @@ The Makefile provides a clean interface for common operations:
 
 After running `make setup`, the kubectl context will be automatically set to:
 ```
-kind-ctf-cluster
+kind-ci-cluster
 ```
 
 All kubectl commands will target this cluster by default.
@@ -357,12 +357,12 @@ extraPortMappings:
 ### Can't Access Gitea
 - Verify service: `kubectl get svc -n gitea`
 - Check pods are running: `kubectl get pods -n gitea`
-- Test connectivity: `curl http://localhost:30002`
+- Test connectivity: `curl http://gitea.sc.local:30080`
 - Check port forwarding if needed: `kubectl port-forward -n gitea svc/gitea-http 30002:3000`
 
 ### Cluster Already Exists
 - Run `make clean` first to remove existing cluster
-- Or use different cluster name: `CLUSTER_NAME=ctf2 make setup`
+- Or use different cluster name: `CLUSTER_NAME=cluster2 make setup`
 
 ## Docker Registry
 
@@ -380,12 +380,12 @@ make configure-registry-tls
 
 # Or configure manually:
 # For Podman:
-sudo mkdir -p /etc/containers/certs.d/localhost:30000
-sudo cp certs/registry.crt /etc/containers/certs.d/localhost:30000/ca.crt
+sudo mkdir -p /etc/containers/certs.d/registry.sc.local:30443
+sudo cp certs/registry.crt /etc/containers/certs.d/registry.sc.local:30443/ca.crt
 
 # For Docker:
-sudo mkdir -p /etc/docker/certs.d/localhost:30000
-sudo cp certs/registry.crt /etc/docker/certs.d/localhost:30000/ca.crt
+sudo mkdir -p /etc/docker/certs.d/registry.sc.local:30443
+sudo cp certs/registry.crt /etc/docker/certs.d/registry.sc.local:30443/ca.crt
 sudo systemctl restart docker
 
 # Verify it's working
@@ -393,12 +393,12 @@ make verify-registry
 ```
 
 **Access Points:**
-- External (from host): `https://localhost:30000`
+- External (from host): `https://registry.sc.local:30443`
 - Internal (from cluster): `https://registry.registry.svc.cluster.local:5000`
 
 **Credentials:**
-- Username: `ctf-admin` (configurable via `REGISTRY_USER`)
-- Password: `CTFRegistryPass123!` (configurable via `REGISTRY_PASS`)
+- Username: `sc-admin` (configurable via `REGISTRY_USER`)
+- Password: `RegistryPass123!` (configurable via `REGISTRY_PASS`)
 
 **TLS Certificate:**
 - Location: `certs/registry.crt`
@@ -408,27 +408,27 @@ make verify-registry
 
 ```bash
 # Login with podman (after TLS configuration)
-podman login localhost:30000 -u ctf-admin -p CTFRegistryPass123!
+podman login registry.sc.local:30443 -u sc-admin -p RegistryPass123!
 
 # Push an image
-podman tag nginx:latest localhost:30000/nginx:test
-podman push localhost:30000/nginx:test
+podman tag nginx:latest registry.sc.local:30443/nginx:test
+podman push registry.sc.local:30443/nginx:test
 
 # List images (with certificate)
-curl --cacert certs/registry.crt -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog
+curl --cacert certs/registry.crt -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/_catalog
 
 # Or skip TLS verification (testing only)
-curl -k -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog
+curl -k -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/_catalog
 ```
 
-### CTF Integration
+### Registry Integration
 
-The registry credentials are automatically included in the `ctf-flag` secret in the `ctf-challenge` namespace:
+The registry credentials are automatically included in the `registry-credentials` secret in the `ci` namespace:
 - `registry-url`: Internal cluster URL
 - `registry-user`: Registry username
 - `registry-password`: Registry password
 
-This allows CTF challenges to interact with the registry for scenarios involving:
+This allows deep dive challenges to interact with the registry for scenarios involving:
 - Container image manipulation
 - Supply chain attacks via malicious images
 - Registry credential theft
@@ -436,14 +436,14 @@ This allows CTF challenges to interact with the registry for scenarios involving
 
 See [REGISTRY.md](REGISTRY.md) for complete documentation.
 
-## CTF Participant Workflow
+## Participant Workflow
 
 Participants will:
 1. Clone this repository
 2. Run `make setup` to provision their environment
 3. (Optional) Run `make setup-registry` to enable container registry challenges
-4. Access Gitea at http://localhost:30002
-5. Login with credentials: ctf-admin / CTFSecurePass123!
+4. Access Gitea at http://gitea.sc.local:30080
+5. Login with credentials: sc-admin / SecurePass123!
 6. Work on supply chain security challenges (Git, containers, CI/CD)
 7. Use `make status` to check their environment
 8. Use `make clean` to reset if needed
@@ -514,7 +514,7 @@ When modifying challenge files, update the appropriate documentation:
 | Change Type | Update File |
 |-------------|-------------|
 | Environment setup, configuration | `SETUP.md` |
-| Attack execution steps | `CTF-CHALLENGE-GUIDE.md` |
+| Attack execution steps | `ATTACK-GUIDE.md` |
 | Attack explanation, real-world examples | `ATTACK-ANALYSIS.md` |
 | Detection/prevention methods | `SECURITY-GUIDE.md` |
 | Demo scripts (`*-demo.sh`) | `SECURITY-GUIDE.md` (Interactive Demos section + cross-references) |

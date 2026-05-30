@@ -1,6 +1,6 @@
 # Victim Repository Sample - Recipe API
 
-This is a sample repository used for **CTF Challenge #2** (Container Image Layer Leak).
+This is a sample repository used for **Deep Dive Challenge #2** (Container Image Layer Leak).
 
 ## About This Repository
 
@@ -25,7 +25,7 @@ During the build process, the Dockerfile copies this git history into the contai
 
 ## Why _git Instead of .git?
 
-Git repositories cannot contain nested `.git` directories. To version control the victim repository's git history (which contains the secrets needed for the CTF), we rename it to `_git`. 
+Git repositories cannot contain nested `.git` directories. To version control the victim repository's git history (which contains the secrets needed for the deep dive), we rename it to `_git`. 
 
 The Makefile automatically restores it to `.git` during the build process in a temporary location.
 
@@ -78,11 +78,11 @@ mv _git .git
 git log --oneline
 
 # 4. Build the image
-podman build -t localhost:30000/recipe-api:v1.0 .
+podman build -t registry.sc.local:30443/recipe-api:v1.0 .
 
 # 5. Push to registry
-podman login localhost:30000 --tls-verify=false -u ctf-admin -p CTFRegistryPass123!
-podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman login registry.sc.local:30443 --tls-verify=false -u sc-admin -p RegistryPass123!
+podman push registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 ```
 
 ## Files
@@ -109,10 +109,10 @@ git show cb0d66f:.env.production
 
 See [README-API.md](./README-API.md) for API documentation.
 
-## For CTF Participants
+## For Participants
 
 1. Complete Challenge #1 to get registry credentials
-2. Use those credentials to access `https://localhost:30000`
+2. Use those credentials to access `https://registry.sc.local:30443`
 3. Pull `recipe-api:v1.0`
 4. Extract image layers
 5. Find `.git` directory in one of the layers

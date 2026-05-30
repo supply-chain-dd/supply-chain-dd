@@ -74,7 +74,7 @@ make help                    # Updated with new targets and demo workflow
 ```bash
 make setup
 make configure-registry-tls    # Interactive
-make setup-ctf-challenge
+make setup-ci-pr-pipeline
 # Manual: Open Gitea UI
 # Manual: Go to Settings > Webhooks
 # Manual: Create PR webhook with EventListener URL
@@ -98,7 +98,7 @@ make setup-demo
 |------|--------|-------|
 | Infrastructure Setup | `make setup` | `make setup-demo` |
 | Registry TLS Config | Interactive prompt | **Automated** |
-| Challenge 1 Setup | `make setup-ctf-challenge` | **Included** |
+| Challenge 1 Setup | `make setup-ci-pr-pipeline` | **Included** |
 | Challenge 2 Setup | `make setup-challenge2-tekton` + manual SA | **Automated** |
 | Webhook Creation | Manual in Gitea UI (2 webhooks) | **Automated via API** |
 | Verification | Manual testing | `make verify-demo-readiness` |
@@ -114,7 +114,7 @@ PR_LISTENER_URL="http://<node-ip>:<nodeport>"
 PUSH_LISTENER_URL="http://<node-ip>:<nodeport>"
 
 # Creates webhooks via Gitea API
-curl -X POST -u ctf-admin:CTFSecurePass123! \
+curl -X POST -u sc-admin:SecurePass123! \
   -H "Content-Type: application/json" \
   -d '{
     "type": "gitea",
@@ -126,7 +126,7 @@ curl -X POST -u ctf-admin:CTFSecurePass123! \
     "events": ["pull_request"],
     "active": true
   }' \
-  "http://localhost:30002/api/v1/repos/ctf-admin/recipe-api/hooks"
+  "http://gitea.sc.local:30080/api/v1/repos/sc-admin/recipe-api/hooks"
 ```
 
 ### `verify-demo-readiness.sh` Sample Output
@@ -153,13 +153,13 @@ Deep Dive Demo Readiness Check
   recipe-api repository exists... ✓
 
 [4] Challenge 1: PR Quality Check
-  CTF namespace exists... ✓
+  CI namespace exists... ✓
   PR pipeline exists... ✓
   git-clone task exists... ✓
   quality-check-task exists... ✓
   PR EventListener exists... ✓
   PR EventListener service exists... ✓
-  ctf-flag secret exists... ✓
+  registry-credentials secret exists... ✓
 
 [5] Challenge 2: Container Layer Leak
   Push pipeline exists... ✓
@@ -208,11 +208,11 @@ make verify-demo-readiness
 ```
 
 ### During the Demo
-1. Open Gitea: http://localhost:30002
+1. Open Gitea: http://gitea.sc.local:30080
 2. Show the recipe-api repository
 3. Create a malicious pull request
 4. Show webhook automatically triggering pipeline
-5. Watch: `kubectl get pipelineruns -n ctf-challenge -w`
+5. Watch: `kubectl get pipelineruns -n ci -w`
 6. Execute Challenge 1 attack
 7. Use stolen credentials for Challenge 2
 8. Show remediations
@@ -262,7 +262,7 @@ If `make setup-demo` fails:
 2. **Webhook creation fails**:
    ```bash
    # Check Gitea is accessible
-   curl http://localhost:30002
+   curl http://gitea.sc.local:30080
    
    # Re-run webhook setup
    make setup-gitea-webhooks
@@ -271,8 +271,8 @@ If `make setup-demo` fails:
 3. **Pipeline not starting**:
    ```bash
    # Check EventListener logs
-   kubectl logs -n ctf-challenge -l eventlistener=pr-quality-check-listener
-   kubectl logs -n ctf-challenge -l eventlistener=push-build-listener
+   kubectl logs -n ci -l eventlistener=pr-quality-check-listener
+   kubectl logs -n ci -l eventlistener=push-build-listener
    ```
 
 ## Summary

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-ctf-cluster}"
+CLUSTER_NAME="${CLUSTER_NAME:-ci-cluster}"
 REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-registry}"
-TARGET_NAMESPACE="${TARGET_NAMESPACE:-ctf-challenge}"
+TARGET_NAMESPACE="${TARGET_NAMESPACE:-ci}"
 
 echo "Setting up registry certificate for Tekton pipelines..."
 

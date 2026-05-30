@@ -8,7 +8,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
   name: pr-quality-check-listener
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   serviceAccountName: tekton-triggers-sa
   triggers:
@@ -33,7 +33,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
 metadata:
   name: pr-quality-binding
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     # VULNERABLE: Using head repo (attacker's fork)
@@ -55,7 +55,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
   name: pr-quality-template
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: pr-repo-url
@@ -68,7 +68,7 @@ spec:
       kind: PipelineRun
       metadata:
         generateName: pr-quality-check-
-        namespace: ctf-challenge
+        namespace: ci
         labels:
           tekton.dev/pipeline: pr-quality-check-pipeline
           security/trust-level: untrusted-pr
@@ -100,14 +100,14 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: tekton-triggers-sa
-  namespace: ctf-challenge
+  namespace: ci
 ---
 # Role with minimal permissions (following principle of least privilege)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: tekton-triggers-role
-  namespace: ctf-challenge
+  namespace: ci
 rules:
 # Read Tekton Triggers resources (needed to process webhooks)
 - apiGroups: ["triggers.tekton.dev"]
@@ -151,13 +151,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: tekton-triggers-sa
-    namespace: ctf-challenge
+    namespace: ci
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: tekton-triggers-rolebinding
-  namespace: ctf-challenge
+  namespace: ci
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -165,7 +165,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: tekton-triggers-sa
-    namespace: ctf-challenge
+    namespace: ci
 ---
 # ✅ REMOVED: Dangerous RBAC for default ServiceAccount
 # The vulnerable version granted the default SA permissions to read all secrets.
@@ -176,7 +176,7 @@ subjects:
 #
 # This prevents the attack demonstrated in ATTACK-ANALYSIS.md where:
 #   - Attacker's code reads: /var/run/secrets/kubernetes.io/serviceaccount/token
-#   - Calls K8s API: GET /api/v1/namespaces/ctf-challenge/secrets/ctf-flag
+#   - Calls K8s API: GET /api/v1/namespaces/ci/secrets/registry-credentials
 #   - With pr-pipeline-readonly: API returns 403 Forbidden ✅
 ---
 # GitHub webhook secret (placeholder)
@@ -184,7 +184,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: github-webhook-secret
-  namespace: ctf-challenge
+  namespace: ci
 type: Opaque
 stringData:
   secretToken: "change-me-in-production"

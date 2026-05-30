@@ -1,6 +1,6 @@
-# Security Policies for Tekton Supply Chain CTF
+# Security Policies for Tekton Supply Chain Deep Dive
 
-This directory contains security policies that **detect and prevent** the Tekton supply chain attack demonstrated in this CTF challenge.
+This directory contains security policies that **detect and prevent** the Tekton supply chain attack demonstrated in this deep dive challenge.
 
 ## 📋 Overview
 
@@ -124,7 +124,7 @@ params:
 ```yaml
 params:
 - name: git-url
-  value: http://gitea.gitea.svc.cluster.local/ctf/victim-repo.git  # ✅ OK
+  value: http://gitea.gitea.svc.cluster.local/sc-admin/victim-repo.git  # ✅ OK
 ```
 
 ---
@@ -167,7 +167,7 @@ steps:
 
 **Applied to:**
 - `tekton-pipelines` namespace
-- `ctf-challenge` namespace
+- `ci` namespace
 
 **Allowed egress:**
 - ✅ DNS resolution (kube-system:53)
@@ -215,11 +215,11 @@ token := readFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
 
 // This API call will return 403 Forbidden
 resp := httpGet(
-    "https://kubernetes.default.svc/api/v1/namespaces/ctf-challenge/secrets/ctf-flag",
+    "https://kubernetes.default.svc/api/v1/namespaces/ci/secrets/registry-credentials",
     "Bearer " + token
 )
-// Error: secrets "ctf-flag" is forbidden: User "system:serviceaccount:ctf-challenge:pr-pipeline-readonly"
-//        cannot get resource "secrets" in API group "" in the namespace "ctf-challenge"
+// Error: secrets "registry-credentials" is forbidden: User "system:serviceaccount:ci:pr-pipeline-readonly"
+//        cannot get resource "secrets" in API group "" in the namespace "ci"
 ```
 
 ---
@@ -235,14 +235,14 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: test-default-sa
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   pipelineRef:
     name: pr-quality-check-pipeline
   serviceAccountName: default  # Should be blocked!
   params:
   - name: pr-repo-url
-    value: http://gitea.gitea.svc.cluster.local/ctf/victim-repo.git
+    value: http://gitea.gitea.svc.cluster.local/sc-admin/victim-repo.git
 EOF
 
 # Expected output:
@@ -253,7 +253,7 @@ EOF
 
 ```bash
 # Create a pod using pr-pipeline-readonly SA
-kubectl run -n ctf-challenge test-rbac \
+kubectl run -n ci test-rbac \
   --image=curlimages/curl:latest \
   --serviceaccount=pr-pipeline-readonly \
   --rm -it --restart=Never -- sh
@@ -262,13 +262,13 @@ kubectl run -n ctf-challenge test-rbac \
 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 curl -H "Authorization: Bearer $TOKEN" \
   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-  https://kubernetes.default.svc/api/v1/namespaces/ctf-challenge/secrets/ctf-flag
+  https://kubernetes.default.svc/api/v1/namespaces/ci/secrets/registry-credentials
 
 # Expected output:
 # {
 #   "kind": "Status",
 #   "status": "Failure",
-#   "message": "secrets \"ctf-flag\" is forbidden",
+#   "message": "secrets \"registry-credentials\" is forbidden",
 #   "reason": "Forbidden",
 #   "code": 403
 # }
@@ -277,8 +277,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 ### Test 3: Verify Network Policy blocks exfiltration
 
 ```bash
-# Create a pod in ctf-challenge namespace
-kubectl run -n ctf-challenge test-netpol \
+# Create a pod in ci namespace
+kubectl run -n ci test-netpol \
   --image=curlimages/curl:latest \
   --rm -it --restart=Never -- sh
 
@@ -328,14 +328,14 @@ If you have access to Audicia.io:
 
 2. **Detect anomalous secret access:**
 ```
-ServiceAccount 'default' in namespace 'ctf-challenge'
-accessed secret 'ctf-flag' - UNUSUAL for CI pipelines
+ServiceAccount 'default' in namespace 'ci'
+accessed secret 'registry-credentials' - UNUSUAL for CI pipelines
 ```
 
 3. **Generate minimal RBAC:**
 ```bash
 # Audicia analyzes actual usage and suggests minimal permissions
-audicia analyze --namespace ctf-challenge --output minimal-rbac.yaml
+audicia analyze --namespace ci --output minimal-rbac.yaml
 ```
 
 ---
@@ -422,7 +422,7 @@ egress:
 
 ---
 
-## 🎯 CTF Challenge: Breaking the Defenses
+## 🎯 Deep Dive Challenge: Breaking the Defenses
 
 **Challenge for participants:**
 

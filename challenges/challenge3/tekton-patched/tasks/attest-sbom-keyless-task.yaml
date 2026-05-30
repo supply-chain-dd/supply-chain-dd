@@ -13,15 +13,15 @@
 # Prerequisites:
 #   - Local Sigstore stack deployed: make setup-sigstore-local
 #   - generate-sbom task must have completed (SBOM attached as OCI referrer)
-#   - ConfigMap: sigstore-tuf-root in ctf-challenge (TUF root.json)
-#   - ConfigMap: registry-ca-cert in ctf-challenge (ca.crt)
-#   - Secret:   registry-docker-config in ctf-challenge
+#   - ConfigMap: sigstore-tuf-root in ci (TUF root.json)
+#   - ConfigMap: registry-ca-cert in ci (ca.crt)
+#   - Secret:   registry-docker-config in ci
 #   - PipelineRun must use SA: pipeline-keyless-signer
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: attest-sbom-keyless
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   params:
     - name: IMAGE_URL

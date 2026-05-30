@@ -13,14 +13,14 @@
 # ===BASELINE_JSON_END=== markers for extraction by the demo script.
 #
 # Prerequisites:
-#   - Secret:    registry-docker-config in ctf-challenge
-#   - ConfigMap: registry-ca-cert      in ctf-challenge
+#   - Secret:    registry-docker-config in ci
+#   - ConfigMap: registry-ca-cert      in ci
 #   - Clean golang:1.25-alpine and alpine:3.20 pushed to the registry
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: generate-sbom-baseline
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 300

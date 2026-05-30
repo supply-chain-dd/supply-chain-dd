@@ -1,6 +1,6 @@
-# Tekton "Pwn Request" CTF Challenge
+# Tekton "Pwn Request" Deep Dive Challenge
 
-This directory contains a complete CTF challenge demonstrating the "Pwn Request" vulnerability in Tekton Pipelines - the Tekton equivalent of the GitHub Actions `pull_request_target` vulnerability.
+This directory contains a complete deep dive challenge demonstrating the "Pwn Request" vulnerability in Tekton Pipelines - the Tekton equivalent of the GitHub Actions `pull_request_target` vulnerability.
 
 ## Overview
 
@@ -441,7 +441,7 @@ spec:
 4. Detection is harder without proper audit logging
 5. Persistence mechanisms are more powerful
 
-This makes it an excellent CTF scenario for teaching:
+This makes it an excellent deep dive scenario for teaching:
 - Supply chain security
 - Kubernetes security
 - RBAC and least privilege

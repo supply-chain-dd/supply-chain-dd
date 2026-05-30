@@ -25,7 +25,7 @@ When modifying anything in `challenges/challengeN/`, update the appropriate file
 | If you change... | Update this file | What to update |
 |------------------|------------------|----------------|
 | Setup steps, prerequisites, configuration | `SETUP.md` | Environment setup instructions |
-| Attack execution, commands, flag discovery | `CTF-CHALLENGE-GUIDE.md` | Step-by-step attack walkthrough |
+| Attack execution, commands, flag discovery | `ATTACK-GUIDE.md` | Step-by-step attack walkthrough |
 | Attack explanation, CVE references, impact | `ATTACK-ANALYSIS.md` | Technical analysis and real-world examples |
 | Detection tools, prevention policies, remediation | `SECURITY-GUIDE.md` | Detection and prevention guidance (must align with demo scripts) |
 | Demo scripts (`*-demo.sh`) | `SECURITY-GUIDE.md` | Add/update Interactive Demos section and cross-references in relevant phases |
@@ -77,10 +77,10 @@ When modifying anything in `challenges/challengeN/`, update the appropriate file
 - Expected initial state
 
 **Exclude:**
-- Attack execution steps (those go in CTF-CHALLENGE-GUIDE.md)
+- Attack execution steps (those go in ATTACK-GUIDE.md)
 - Detection/prevention (those go in SECURITY-GUIDE.md)
 
-#### CTF-CHALLENGE-GUIDE.md
+#### ATTACK-GUIDE.md
 **Focus**: Executing the attack step-by-step
 
 **Include:**
@@ -103,7 +103,7 @@ When modifying anything in `challenges/challengeN/`, update the appropriate file
 - References to security papers or blog posts
 
 **Exclude:**
-- How to execute it (that's in CTF-CHALLENGE-GUIDE.md)
+- How to execute it (that's in ATTACK-GUIDE.md)
 - How to prevent it (that's in SECURITY-GUIDE.md)
 
 #### SECURITY-GUIDE.md
@@ -217,7 +217,7 @@ When adding or modifying attacks, update the table in CLAUDE.md:
 
 ### Adding a New Challenge
 1. Create directory: `mkdir -p challenges/challengeN/{tekton,security,tekton-patched}`
-2. Create docs: `SETUP.md`, `CTF-CHALLENGE-GUIDE.md`, `ATTACK-ANALYSIS.md`, `SECURITY-GUIDE.md`
+2. Create docs: `SETUP.md`, `ATTACK-GUIDE.md`, `ATTACK-ANALYSIS.md`, `SECURITY-GUIDE.md`
 3. Add Makefile targets: `setup-challengeN`, `verify-challengeN`
 4. Update `README.md`: Add challenge description and flag
 5. Update `CLAUDE.md`: Add to attacks table with tools
@@ -235,7 +235,7 @@ When adding or modifying attacks, update the table in CLAUDE.md:
 2. Update secure version in `tekton-patched/`
 3. Update docs:
    - Setup changes → `SETUP.md`
-   - Attack steps → `CTF-CHALLENGE-GUIDE.md`
+   - Attack steps → `ATTACK-GUIDE.md`
    - Technical details → `ATTACK-ANALYSIS.md`
    - Detection/prevention → `SECURITY-GUIDE.md`
 4. Test both vulnerable and secure versions
@@ -245,7 +245,7 @@ When adding or modifying attacks, update the table in CLAUDE.md:
 - **Makefile targets**: `kebab-case` (e.g., `setup-registry`)
 - **Script files**: `kebab-case.sh` (e.g., `setup-kind.sh`)
 - **Documentation files**: `SCREAMING-KEBAB.md` (e.g., `SETUP.md`)
-- **Kubernetes namespaces**: `kebab-case` (e.g., `ctf-challenge`)
+- **Kubernetes namespaces**: `kebab-case` (e.g., `ci`)
 - **Environment variables**: `SCREAMING_SNAKE_CASE` (e.g., `CLUSTER_NAME`)
 
 ## Anti-Patterns to Avoid
@@ -264,7 +264,7 @@ When adding or modifying attacks, update the table in CLAUDE.md:
 - Provide both vulnerable and secure examples
 - Test end-to-end workflows
 - Keep README.md concise with working commands
-- Use placeholder secrets (e.g., `CTF*` patterns)
+- Use placeholder secrets (e.g., placeholder patterns)
 
 ## Testing Checklist
 

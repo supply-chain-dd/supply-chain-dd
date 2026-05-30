@@ -32,19 +32,19 @@ After completing this challenge, you will understand:
 
 ## Quick Start
 
-### For CTF Participants
+### For Participants
 
 1. **Prerequisites**: Complete Challenge #2 to extract `.env.production`
 2. **Setup**: `make setup-challenge4` (creates production cluster + ArgoCD)
-3. **Attack**: Follow [CTF-CHALLENGE-GUIDE.md](./CTF-CHALLENGE-GUIDE.md)
+3. **Attack**: Follow [ATTACK-GUIDE.md](./ATTACK-GUIDE.md)
 4. **Learn**: Read [ATTACK-ANALYSIS.md](./ATTACK-ANALYSIS.md)
 5. **Defend**: Study [SECURITY-GUIDE.md](./SECURITY-GUIDE.md)
 
-### For CTF Organizers
+### For Organizers
 
 1. **Setup Environment**: `make setup-challenge4`
 2. **Verify**: `make verify-challenge4`
-3. **Test Attack**: Follow [CTF-CHALLENGE-GUIDE.md](./CTF-CHALLENGE-GUIDE.md)
+3. **Test Attack**: Follow [ATTACK-GUIDE.md](./ATTACK-GUIDE.md)
 4. **Apply Security**: `make apply-challenge4-security`
 5. **Test Prevention**: `make test-challenge4-attack`
 
@@ -54,7 +54,7 @@ After completing this challenge, you will understand:
 challenges/challenge4/
 ├── README.md                          # This file
 ├── SETUP.md                           # Environment setup (organizers)
-├── CTF-CHALLENGE-GUIDE.md             # Attack walkthrough (participants)
+├── ATTACK-GUIDE.md             # Attack walkthrough (participants)
 ├── ATTACK-ANALYSIS.md                 # Technical analysis & real-world examples
 ├── SECURITY-GUIDE.md                  # Detection & prevention strategies
 │
@@ -63,7 +63,7 @@ challenges/challenge4/
 │   ├── recipe-api-application.yaml    # ArgoCD Application manifest
 │   ├── vulnerable-rbac.yaml           # Excessive RBAC permissions
 │   ├── namespace.yaml                 # Namespace definitions
-│   └── challenge4-flag-secret.yaml    # Final CTF flag
+│   └── challenge4-flag-secret.yaml    # Final registry credentials
 │
 ├── production-manifests-sample/       # GitOps repository
 │   ├── README.md                      # Repository setup instructions
@@ -115,10 +115,10 @@ Use stolen credentials to access ArgoCD Web UI or API:
 
 ```bash
 # Web UI
-https://localhost:30443
+https://argocd.sc.local:31443
 
 # CLI
-argocd login localhost:30443 --auth-token=$ARGOCD_AUTH_TOKEN --insecure
+argocd login argocd.sc.local:31443 --auth-token=$ARGOCD_AUTH_TOKEN --insecure
 ```
 
 ### Phase 3: Modify Deployment
@@ -126,7 +126,7 @@ argocd login localhost:30443 --auth-token=$ARGOCD_AUTH_TOKEN --insecure
 Clone production manifests, inject backdoor, commit and push:
 
 ```bash
-git clone http://localhost:30004/ctf-admin/production-manifests.git
+git clone http://gitea-prod.sc.local:31080/sc-admin/production-manifests.git
 # Modify deployment.yaml with malicious payload
 git commit -am "Update deployment configuration"
 git push origin main
@@ -144,12 +144,12 @@ argocd app watch recipe-api-production
 kubectl -n production get pods -l app=recipe-api -o yaml | grep -A5 securityContext
 ```
 
-### Phase 5: Capture the Flag
+### Phase 5: deep dive
 
 Extract the flag from the production cluster:
 
 ```bash
-kubectl --context kind-ctf-production-cluster \
+kubectl --context kind-production-cluster \
   -n production get secret challenge4-flag \
   -o jsonpath='{.data.flag}' | base64 -d
 ```
@@ -206,7 +206,7 @@ make clean-challenge4           # Delete production cluster
 ## Documentation
 
 - **[SETUP.md](./SETUP.md)**: Environment setup instructions (organizers)
-- **[CTF-CHALLENGE-GUIDE.md](./CTF-CHALLENGE-GUIDE.md)**: Step-by-step attack walkthrough
+- **[ATTACK-GUIDE.md](./ATTACK-GUIDE.md)**: Step-by-step attack walkthrough
 - **[ATTACK-ANALYSIS.md](./ATTACK-ANALYSIS.md)**: Technical analysis & real-world examples
 - **[SECURITY-GUIDE.md](./SECURITY-GUIDE.md)**: Detection & prevention strategies
 
@@ -214,13 +214,13 @@ make clean-challenge4           # Delete production cluster
 
 **Need Help?**
 - Setup issues: See [SETUP.md](./SETUP.md)
-- Attack execution: See [CTF-CHALLENGE-GUIDE.md](./CTF-CHALLENGE-GUIDE.md)
+- Attack execution: See [ATTACK-GUIDE.md](./ATTACK-GUIDE.md)
 - Understanding the attack: See [ATTACK-ANALYSIS.md](./ATTACK-ANALYSIS.md)
 - Prevention strategies: See [SECURITY-GUIDE.md](./SECURITY-GUIDE.md)
 
 ## Credits
 
-Created as part of the Supply Chain Security CTF project.
+Created as part of the Supply Chain Security deep dive project.
 
 **Repository**: https://github.com/sherine-k/supply-chain-dd  
 **Challenge Author**: Claude Code & Sherine K

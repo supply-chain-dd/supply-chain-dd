@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
 TEKTON_CHAINS_VERSION="${TEKTON_CHAINS_VERSION:-v0.26.3}"
 
 echo "Checking prerequisites..."
@@ -98,7 +101,7 @@ echo "  ISSUER=\$(kubectl get --raw /.well-known/openid-configuration | jq -r '.
 echo "  cosign verify \\"
 echo "    --certificate-identity=https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \\"
 echo "    --certificate-oidc-issuer=\$ISSUER \\"
-echo "    --rekor-url=http://localhost:\${REKOR_NODE_PORT:-30006} \\"
+echo "    --rekor-url=http://${REKOR_HOST} \\"
 echo "    --insecure-ignore-sct \\"
 echo "    --registry-cacert=setup/certs/registry.crt \\"
 echo "    <image>"

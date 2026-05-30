@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-ctf-cluster}"
+CLUSTER_NAME="${CLUSTER_NAME:-ci-cluster}"
 GITEA_NAMESPACE="gitea"
 REGISTRY_NAMESPACE="registry"
 
-echo "Cleaning up CTF environment..."
+echo "Cleaning up deep dive environment..."
 
 # Cleanup Registry if it exists (optional - will be deleted with cluster anyway)
 if kubectl get namespace "${REGISTRY_NAMESPACE}" &> /dev/null; then

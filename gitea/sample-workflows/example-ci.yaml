@@ -1,6 +1,6 @@
 # Sample Gitea Actions Workflow
 # Place this file in .gitea/workflows/ directory in your repository
-# This demonstrates basic CI/CD capabilities for CTF challenges
+# This demonstrates basic CI/CD capabilities for deep dive challenges
 
 name: CI Pipeline
 on:

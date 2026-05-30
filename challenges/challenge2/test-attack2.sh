@@ -25,7 +25,7 @@ fi
 
 # Step 2: Verify golang base image exists (for Challenge 3)
 echo -e "\n${YELLOW}[2/8] Verifying golang base image for Challenge 3...${NC}"
-BASE_IMAGE_TAGS=$(curl -k -s -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/golang/tags/list)
+BASE_IMAGE_TAGS=$(curl -k -s -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/golang/tags/list)
 if echo "$BASE_IMAGE_TAGS" | grep -q "1.25-alpine"; then
     echo -e "${GREEN}✓ golang:1.25-alpine base image seeded${NC}"
 else
@@ -35,7 +35,7 @@ fi
 
 # Step 3: Verify image exists in registry
 echo -e "\n${YELLOW}[3/8] Verifying recipe-api image in registry...${NC}"
-CATALOG=$(curl -k -s -u ctf-admin:CTFRegistryPass123! https://localhost:30000/v2/_catalog)
+CATALOG=$(curl -k -s -u sc-admin:RegistryPass123! https://registry.sc.local:30443/v2/_catalog)
 if echo "$CATALOG" | grep -q "recipe-api"; then
     echo -e "${GREEN}✓ recipe-api image found in registry${NC}"
 else
@@ -46,7 +46,7 @@ fi
 
 # Step 4: Check Attack #1 flag contains registry credentials
 echo -e "\n${YELLOW}[4/8] Checking Attack #1 flag...${NC}"
-FLAG=$(kubectl get secret ctf-flag -n ctf-challenge -o jsonpath='{.data.flag}' | base64 -d)
+FLAG=$(kubectl get secret registry-credentials -n ci -o jsonpath='{.data.flag}' | base64 -d)
 if echo "$FLAG" | grep -q "registry_layer_leak"; then
     echo -e "${GREEN}✓ Flag contains registry hint${NC}"
     echo "  Flag: $FLAG"
@@ -57,9 +57,9 @@ fi
 
 # Step 5: Verify registry credentials in secret
 echo -e "\n${YELLOW}[5/8] Verifying registry credentials...${NC}"
-REG_USER=$(kubectl get secret ctf-flag -n ctf-challenge -o jsonpath='{.data.registry-user}' | base64 -d)
-REG_PASS=$(kubectl get secret ctf-flag -n ctf-challenge -o jsonpath='{.data.registry-password}' | base64 -d)
-if [[ "$REG_USER" == "ctf-admin" ]] && [[ "$REG_PASS" == "CTFRegistryPass123!" ]]; then
+REG_USER=$(kubectl get secret registry-credentials -n ci -o jsonpath='{.data.registry-user}' | base64 -d)
+REG_PASS=$(kubectl get secret registry-credentials -n ci -o jsonpath='{.data.registry-password}' | base64 -d)
+if [[ "$REG_USER" == "sc-admin" ]] && [[ "$REG_PASS" == "RegistryPass123!" ]]; then
     echo -e "${GREEN}✓ Registry credentials are correct${NC}"
 else
     echo -e "${RED}✗ Registry credentials are incorrect${NC}"
@@ -68,7 +68,7 @@ fi
 
 # Step 6: Pull the image
 echo -e "\n${YELLOW}[6/8] Pulling image...${NC}"
-if podman pull localhost:30000/recipe-api:v1.0 --tls-verify=false > /dev/null 2>&1; then
+if podman pull registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Image pulled successfully${NC}"
 else
     echo -e "${RED}✗ Failed to pull image${NC}"
@@ -78,7 +78,7 @@ fi
 # Step 7: Check for .git in layers
 echo -e "\n${YELLOW}[7/8] Checking image layers for .git directory...${NC}"
 TMPDIR=$(mktemp -d)
-podman save localhost:30000/recipe-api:v1.0 -o "$TMPDIR/recipe-api.tar" 2>/dev/null
+podman save registry.sc.local:30443/recipe-api:v1.0 -o "$TMPDIR/recipe-api.tar" 2>/dev/null
 tar -xf "$TMPDIR/recipe-api.tar" -C "$TMPDIR" 2>/dev/null
 
 GIT_FOUND=false
@@ -143,7 +143,7 @@ if [ "$GIT_FOUND" = true ]; then
     echo
     echo "Participants can now:"
     echo "  1. Use credentials from Attack #1"
-    echo "  2. Access registry at https://localhost:30000"
+    echo "  2. Access registry at https://registry.sc.local:30443"
     echo "  3. Pull and analyze recipe-api:v1.0"
     echo "  4. Extract .git from image layers"
     echo "  5. Find the flag in git history"

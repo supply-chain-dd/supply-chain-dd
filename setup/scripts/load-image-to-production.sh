@@ -1,13 +1,16 @@
 #!/bin/bash
 #
 # Load recipe-api image into production cluster
-# This makes the CTF cluster's registry image available in the production cluster
+# This makes the CI cluster's registry image available in the production cluster
 #
 
 set -euo pipefail
 
-CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-ctf-production-cluster}"
-IMAGE="${RECIPE_API_IMAGE:-localhost:30000/recipe-api:v1.0}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
+CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-production-cluster}"
+IMAGE="${RECIPE_API_IMAGE:-${REGISTRY_HOST}/recipe-api:v1.0}"
 
 echo "==> Loading recipe-api image into production cluster..."
 

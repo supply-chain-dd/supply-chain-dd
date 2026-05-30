@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-ctf-cluster}"
+CLUSTER_NAME="${CLUSTER_NAME:-ci-cluster}"
 KIND_VERSION="${KIND_VERSION:-v1.27.3}"
 
 echo "Setting up KinD cluster: ${CLUSTER_NAME}"
@@ -20,37 +20,28 @@ if kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
 fi
 
 # Create kind cluster with custom configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
 cat <<EOF | kind create cluster --name "${CLUSTER_NAME}" --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
   extraPortMappings:
-  - containerPort: 30000
-    hostPort: 30000
+  # Gateway API (Envoy Gateway) — access via *.sc.local domains
+  - containerPort: ${GATEWAY_HTTP_PORT}
+    hostPort: ${GATEWAY_HTTP_PORT}
+    listenAddress: "127.0.0.1"
     protocol: TCP
-  - containerPort: 30001  # Tekton Dashboard
-    hostPort: 30001
+  - containerPort: ${GATEWAY_HTTPS_PORT}
+    hostPort: ${GATEWAY_HTTPS_PORT}
+    listenAddress: "127.0.0.1"
     protocol: TCP
-  - containerPort: 30002
-    hostPort: 30002
+  # Gitea SSH (TCP — cannot go through HTTP gateway)
+  - containerPort: ${GITEA_SSH_PORT}
+    hostPort: ${GITEA_SSH_PORT}
     protocol: TCP
-  - containerPort: 30003
-    hostPort: 30003
-    protocol: TCP
-  - containerPort: 30006  # Rekor (sigstore transparency log)
-    hostPort: 30006
-    protocol: TCP
-  - containerPort: 30007  # TUF (sigstore root of trust)
-    hostPort: 30007
-    protocol: TCP
-  - containerPort: 30008  # Fulcio (sigstore CA)
-    hostPort: 30008
-    protocol: TCP
-# containerdConfigPatches:
-# - |-
-#   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
-#     endpoint = ["http://kind-registry:5000"]
 EOF
 
 echo "✓ KinD cluster '${CLUSTER_NAME}' created successfully"

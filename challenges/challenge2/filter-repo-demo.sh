@@ -16,7 +16,7 @@ pe "git filter-repo --version"
 WORK_DIR=$(mktemp -d)
 
 p "1. Cloner le dépôt depuis Gitea"
-pe "git clone http://ctf-admin:CTFSecurePass123\!@localhost:30002/ctf-admin/recipe-api ${WORK_DIR}/recipe-api"
+pe "git clone http://sc-admin:SecurePass123\!@gitea.sc.local:30080/sc-admin/recipe-api ${WORK_DIR}/recipe-api"
 
 cd "${WORK_DIR}/recipe-api"
 

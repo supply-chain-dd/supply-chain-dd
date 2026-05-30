@@ -1,6 +1,6 @@
 # Tekton Chains Integration
 
-This document explains how to use Tekton Chains for supply chain security in the CTF environment.
+This document explains how to use Tekton Chains for supply chain security in the deep dive environment.
 
 ## Overview
 
@@ -166,7 +166,7 @@ kubectl rollout restart deployment tekton-chains-controller -n tekton-chains
 
 **Note**: SBOM generation requires the image to be available in the registry when Chains processes the TaskRun.
 
-## Usage with CTF Challenges
+## Usage with Deep Dive Challenges
 
 ### Challenge 1: PR Quality Check Pipeline
 
@@ -182,7 +182,7 @@ kubectl tkn pipeline start pr-quality-check-pipeline \
   --showlog
 
 # View the generated attestation
-kubectl get pipelineruns -n ctf-challenge -o yaml | grep -A 10 "chains.tekton.dev"
+kubectl get pipelineruns -n ci -o yaml | grep -A 10 "chains.tekton.dev"
 ```
 
 ### Challenge 2: Push Build Pipeline (Image Signing)
@@ -198,19 +198,19 @@ kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks-with-chains.yaml
 make trigger-challenge2-build
 
 # Check PipelineRun attestations
-kubectl get pipelineruns -n ctf-challenge -o jsonpath='{.items[*].metadata.annotations.chains\.tekton\.dev/signed}'
+kubectl get pipelineruns -n ci -o jsonpath='{.items[*].metadata.annotations.chains\.tekton\.dev/signed}'
 
 # Check TaskRun attestations (image signing)
-kubectl get taskruns -n ctf-challenge -l tekton.dev/pipelineTask=push-container-image \
+kubectl get taskruns -n ci -l tekton.dev/pipelineTask=push-container-image \
   -o jsonpath='{.items[*].metadata.annotations.chains\.tekton\.dev/signed}'
 
 # Verify image signature (using public key file)
 cosign verify --insecure-ignore-tlog --key cosign.pub \
-  localhost:30000/recipe-api:v1.0 --registry-cacert=setup/certs/registry.crt
+  registry.sc.local:30443/recipe-api:v1.0 --registry-cacert=setup/certs/registry.crt
 
 # Or verify using Kubernetes secret directly
 cosign verify --insecure-ignore-tlog --key k8s://tekton-chains/signing-secrets --registry-cacert setup/certs/registry.crt \
-  localhost:30000/recipe-api:latest/recipe-api:v1.0
+  registry.sc.local:30443/recipe-api:latest/recipe-api:v1.0
 ```
 
 **Note**: The setup script saves the cosign public key to `cosign.pub` at the repository root for convenient signature verification.
@@ -229,13 +229,13 @@ Tekton Chains adds annotations to PipelineRuns:
 
 ```bash
 # List all pipeline runs with attestations
-kubectl get pipelineruns -n ctf-challenge -o custom-columns=\
+kubectl get pipelineruns -n ci -o custom-columns=\
 NAME:.metadata.name,\
 SIGNED:.metadata.annotations.chains\.tekton\.dev/signed,\
 TRANSPARENCY:.metadata.annotations.chains\.tekton\.dev/transparency
 
 # View full attestation
-kubectl get pipelinerun <name> -n ctf-challenge -o jsonpath='{.metadata.annotations}' | jq
+kubectl get pipelinerun <name> -n ci -o jsonpath='{.metadata.annotations}' | jq
 ```
 
 ### In OCI Registry
@@ -244,10 +244,10 @@ Attestations are stored alongside container images in the OCI registry:
 
 ```bash
 # Login to registry
-podman login localhost:30000 -u ctf-admin -p CTFRegistryPass123! --tls-verify=false
+podman login registry.sc.local:30443 -u sc-admin -p RegistryPass123! --tls-verify=false
 
 # Pull attestation (using cosign or oras)
-cosign download attestation localhost:30000/recipe-api:latest
+cosign download attestation registry.sc.local:30443/recipe-api:latest
 ```
 
 ## Integration with AMPEL
@@ -294,12 +294,12 @@ make verify-conforma           # check ec is installed and print a sample valida
 # git URL and revision are passed to Conforma for slsa_source_correlated checks.
 SSL_CERT_FILE=setup/certs/registry.crt \
 ec validate image \
-  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git","revision":"ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e"}}}]}' \
+  --images '{"components":[{"name":"recipe-api","containerImage":"registry.sc.local:30443/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git","revision":"ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e"}}}]}' \
   --public-key cosign.pub \
-  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
+  --policy '{"sources":[{"name":"sc-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
   --ignore-rekor \
   --extra-rule-data allowed_registry_prefixes=registry.registry.svc.cluster.local:5000 \
-  --extra-rule-data allowed_registry_prefixes=localhost:30000 \
+  --extra-rule-data allowed_registry_prefixes=registry.sc.local:30443 \
   --extra-rule-data allowed_registry_prefixes=docker.io \
   --extra-rule-data allowed_registry_prefixes=gcr.io \
   --extra-rule-data allowed_registry_prefixes=golang \
@@ -328,17 +328,17 @@ make trigger-challenge2-build-with-chains
 #        → generate-sbom                  (Trivy SPDX SBOM + oras attach)
 
 # Monitor progress
-kubectl get pipelineruns -n ctf-challenge -w
+kubectl get pipelineruns -n ci -w
 
 # After the pipeline finishes, validate from the command line:
 SSL_CERT_FILE=setup/certs/registry.crt \
 ec validate image \
-  --images '{"components":[{"name":"recipe-api","containerImage":"localhost:30000/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git","revision":"ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e"}}}]}' \
+  --images '{"components":[{"name":"recipe-api","containerImage":"registry.sc.local:30443/recipe-api:v1.0","source":{"git":{"url":"http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git","revision":"ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e"}}}]}' \
   --public-key cosign.pub \
-  --policy '{"sources":[{"name":"ctf-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
+  --policy '{"sources":[{"name":"sc-minimal","policy":["github.com/conforma/policy//policy/lib","github.com/conforma/policy//policy/release"],"config":{"include":["@minimal"],"exclude":["base_image_registries.base_image_info_found","cve.cve_results_found"]}}]}' \
   --ignore-rekor \
   --extra-rule-data allowed_registry_prefixes=registry.registry.svc.cluster.local:5000 \
-  --extra-rule-data allowed_registry_prefixes=localhost:30000 \
+  --extra-rule-data allowed_registry_prefixes=registry.sc.local:30443 \
   --extra-rule-data allowed_registry_prefixes=docker.io \
   --extra-rule-data allowed_registry_prefixes=gcr.io \
   --extra-rule-data allowed_registry_prefixes=golang \
@@ -375,12 +375,12 @@ Current Configuration Settings:
 
 1. Run a pipeline:
 ```bash
-kubectl tkn pipeline start pr-quality-check-pipeline -n ctf-challenge --showlog
+kubectl tkn pipeline start pr-quality-check-pipeline -n ci --showlog
 ```
 
 2. Check for attestation:
 ```bash
-kubectl get pipelineruns -n ctf-challenge --sort-by=.metadata.creationTimestamp | tail -1
+kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp | tail -1
 ```
 
 3. Look for `chains.tekton.dev/signed: true` annotation
@@ -470,14 +470,14 @@ kubectl logs -n tekton-chains -l app.kubernetes.io/name=controller --tail=20
 **Diagnosis**:
 ```bash
 # Check if tasks output IMAGE_DIGEST and IMAGE_URL results
-kubectl get task push-container-image -n ctf-challenge -o yaml | grep -A 5 "^  results:"
+kubectl get task push-container-image -n ci -o yaml | grep -A 5 "^  results:"
 
 # Check TaskRun results
-TASKRUN=$(kubectl get taskruns -n ctf-challenge \
+TASKRUN=$(kubectl get taskruns -n ci \
   -l tekton.dev/pipelineTask=push-container-image \
   --sort-by=.metadata.creationTimestamp -o name | tail -1)
 
-kubectl get $TASKRUN -n ctf-challenge -o jsonpath='{.status.taskResults}'
+kubectl get $TASKRUN -n ci -o jsonpath='{.status.taskResults}'
 # Should show IMAGE_DIGEST and IMAGE_URL
 ```
 
@@ -492,10 +492,10 @@ kubectl apply -f challenges/challenge2/tekton/tasks/build-tasks-with-chains.yaml
 make trigger-challenge2-build
 
 # Verify TaskRun has results
-kubectl get taskruns -n ctf-challenge \
+kubectl get taskruns -n ci \
   -l tekton.dev/pipelineTask=push-container-image \
   --sort-by=.metadata.creationTimestamp -o name | tail -1 | \
-  xargs -I {} kubectl get {} -n ctf-challenge -o jsonpath='{.status.taskResults[*].name}'
+  xargs -I {} kubectl get {} -n ci -o jsonpath='{.status.taskResults[*].name}'
 # Should output: IMAGE_DIGEST IMAGE_URL
 ```
 
@@ -535,8 +535,8 @@ cd setup && ./scripts/setup-tektonchains-registry-trust.sh
 
 # Or manually:
 # 1. Copy registry CA cert to tekton-chains namespace
-kubectl get configmap registry-ca-cert -n ctf-challenge -o yaml | \
-    sed 's/namespace: ctf-challenge/namespace: tekton-chains/' | \
+kubectl get configmap registry-ca-cert -n ci -o yaml | \
+    sed 's/namespace: ci/namespace: tekton-chains/' | \
     kubectl apply -f -
 
 # 2. Patch Tekton Chains deployment
@@ -583,7 +583,7 @@ kubectl logs -n tekton-chains -l app.kubernetes.io/name=controller --tail=20
 ```bash
 # Verify registry is accessible from chains controller
 kubectl run test-registry --image=curlimages/curl:latest --rm -i --restart=Never -- \
-  curl -k -u ctf-admin:CTFRegistryPass123! https://registry.registry.svc.cluster.local:5000/v2/_catalog
+  curl -k -u sc-admin:RegistryPass123! https://registry.registry.svc.cluster.local:5000/v2/_catalog
 
 # Check if registry credentials are configured
 kubectl get secret -n tekton-chains

@@ -1,8 +1,8 @@
 # ArgoCD Helm Values for Challenge 4
-# This configuration is intentionally permissive for CTF demonstration
+# This configuration is intentionally permissive for the deep dive demonstration
 
 global:
-  domain: argocd.ctf.local
+  domain: argocd.sc.local:31443
 
 server:
   service:
@@ -20,7 +20,7 @@ server:
 
     # Disable TLS verification (vulnerable!)
     repositories: |
-      - url: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/production-manifests.git
+      - url: http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/production-manifests.git
         type: git
         name: production-manifests
         insecure: true
@@ -42,17 +42,17 @@ configs:
     argocdServerAdminPassword: "$2a$10$mivhwttXM0U5eBrZGtAG8.VSRL1l9cZNAmaSaqotIzXRBRwF/x/KS"  # BCrypt hash of "admin123"
     argocdServerAdminPasswordMtime: "2026-04-01T00:00:00Z"
 
-    # JWT signing secret (intentionally weak for CTF!)
+    # JWT signing secret (intentionally weak for the deep dive!)
     # This secret produces the token signature in .env.production
     # Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjpsb2dpbiIsIm5iZiI6MTcxMjMyMTQwMCwiaWF0IjoxNzEyMzIxNDAwLCJqdGkiOiJjdGYtZGVwbG95ZXIifQ.Q3RGX0RlcGxveV9Ub2tlbl9TdXBlclNlY3JldCE
-    argocdServerJwtSecret: "CtF_Deploy_Token_SuperSecret!"
+    argocdServerJwtSecret: "Deploy_Token_SuperSecret!"
 
   cm:
     # Allow apps in any namespace (vulnerable!)
     application.instanceLabelKey: argocd.argoproj.io/instance
 
     # Register the leaked token ID (vulnerable!)
-    accounts.admin.tokens: "ctf-deployer"
+    accounts.admin.tokens: "sc-deployer"
 
     # Timeout settings
     timeout.reconciliation: 180s

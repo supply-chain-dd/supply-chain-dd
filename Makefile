@@ -1,4 +1,4 @@
-.PHONY: help setup setup-kind setup-gitea setup-tekton setup-tektonchains setup-registry seed-victim-repo setup-ctf-challenge setup-ctf-challenge-secure verify verify-ctf status clean
+.PHONY: help setup setup-kind setup-gitea setup-tekton setup-tektonchains setup-registry seed-victim-repo setup-ci-pr-pipeline setup-ci-pr-pipeline-secure verify verify-ci-pr-pipeline status clean
 .PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security create-security-policies
 .PHONY: check-cli-tools install-tkn install-kubescape install-conforma verify-registry configure-registry-tls verify-tektonchains
 .PHONY: setup-conforma verify-conforma
@@ -8,8 +8,9 @@
 .PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-challenge4 verify-challenge4 clean-challenge4 apply-challenge4-security test-challenge4-attack
 .PHONY: setup-release-pipeline trigger-release-pipeline
 .PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard
+.PHONY: setup-gateway configure-hosts
 
-CLUSTER_NAME ?= ctf-cluster
+CLUSTER_NAME ?= ci-cluster
 GITEA_HELM_VERSION ?= v12.5.0
 TEKTON_PIPELINE_VERSION ?= v0.53.0
 TEKTON_CHAINS_VERSION ?= v0.26.3
@@ -26,8 +27,8 @@ REGISTRY_NODE_PORT ?= 30000
 REKOR_NODE_PORT ?= 30006
 TUF_NODE_PORT ?= 30007
 FULCIO_NODE_PORT ?= 30008
-REGISTRY_USER ?= ctf-admin
-REGISTRY_PASS ?= CTFRegistryPass123!
+REGISTRY_USER ?= sc-admin
+REGISTRY_PASS ?= RegistryPass123!
 PRODUCTION_REGISTRY_NODE_PORT ?= 30082
 
 # Container runtime selection (podman or docker)
@@ -167,13 +168,13 @@ verify-conforma: ## Verify Conforma (ec) CLI installation and signing key
 	@echo "  ISSUER=\$$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')"
 	@echo "  SSL_CERT_FILE=setup/certs/registry.crt \\"
 	@echo "  ec validate image \\"
-	@echo "    --images '{\"components\":[{\"name\":\"recipe-api\",\"containerImage\":\"localhost:30000/recipe-api:v1.0\",\"source\":{\"git\":{\"url\":\"http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git\",\"revision\":\"9d81c465f358fef7efd791966e482e1eece4ff78\"}}}]}' \\"
+	@echo "    --images '{\"components\":[{\"name\":\"recipe-api\",\"containerImage\":\"registry.sc.local:30443/recipe-api:v1.0\",\"source\":{\"git\":{\"url\":\"http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git\",\"revision\":\"9d81c465f358fef7efd791966e482e1eece4ff78\"}}}]}' \\"
 	@echo "    --certificate-identity https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \\"
 	@echo "    --certificate-oidc-issuer \$$ISSUER \\"
-	@echo "    --rekor-url http://localhost:\$$(REKOR_NODE_PORT) \\"
-	@echo "    --policy '{\"sources\":[{\"name\":\"ctf-minimal\",\"policy\":[\"github.com/conforma/policy//policy/lib\",\"github.com/conforma/policy//policy/release\"],\"config\":{\"include\":[\"@minimal\"],\"exclude\":[\"base_image_registries.base_image_info_found\",\"cve.cve_results_found\"]}}]}' \\"
+	@echo "    --rekor-url http://rekor.sc.local:30080 \\"
+	@echo "    --policy '{\"sources\":[{\"name\":\"sc-minimal\",\"policy\":[\"github.com/conforma/policy//policy/lib\",\"github.com/conforma/policy//policy/release\"],\"config\":{\"include\":[\"@minimal\"],\"exclude\":[\"base_image_registries.base_image_info_found\",\"cve.cve_results_found\"]}}]}' \\"
 	@echo "    --extra-rule-data allowed_registry_prefixes=registry.registry.svc.cluster.local:5000 \\"
-	@echo "    --extra-rule-data allowed_registry_prefixes=localhost:30000 \\"
+	@echo "    --extra-rule-data allowed_registry_prefixes=registry.sc.local:30443 \\"
 	@echo "    --extra-rule-data allowed_registry_prefixes=docker.io \\"
 	@echo "    --extra-rule-data allowed_registry_prefixes=gcr.io \\"
 	@echo "    --extra-rule-data allowed_registry_prefixes=golang \\"
@@ -184,7 +185,7 @@ verify-conforma: ## Verify Conforma (ec) CLI installation and signing key
 # ============================================================
 
 help: ## Display this help message
-	@echo "Supply Chain CTF Environment - Available Commands:"
+	@echo "Supply Chain Deep Dive Environment - Available Commands:"
 	@echo ""
 	@echo "🚀 Quick Start (Deep Dive Demo):"
 	@echo "  \033[36mmake setup-demo\033[0m              Complete automated setup for Challenges 1-4"
@@ -195,7 +196,7 @@ help: ## Display this help message
 	@grep -E '^(check-cli-tools|install-tkn|install-kubescape|install-conforma):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Environment Setup:"
-	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-tekton-dashboard|setup-tektonchains|setup-registry|configure-registry-tls|seed-victim-repo|setup-ctf-challenge|setup-ctf-challenge-secure|setup-gitea-webhooks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(setup|setup-kind|setup-gitea|setup-tekton|setup-tekton-dashboard|setup-tektonchains|setup-registry|configure-registry-tls|seed-victim-repo|setup-ci-pr-pipeline|setup-ci-pr-pipeline-secure|setup-gitea-webhooks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Security Tools:"
 	@grep -E '^(setup-security-tools|setup-kyverno|setup-kubescape|setup-conforma):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -204,16 +205,16 @@ help: ## Display this help message
 	@grep -E '^(create-security-policies|apply-prevention-policies|security-scan|verify-security):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Verification:"
-	@grep -E '^(verify|verify-ctf|verify-registry|verify-tektonchains|verify-conforma|verify-demo-readiness|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(verify|verify-ci-pr-pipeline|verify-registry|verify-tektonchains|verify-conforma|verify-demo-readiness|status):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Cleanup:"
 	@grep -E '^(clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Quick Start (Manual Steps):"
 	@echo "  1. make check-cli-tools          # Check for required CLI tools"
-	@echo "  2. make setup                    # Setup complete CTF environment"
+	@echo "  2. make setup                    # Setup complete deep dive environment"
 	@echo "  3. make configure-registry-tls   # Configure registry TLS trust"
-	@echo "  4. make setup-ctf-challenge      # Setup Challenge 1"
+	@echo "  4. make setup-ci-pr-pipeline      # Setup Challenge 1"
 	@echo "  5. make setup-challenge2-tekton  # Setup Challenge 2"
 	@echo "  6. make setup-gitea-webhooks     # Create Gitea webhooks"
 	@echo "  7. make verify-demo-readiness    # Verify everything is ready"
@@ -233,10 +234,10 @@ help: ## Display this help message
 	@echo "  • challenges/challenge2/ATTACK-ANALYSIS.md - Container layer attack"
 	@echo ""
 
-setup: check-cli-tools setup-kind setup-gitea setup-tekton setup-registry verify ## Complete setup (KinD cluster + Gitea + tekton + registry + verification)
+setup: check-cli-tools configure-hosts setup-kind setup-gitea setup-tekton setup-registry setup-gateway configure-registry-tls verify ## Complete setup (KinD cluster + Gitea + tekton + registry + gateway + verification)
 	@echo ""
 	@echo "✓ Setup complete! Next steps:"
-	@echo "  • Run 'make setup-ctf-challenge' to install CTF resources"
+	@echo "  • Run 'make setup-ci-pr-pipeline' to install CI pipeline resources"
 	@echo "  • Run 'make setup-security-tools' to install security tools"
 # I took away setup-act-runner from setup
 # PS: in case of problems with file watching (e.g. "too many open files" errors), you may need to increase inotify limits on your host machine:
@@ -267,7 +268,7 @@ setup-tekton-dashboard: ## Install Tekton Dashboard (web UI)
 setup-tektonchains: ## Install and configure Tekton Chains for supply chain security
 	@cd setup && ./scripts/setup-tektonchains.sh
 	@echo ""
-	@if kubectl get configmap registry-ca-cert -n ctf-challenge &>/dev/null; then \
+	@if kubectl get configmap registry-ca-cert -n ci &>/dev/null; then \
 		echo "Setting up registry trust for Tekton Chains..."; \
 		cd setup && ./scripts/setup-tektonchains-registry-trust.sh; \
 	else \
@@ -292,12 +293,18 @@ setup-registry: ## Setup local Docker registry with authentication
 configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 	@cd setup && ./scripts/configure-registry-tls.sh
 
-seed-victim-repo: ## Seed recipe-api repository to CTF cluster Gitea
+setup-gateway: ## Deploy Gateway API with Envoy Gateway for *.sc.local domains
+	@cd setup && ./scripts/setup-gateway.sh ci
+
+configure-hosts: ## Configure /etc/hosts for *.sc.local domain resolution
+	@./setup/scripts/configure-hosts.sh
+
+seed-victim-repo: ## Seed recipe-api repository to CI cluster Gitea
 	@./setup/scripts/seed-victim-repo.sh
 
-setup-ctf-challenge: seed-victim-repo ## Install Tekton CTF challenge resources (VULNERABLE version)
-	@echo "Installing Tekton CTF Challenge (VULNERABLE version)..."
-	@kubectl create namespace ctf-challenge 2>/dev/null || true
+setup-ci-pr-pipeline: seed-victim-repo ## Install Tekton deep dive challenge resources (VULNERABLE version)
+	@echo "Installing Tekton Deep Dive Challenge (VULNERABLE version)..."
+	@kubectl create namespace ci 2>/dev/null || true
 	@echo ""	
 	@echo "Setting up registry CA certificate for Tekton..."
 	@cd setup/scripts && ./setup-registry-cert-for-tekton.sh
@@ -307,25 +314,25 @@ setup-ctf-challenge: seed-victim-repo ## Install Tekton CTF challenge resources 
 	@kubectl apply -f challenges/challenge1/tekton/tasks/vulnerable-quality-check-task.yaml
 	@kubectl apply -f challenges/challenge1/tekton/pipelines/vulnerable-pr-quality-pipeline.yaml
 	@echo ""
-	@echo "Creating CTF flag secret with registry credentials..."
-	@kubectl create secret generic ctf-flag \
+	@echo "Creating registry credentials secret with registry credentials..."
+	@kubectl create secret generic registry-credentials \
 		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
 		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
 		--from-literal=registry-user='$(REGISTRY_USER)' \
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
-		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
+		-n ci --dry-run=client -o yaml | kubectl apply -f -
 	
 	@echo "Next steps:"
 	@echo "  1. Complete victim repository setup: challenges/challenge1/SETUP.md"
-	@echo "  2. Review the challenge guide: challenges/challenge1/CTF-CHALLENGE-GUIDE.md"
-	@echo "  3. Test the attack: make verify-ctf"
+	@echo "  2. Review the challenge guide: challenges/challenge1/ATTACK-GUIDE.md"
+	@echo "  3. Test the attack: make verify-ci-pr-pipeline"
 	@echo ""
 	@echo "To deploy SECURE version instead:"
-	@echo "  make setup-ctf-challenge-secure"
+	@echo "  make setup-ci-pr-pipeline-secure"
 
-setup-ctf-challenge-secure: ## Install Tekton CTF challenge with SECURE configuration
-	@echo "Installing Tekton CTF Challenge (SECURE version)..."
-	@kubectl create namespace ctf-challenge 2>/dev/null || true
+setup-ci-pr-pipeline-secure: ## Install Tekton deep dive challenge with SECURE configuration
+	@echo "Installing Tekton Deep Dive Challenge (SECURE version)..."
+	@kubectl create namespace ci 2>/dev/null || true
 	@echo ""
 	@echo "Step 1: Deploying security RBAC (minimal ServiceAccounts)..."
 	@kubectl apply -f challenges/challenge1/security/rbac/minimal-serviceaccounts.yaml
@@ -335,15 +342,15 @@ setup-ctf-challenge-secure: ## Install Tekton CTF challenge with SECURE configur
 	@kubectl apply -f challenges/challenge1/tekton-patched/pipelines/
 	@kubectl apply -f challenges/challenge1/tekton-patched/triggers/
 	@echo ""
-	@echo "Step 3: Creating CTF flag secret with registry credentials..."
-	@kubectl create secret generic ctf-flag \
+	@echo "Step 3: Creating registry credentials secret with registry credentials..."
+	@kubectl create secret generic registry-credentials \
 		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
 		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
 		--from-literal=registry-user='$(REGISTRY_USER)' \
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
-		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
+		-n ci --dry-run=client -o yaml | kubectl apply -f -
 	@echo ""
-	@echo "✓ CTF Challenge installed successfully (SECURE version)"
+	@echo "✓ Deep Dive Challenge installed successfully (SECURE version)"
 	@echo ""
 	@echo "✅ Security controls enabled:"
 	@echo "   - Uses pr-pipeline-readonly ServiceAccount (NO secret access)"
@@ -361,7 +368,7 @@ setup-ctf-challenge-secure: ## Install Tekton CTF challenge with SECURE configur
 
 verify: verify-registry
  ## Verify environment is working correctly
-	@echo "Verifying CTF environment..."
+	@echo "Verifying deep dive environment..."
 	@echo ""
 	@echo "Cluster Info:"
 	@kubectl cluster-info
@@ -384,7 +391,7 @@ verify: verify-registry
 	@echo "✓ Environment verification complete"
 
 status: ## Show environment status
-	@echo "CTF Environment Status"
+	@echo "Deep Dive Environment Status"
 	@echo "======================"
 	@echo ""
 	@echo "KinD Clusters:"
@@ -412,30 +419,30 @@ status: ## Show environment status
 	@kubectl get pods -n tekton-pipelines -l app.kubernetes.io/part-of=tekton-dashboard 2>/dev/null || echo "  Tekton Dashboard not installed (run: make setup-tekton-dashboard)"
 	@echo ""
 	@echo "Access URLs:"
-	@echo "  Gitea:            http://localhost:30002"
-	@echo "  Tekton Dashboard: http://localhost:30001"
-	@echo "  Registry:         https://localhost:$(REGISTRY_NODE_PORT)"
+	@echo "  Gitea:            http://gitea.sc.local:30080"
+	@echo "  Tekton Dashboard: http://dashboard.sc.local:30080"
+	@echo "  Registry:         https://registry.sc.local:30443"
 
-verify-ctf: ## Verify Tekton CTF challenge installation
-	@echo "Verifying Tekton CTF Challenge..."
+verify-ci-pr-pipeline: ## Verify Tekton deep dive challenge installation
+	@echo "Verifying Tekton Deep Dive Challenge..."
 	@echo ""
 	@echo "Tekton Pipelines:"
 	@kubectl get pods -n tekton-pipelines 2>/dev/null || echo "  ❌ Tekton not installed (run: make setup-tekton)"
 	@echo ""
-	@echo "CTF Pipeline:"
-	@kubectl get pipeline pr-quality-check-pipeline -n ctf-challenge 2>/dev/null || echo "  ❌ Pipeline not found (run: make setup-ctf-challenge)"
+	@echo "CI Pipeline:"
+	@kubectl get pipeline pr-quality-check-pipeline -n ci 2>/dev/null || echo "  ❌ Pipeline not found (run: make setup-ci-pr-pipeline)"
 	@echo ""
-	@echo "CTF Tasks:"
-	@kubectl get task quality-check-task git-clone print-info print-results -n ctf-challenge 2>/dev/null || echo "  ❌ Tasks not found"
+	@echo "CI Tasks:"
+	@kubectl get task quality-check-task git-clone print-info print-results -n ci 2>/dev/null || echo "  ❌ Tasks not found"
 	@echo ""
 	@echo "EventListener:"
-	@kubectl get eventlistener pr-quality-check-listener -n ctf-challenge 2>/dev/null || echo "  ❌ EventListener not found"
+	@kubectl get eventlistener pr-quality-check-listener -n ci 2>/dev/null || echo "  ❌ EventListener not found"
 	@echo ""
-	@echo "CTF Flag Secret:"
-	@kubectl get secret ctf-flag -n ctf-challenge 2>/dev/null && echo "  ✓ Flag secret exists" || echo "  ❌ Flag secret not found"
+	@echo "Registry Credentials Secret:"
+	@kubectl get secret registry-credentials -n ci 2>/dev/null && echo "  ✓ Flag secret exists" || echo "  ❌ Flag secret not found"
 	@echo ""
 	@echo "ServiceAccounts:"
-	@kubectl get sa tekton-triggers-sa default -n ctf-challenge 2>/dev/null || echo "  ❌ ServiceAccounts not found"
+	@kubectl get sa tekton-triggers-sa default -n ci 2>/dev/null || echo "  ❌ ServiceAccounts not found"
 	@echo ""
 	@echo "✓ Verification complete"
 	@echo ""
@@ -474,7 +481,7 @@ verify-registry: ## Verify registry is working correctly
 	@echo ""
 	@echo "Testing registry connectivity..."
 	@echo "  External (from host):"
-	@curl -k -sf -u $(REGISTRY_USER):$(REGISTRY_PASS) https://localhost:$(REGISTRY_NODE_PORT)/v2/_catalog 2>/dev/null && \
+	@curl -k -sf -u $(REGISTRY_USER):$(REGISTRY_PASS) https://registry.sc.local:30443/v2/_catalog 2>/dev/null && \
 		echo "    ✓ Registry accessible from host" || \
 		echo "    ❌ Registry not accessible from host"
 	@echo ""
@@ -694,9 +701,9 @@ verify-security: ## Verify security tools and policies are working
 	@echo "------------------------------------------------"
 	@kubectl get networkpolicy --all-namespaces 2>/dev/null || echo "  No NetworkPolicies found"
 	@echo ""
-	@echo "ServiceAccounts (CTF Challenge):"
+	@echo "ServiceAccounts (Deep Dive Challenge):"
 	@echo "------------------------------------------------"
-	@kubectl get sa -n ctf-challenge 2>/dev/null || echo "  CTF challenge not set up"
+	@kubectl get sa -n ci 2>/dev/null || echo "  deep dive challenge not set up"
 	@echo ""
 	@echo "✓ Security verification complete"
 # ============================================================
@@ -732,18 +739,18 @@ build-recipe-api: ## Build the recipe-api container image
 		echo "  ✓ Git history restored from _git"; \
 	fi
 	@echo "  Rewriting Dockerfile FROM to use host-accessible registry..."
-	@sed -i 's|registry.registry.svc.cluster.local:5000|localhost:$(REGISTRY_NODE_PORT)|g' /tmp/recipe-api-build/Dockerfile
+	@sed -i 's|registry.registry.svc.cluster.local:5000|registry.sc.local:30443|g' /tmp/recipe-api-build/Dockerfile
 	@echo "  Building image with leaked git history..."
 	@cd /tmp/recipe-api-build && \
-		$(CONTAINER_RUNTIME) build -t localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
+		$(CONTAINER_RUNTIME) build -t registry.sc.local:30443/recipe-api:v1.0 -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
 	@echo "✓ Image built successfully with .git in layers"
 	@echo "  Note: /tmp/recipe-api-build contains the build context (you can inspect it)"
 
 push-recipe-api: ## Push recipe-api image to registry
 	@echo "Pushing recipe-api:v1.0 to registry..."
-	@$(CONTAINER_RUNTIME) login localhost:$(REGISTRY_NODE_PORT) \
+	@$(CONTAINER_RUNTIME) login registry.sc.local:30443 \
 		-u $(REGISTRY_USER) -p $(REGISTRY_PASS) 2>/dev/null || true
-	@$(CONTAINER_RUNTIME) push localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0
+	@$(CONTAINER_RUNTIME) push registry.sc.local:30443/recipe-api:v1.0
 	@echo "✓ Image pushed to registry"
 
 verify-challenge2: ## Verify Challenge 2 setup
@@ -754,7 +761,7 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 	@echo "========================================"
 	@echo "Installing Challenge 2 Tekton Resources"
 	@echo "========================================"
-	@kubectl create namespace ctf-challenge 2>/dev/null || true
+	@kubectl create namespace ci 2>/dev/null || true
 	@echo ""
 	@echo "Setting up Git credentials for Gitea..."
 	@kubectl apply -f challenges/challenge2/tekton/gitea-credentials.yaml
@@ -777,13 +784,13 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 	@echo "Applying Challenge 2 Tekton EventListener..."
 	@kubectl apply -f challenges/challenge2/tekton/triggers/
 	@echo ""
-	@echo "Creating CTF flag secret with registry credentials (if not exists)..."
-	@kubectl create secret generic ctf-flag \
+	@echo "Creating registry credentials secret with registry credentials (if not exists)..."
+	@kubectl create secret generic registry-credentials \
 		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
 		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
 		--from-literal=registry-user='$(REGISTRY_USER)' \
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
-		-n ctf-challenge --dry-run=client -o yaml | kubectl apply -f -
+		-n ci --dry-run=client -o yaml | kubectl apply -f -
 	@echo ""
 	@echo "Tekton Chains uses Fulcio for keyless signing (no cosign.pub needed)."
 	@echo "  Verify with: cosign verify --certificate-identity=... --certificate-oidc-issuer=..."
@@ -797,11 +804,11 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 	@echo "Next steps:"
 	@echo "  1. Trigger original pipeline:      make trigger-challenge2-build"
 	@echo "  2. Trigger Chains+SBOM pipeline:    make trigger-challenge2-build-with-chains"
-	@echo "  3. Monitor pipeline runs:          kubectl get pipelineruns -n ctf-challenge"
+	@echo "  3. Monitor pipeline runs:          kubectl get pipelineruns -n ci"
 	@if command -v kubectl-tkn >/dev/null 2>&1; then \
-		echo "  4. View logs: kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "  4. View logs: kubectl tkn pipelinerun logs -f -n ci"; \
 	elif command -v tkn >/dev/null 2>&1; then \
-		echo "  4. View logs: tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "  4. View logs: tkn pipelinerun logs -f -n ci"; \
 	else \
 		echo "  4. Install tkn for easier log viewing: make install-tkn"; \
 	fi
@@ -811,7 +818,7 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	@echo "Triggering Challenge 2 Build Pipeline"
 	@echo "========================================"
 	@echo ""
-	@if ! kubectl get pipeline push-build-pipeline -n ctf-challenge >/dev/null 2>&1; then \
+	@if ! kubectl get pipeline push-build-pipeline -n ci >/dev/null 2>&1; then \
 		echo "❌ Pipeline not found. Run 'make setup-challenge2-tekton' first"; \
 		exit 1; \
 	fi
@@ -830,14 +837,14 @@ trigger-challenge2-build: ## Trigger Challenge 2 pipeline to build and push imag
 	@echo "  ✓ PipelineRun created"
 	@echo ""
 	@echo "  Monitor with:"
-	@echo "    kubectl get pipelineruns -n ctf-challenge -w"
+	@echo "    kubectl get pipelineruns -n ci -w"
 	@echo ""
 	@if command -v kubectl-tkn >/dev/null 2>&1; then \
 		echo "  View logs:"; \
-		echo "    kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "    kubectl tkn pipelinerun logs -f -n ci"; \
 	elif command -v tkn >/dev/null 2>&1; then \
 		echo "  View logs:"; \
-		echo "    tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "    tkn pipelinerun logs -f -n ci"; \
 	else \
 		echo "  Install tkn for easier log viewing:"; \
 		echo "    make install-tkn"; \
@@ -852,7 +859,7 @@ trigger-challenge2-build-secure: ## Trigger Challenge 2 pipeline to build and pu
 	@echo "Triggering Challenge 2 Build Pipeline (Secure)"
 	@echo "========================================"
 	@echo ""
-	@if ! kubectl get pipeline push-build-pipeline-secure -n ctf-challenge >/dev/null 2>&1; then \
+	@if ! kubectl get pipeline push-build-pipeline-secure -n ci >/dev/null 2>&1; then \
 		echo "❌ Pipeline not found. Run 'kubectl apply -f supply-chain-dd/challenges/challenge2/tekton-patched/pipelines/push-build-pipeline-secure.yaml' first"; \
 		exit 1; \
 	fi
@@ -867,7 +874,7 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 	@echo "Triggering Challenge 2 Build Pipeline (with Chains + SBOM)"
 	@echo "========================================"
 	@echo ""
-	@if ! kubectl get pipeline push-build-pipeline-with-chains -n ctf-challenge >/dev/null 2>&1; then \
+	@if ! kubectl get pipeline push-build-pipeline-with-chains -n ci >/dev/null 2>&1; then \
 		echo "❌ Pipeline not found. Run 'make setup-challenge2-tekton' first"; \
 		exit 1; \
 	fi
@@ -897,13 +904,13 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 	@echo "    8. generate-sbom               — Trivy SPDX SBOM + oras attach"
 	@echo ""
 	@echo "  Monitor with:"
-	@echo "    kubectl get pipelineruns -n ctf-challenge -w"
+	@echo "    kubectl get pipelineruns -n ci -w"
 	@if command -v kubectl-tkn >/dev/null 2>&1; then \
 		echo "  View logs:"; \
-		echo "    kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "    kubectl tkn pipelinerun logs -f -n ci"; \
 	elif command -v tkn >/dev/null 2>&1; then \
 		echo "  View logs:"; \
-		echo "    tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "    tkn pipelinerun logs -f -n ci"; \
 	else \
 		echo "  Install tkn for easier log viewing:"; \
 		echo "    make install-tkn"; \
@@ -914,7 +921,7 @@ trigger-challenge2-build-with-chains: ## Trigger Challenge 2 Chains pipeline (bu
 # ============================================================
 
 setup-sigstore-local: ## Deploy local Sigstore stack (Fulcio, Rekor, TUF) on KinD
-	@cd setup && SIGSTORE_SCAFFOLD_VERSION=$(SIGSTORE_SCAFFOLD_VERSION) KNATIVE_VERSION=$(KNATIVE_VERSION) REKOR_NODE_PORT=$(REKOR_NODE_PORT) TUF_NODE_PORT=$(TUF_NODE_PORT) FULCIO_NODE_PORT=$(FULCIO_NODE_PORT) ./scripts/setup-sigstore-local.sh
+	@cd setup && SIGSTORE_SCAFFOLD_VERSION=$(SIGSTORE_SCAFFOLD_VERSION) KNATIVE_VERSION=$(KNATIVE_VERSION) ./scripts/setup-sigstore-local.sh
 
 verify-sigstore-local: ## Verify local Sigstore stack is running
 	@echo "Verifying local Sigstore stack..."
@@ -929,7 +936,7 @@ verify-sigstore-local: ## Verify local Sigstore stack is running
 	@kubectl get pods -n tuf-system 2>/dev/null || echo "  ❌ TUF not deployed"
 	@echo ""
 	@echo "TUF root ConfigMap:"
-	@kubectl get configmap sigstore-tuf-root -n ctf-challenge 2>/dev/null && echo "  ✓ sigstore-tuf-root exists in ctf-challenge" || echo "  ❌ sigstore-tuf-root not found"
+	@kubectl get configmap sigstore-tuf-root -n ci 2>/dev/null && echo "  ✓ sigstore-tuf-root exists in ci" || echo "  ❌ sigstore-tuf-root not found"
 	@echo ""
 	@echo "OIDC issuer:"
 	@kubectl get --raw /.well-known/openid-configuration 2>/dev/null | jq -r '.issuer' || echo "  ❌ Could not retrieve OIDC issuer"
@@ -961,7 +968,7 @@ trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipelin
 	@echo "Triggering Challenge 2 Keyless Build Pipeline"
 	@echo "========================================"
 	@echo ""
-	@if ! kubectl get pipeline push-build-pipeline-keyless -n ctf-challenge >/dev/null 2>&1; then \
+	@if ! kubectl get pipeline push-build-pipeline-keyless -n ci >/dev/null 2>&1; then \
 		echo "❌ Pipeline not found. Run 'make setup-challenge2-tekton-keyless' first"; \
 		exit 1; \
 	fi
@@ -983,13 +990,13 @@ trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipelin
 	@echo "    9. scan-image             — Trivy vuln+secret scan + oras attach"
 	@echo ""
 	@echo "  Monitor with:"
-	@echo "    kubectl get pipelineruns -n ctf-challenge -w"
+	@echo "    kubectl get pipelineruns -n ci -w"
 	@if command -v kubectl-tkn >/dev/null 2>&1; then \
 		echo "  View logs:"; \
-		echo "    kubectl tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "    kubectl tkn pipelinerun logs -f -n ci"; \
 	elif command -v tkn >/dev/null 2>&1; then \
 		echo "  View logs:"; \
-		echo "    tkn pipelinerun logs -f -n ctf-challenge"; \
+		echo "    tkn pipelinerun logs -f -n ci"; \
 	else \
 		echo "  Install tkn for easier log viewing:"; \
 		echo "    make install-tkn"; \
@@ -999,9 +1006,9 @@ trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipelin
 # Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ctf-challenge setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-challenge4 setup-release-pipeline configure-production-registry-tls verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-security-tools setup-ci-pr-pipeline setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-challenge4 setup-release-pipeline configure-production-registry-tls verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
 	@echo ""
-	@echo "Restoring kubectl context to CTF cluster..."
+	@echo "Restoring kubectl context to CI cluster..."
 	@kubectl config use-context kind-$(CLUSTER_NAME)
 	@echo ""
 	@echo "=========================================="
@@ -1009,18 +1016,18 @@ setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-securi
 	@echo "=========================================="
 	@echo ""
 	@echo "Access Information:"
-	@echo "  CTF Cluster:"
-	@echo "    Gitea:            http://localhost:$(GITEA_HTTP_PORT)"
-	@echo "    Tekton Dashboard: http://localhost:30001"
-	@echo "    Registry:         https://localhost:$(REGISTRY_NODE_PORT)"
-	@echo "    Username: ctf-admin"
-	@echo "    Password: CTFSecurePass123!"
+	@echo "  CI Cluster:"
+	@echo "    Gitea:            http://gitea.sc.local:30080"
+	@echo "    Tekton Dashboard: http://dashboard.sc.local:30080"
+	@echo "    Registry:         https://registry.sc.local:30443"
+	@echo "    Username: sc-admin"
+	@echo "    Password: SecurePass123!"
 	@echo ""
 	@echo "  Production Cluster (Challenge 4):"
-	@echo "    Gitea:    http://localhost:$(PRODUCTION_GITEA_HTTP_PORT)"
-	@echo "    ArgoCD:   https://localhost:30443"
-	@echo "    Username: ctf-admin / admin (ArgoCD)"
-	@echo "    Password: CTFSecurePass123! / admin123 (ArgoCD)"
+	@echo "    Gitea:    http://gitea-prod.sc.local:31080"
+	@echo "    ArgoCD:   https://argocd.sc.local:31443"
+	@echo "    Username: sc-admin / admin (ArgoCD)"
+	@echo "    Password: SecurePass123! / admin123 (ArgoCD)"
 	@echo ""
 	@echo "Challenges Ready:"
 	@echo "  • Challenge 1: PR Quality Check Attack"
@@ -1029,10 +1036,10 @@ setup-demo: setup configure-registry-tls seed-legitimate-base-image setup-securi
 	@echo "  • Challenge 4: GitOps Pipeline Compromise"
 	@echo ""
 	@echo "Start the Demo:"
-	@echo "  1. Open Gitea: http://localhost:$(GITEA_HTTP_PORT)"
+	@echo "  1. Open Gitea: http://gitea.sc.local:30080"
 	@echo "  2. Create a pull request in recipe-api repository"
-	@echo "  3. Follow attack guides in challenges/challengeN/CTF-CHALLENGE-GUIDE.md"
-	@echo "  4. Monitor pipelines: kubectl get pipelineruns -n ctf-challenge -w"
+	@echo "  3. Follow attack guides in challenges/challengeN/ATTACK-GUIDE.md"
+	@echo "  4. Monitor pipelines: kubectl get pipelineruns -n ci -w"
 	@echo ""
 
 setup-gitea-webhooks: ## Setup Gitea webhooks for Tekton EventListeners
@@ -1056,7 +1063,7 @@ setup-challenge3: setup-registry ## Setup Challenge 3 (base image poisoning)
 	@echo "Prerequisites:"
 	@echo "  • Challenge 1 completed (registry credentials obtained)"
 	@echo "  • Challenge 2 completed (legitimate base image seeded)"
-	@echo "  • Victim repository Dockerfile uses localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine"
+	@echo "  • Victim repository Dockerfile uses registry.sc.local:30443/golang:1.25-alpine"
 	@echo ""
 	@echo "Attack Scenario:"
 	@echo "  1. Create malicious base image with backdoor"
@@ -1066,7 +1073,7 @@ setup-challenge3: setup-registry ## Setup Challenge 3 (base image poisoning)
 	@echo ""
 	@echo "Next Steps:"
 	@echo "  1. Follow setup: challenges/challenge3/SETUP.md"
-	@echo "  2. Execute attack: challenges/challenge3/CTF-CHALLENGE-GUIDE.md"
+	@echo "  2. Execute attack: challenges/challenge3/ATTACK-GUIDE.md"
 	@echo "  3. Learn detection: challenges/challenge3/SECURITY-GUIDE.md"
 	@echo ""
 	@echo "Flag: FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}"
@@ -1079,13 +1086,13 @@ seed-legitimate-base-image: ## Seed legitimate golang base image to local regist
 	else \
 		echo "  ✓ golang:1.25-alpine already pulled"; \
 	fi
-	@echo "  Tagging as localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine..."
-	@$(CONTAINER_RUNTIME) tag golang:1.25-alpine localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine
+	@echo "  Tagging as registry.sc.local:30443/golang:1.25-alpine..."
+	@$(CONTAINER_RUNTIME) tag golang:1.25-alpine registry.sc.local:30443/golang:1.25-alpine
 	@echo "  Logging in to registry..."
-	@$(CONTAINER_RUNTIME) login localhost:$(REGISTRY_NODE_PORT) \
+	@$(CONTAINER_RUNTIME) login registry.sc.local:30443 \
 		-u $(REGISTRY_USER) -p $(REGISTRY_PASS) 2>/dev/null || true
 	@echo "  Pushing to registry..."
-	@$(CONTAINER_RUNTIME) push localhost:$(REGISTRY_NODE_PORT)/golang:1.25-alpine
+	@$(CONTAINER_RUNTIME) push registry.sc.local:30443/golang:1.25-alpine
 	@echo "✓ Legitimate base image seeded to registry"
 	@echo ""
 	@echo "Seeding runtime base image (alpine:3.20)..."
@@ -1095,10 +1102,10 @@ seed-legitimate-base-image: ## Seed legitimate golang base image to local regist
 	else \
 		echo "  ✓ alpine:3.20 already pulled"; \
 	fi
-	@echo "  Tagging as localhost:$(REGISTRY_NODE_PORT)/alpine:3.20..."
-	@$(CONTAINER_RUNTIME) tag alpine:3.20 localhost:$(REGISTRY_NODE_PORT)/alpine:3.20
+	@echo "  Tagging as registry.sc.local:30443/alpine:3.20..."
+	@$(CONTAINER_RUNTIME) tag alpine:3.20 registry.sc.local:30443/alpine:3.20
 	@echo "  Pushing to registry..."
-	@$(CONTAINER_RUNTIME) push localhost:$(REGISTRY_NODE_PORT)/alpine:3.20
+	@$(CONTAINER_RUNTIME) push registry.sc.local:30443/alpine:3.20
 	@echo "✓ Runtime base image seeded to registry"
 
 verify-challenge3: ## Verify Challenge 3 setup
@@ -1109,7 +1116,7 @@ verify-challenge3: ## Verify Challenge 3 setup
 	@echo ""
 	@echo "Base Image in Registry:"
 	@if curl --cacert setup/certs/registry.crt -s -u $(REGISTRY_USER):$(REGISTRY_PASS) \
-		https://localhost:$(REGISTRY_NODE_PORT)/v2/golang/tags/list 2>/dev/null | grep -q "1.25-alpine"; then \
+		https://registry.sc.local:30443/v2/golang/tags/list 2>/dev/null | grep -q "1.25-alpine"; then \
 		echo "  ✓ golang:1.25-alpine exists in registry"; \
 	else \
 		echo "  ❌ Base image not found (run: make seed-legitimate-base-image)"; \
@@ -1125,13 +1132,13 @@ verify-challenge3: ## Verify Challenge 3 setup
 	fi
 	@echo ""
 	@echo "Registry Credentials (from Challenge 1):"
-	@echo "  URL:      https://localhost:$(REGISTRY_NODE_PORT)"
+	@echo "  URL:      https://registry.sc.local:30443"
 	@echo "  Username: $(REGISTRY_USER)"
 	@echo "  Password: $(REGISTRY_PASS)"
 	@echo ""
 	@echo "✓ Challenge 3 environment ready"
 	@echo ""
-	@echo "Next: Follow challenges/challenge3/CTF-CHALLENGE-GUIDE.md to execute the attack"
+	@echo "Next: Follow challenges/challenge3/ATTACK-GUIDE.md to execute the attack"
 
 setup-challenge3-tekton: ## Deploy Challenge 3 Tekton resources (enhanced pipeline with vuln scan + SBOM + full provenance)
 	@echo ""
@@ -1158,7 +1165,7 @@ trigger-challenge3-build-with-chains: ## Run Challenge 3 enhanced pipeline (Tekt
 	@echo "Triggering Challenge 3 enhanced pipeline..."
 	@kubectl create -f challenges/challenge3/tekton/manual-pipelinerun-with-chains.yaml
 	@echo ""
-	@echo "Monitor with: kubectl get pipelineruns -n ctf-challenge -w"
+	@echo "Monitor with: kubectl get pipelineruns -n ci -w"
 
 setup-challenge3-tekton-secure: ## Deploy Challenge 3 secured Tekton resources (base image verification + keyless signing)
 	@echo ""
@@ -1195,7 +1202,7 @@ trigger-challenge3-build-secure: ## Run Challenge 3 secured pipeline manually
 	@echo "Triggering Challenge 3 secured pipeline..."
 	@kubectl create -f challenges/challenge3/tekton-patched/manual-pipelinerun-with-chains-secure.yaml
 	@echo ""
-	@echo "Monitor with: kubectl get pipelineruns -n ctf-challenge -w"
+	@echo "Monitor with: kubectl get pipelineruns -n ci -w"
 
 install-ampel: ## Install Ampel CLI for post-pipeline policy verification
 	@echo "Installing Ampel CLI..."
@@ -1211,7 +1218,7 @@ install-syft: ## Install Syft CLI for SBOM generation
 # Challenge 4: GitOps Pipeline Compromise
 # ============================================================
 
-PRODUCTION_CLUSTER_NAME ?= ctf-production-cluster
+PRODUCTION_CLUSTER_NAME ?= production-cluster
 PRODUCTION_GITEA_HTTP_PORT ?= 30004
 PRODUCTION_GITEA_SSH_PORT ?= 30005
 ARGOCD_VERSION ?= 5.51.0
@@ -1230,7 +1237,7 @@ setup-production-registry: ## Setup Docker registry on production cluster
 	@cd setup && ./scripts/setup-production-registry.sh
 
 configure-production-registry-tls: ## Configure TLS trust for the production registry (interactive)
-	@cd setup && REGISTRY_NODE_PORT=$(PRODUCTION_REGISTRY_NODE_PORT) ./scripts/configure-registry-tls.sh certs/production-registry.crt
+	@cd setup && REGISTRY_DOMAIN=$(REGISTRY_PROD_DOMAIN) ./scripts/configure-registry-tls.sh certs/production-registry.crt
 
 push-recipe-api-to-production: ## Copy recipe-api image from CI registry to production registry
 	@echo "Copying recipe-api:v1.0 from CI registry to production registry..."
@@ -1239,9 +1246,9 @@ push-recipe-api-to-production: ## Copy recipe-api image from CI registry to prod
 		--dest-tls-verify=false \
 		--src-creds $(REGISTRY_USER):$(REGISTRY_PASS) \
 		--dest-creds $(REGISTRY_USER):$(REGISTRY_PASS) \
-		docker://localhost:$(REGISTRY_NODE_PORT)/recipe-api:v1.0 \
-		docker://localhost:$(PRODUCTION_REGISTRY_NODE_PORT)/recipe-api:v1.0
-	@echo "✓ recipe-api:v1.0 copied to production registry (localhost:$(PRODUCTION_REGISTRY_NODE_PORT))"
+		docker://registry.sc.local:30443/recipe-api:v1.0 \
+		docker://registry-prod.sc.local:31443/recipe-api:v1.0
+	@echo "✓ recipe-api:v1.0 copied to production registry (registry-prod.sc.local:31443)"
 
 load-image-to-production: ## Load recipe-api image into production cluster (legacy)
 	@./setup/scripts/load-image-to-production.sh
@@ -1262,7 +1269,7 @@ setup-release-pipeline: ## Deploy release pipeline resources (namespace, tasks, 
 		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
 	@echo "Creating production registry credentials in release-pipeline namespace..."
 	@kubectl --context kind-$(CLUSTER_NAME) create secret docker-registry production-registry-credentials \
-		--docker-server=ctf-production-cluster-control-plane.dns.podman:$(PRODUCTION_REGISTRY_NODE_PORT) \
+		--docker-server=registry-prod.sc.local:31443 \
 		--docker-username=$(REGISTRY_USER) \
 		--docker-password=$(REGISTRY_PASS) \
 		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
@@ -1278,8 +1285,8 @@ setup-release-pipeline: ## Deploy release pipeline resources (namespace, tasks, 
 	fi
 	@echo "Creating production Gitea credentials..."
 	@kubectl --context kind-$(CLUSTER_NAME) create secret generic production-gitea-credentials \
-		--from-literal=username=ctf-admin \
-		--from-literal=password=CTFSecurePass123! \
+		--from-literal=username=sc-admin \
+		--from-literal=password=SecurePass123! \
 		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
 	@echo "Applying Tekton release pipeline resources..."
 	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton/release-namespace.yaml
@@ -1305,7 +1312,7 @@ setup-challenge4: setup-production-cluster setup-production-registry setup-produ
 	@echo "========================================"
 	@echo ""
 	@echo "✓ Production KinD cluster created: $(PRODUCTION_CLUSTER_NAME)"
-	@echo "✓ Production Gitea installed (http://localhost:30004)"
+	@echo "✓ Production Gitea installed (http://gitea-prod.sc.local:31080)"
 	@echo "✓ recipe-api image loaded into production cluster"
 	@echo "✓ ArgoCD installed in namespace: $(ARGOCD_NAMESPACE)"
 	@echo "✓ production-manifests repository seeded"
@@ -1314,7 +1321,7 @@ setup-challenge4: setup-production-cluster setup-production-registry setup-produ
 	@echo "Next steps:"
 	@echo "  1. Verify setup: make verify-challenge4"
 	@echo "  2. Check ArgoCD sync status: kubectl --context kind-$(PRODUCTION_CLUSTER_NAME) get applications -n argocd"
-	@echo "  3. Start the attack: challenges/challenge4/CTF-CHALLENGE-GUIDE.md"
+	@echo "  3. Start the attack: challenges/challenge4/ATTACK-GUIDE.md"
 	@echo ""
 
 verify-challenge4: ## Verify Challenge 4 setup

@@ -39,7 +39,7 @@ After completing this guide, you will understand how to:
 ### Complete Security Setup (5 minutes)
 
 ```bash
-# 1. Setup CTF environment
+# 1. Setup deep dive environment
 make setup
 
 # 2. Deploy security tools
@@ -60,7 +60,7 @@ make verify-security
 
 ## Interactive Demos
 
-This challenge includes three demo-magic scripts that walk through detection and prevention interactively. Each can be run standalone after the environment is set up (`make setup && make setup-ctf-challenge`).
+This challenge includes three demo-magic scripts that walk through detection and prevention interactively. Each can be run standalone after the environment is set up (`make setup && make setup-ci-pr-pipeline`).
 
 | Script | What It Demonstrates |
 |--------|---------------------|
@@ -79,7 +79,7 @@ This challenge includes three demo-magic scripts that walk through detection and
 **1. Review the attack:**
 ```bash
 cat ATTACK-ANALYSIS.md
-cat challenges/challenge1/CTF-CHALLENGE-GUIDE.md
+cat challenges/challenge1/ATTACK-GUIDE.md
 ```
 
 **2. Examine the vulnerable pipeline:**
@@ -100,8 +100,8 @@ steps:
 
 **3. Test the exploit (before defenses):**
 ```bash
-# Setup CTF challenge
-make setup-ctf-challenge
+# Setup deep dive challenge
+make setup-ci-pr-pipeline
 
 # Review malicious payload
 cat challenges/challenge1/malicious-payload-example.go
@@ -151,7 +151,7 @@ make setup-kubescape
 kubectl get pods -n kubescape
 ```
 
-> **Demo approach**: The `./kubescape-demo.sh` uses `make setup-ctf-challenge-secure` to apply the secured pipeline configuration (RBAC + patched pipeline) in a single step, then applies NetworkPolicies directly with `kubectl apply -f security/network-policies/tekton-egress-restriction.yaml`. This achieves the same result as the phased approach above.
+> **Demo approach**: The `./kubescape-demo.sh` uses `make setup-ci-pr-pipeline-secure` to apply the secured pipeline configuration (RBAC + patched pipeline) in a single step, then applies NetworkPolicies directly with `kubectl apply -f security/network-policies/tekton-egress-restriction.yaml`. This achieves the same result as the phased approach above.
 
 ---
 
@@ -171,17 +171,17 @@ kubectl kubescape scan --format pretty-printer --output cluster-scan.txt
 
 ```bash
 # Check for privileged containers (C-0015)
-kubectl kubescape scan control C-0015 -v --include-namespaces ctf-challenge
+kubectl kubescape scan control C-0015 -v --include-namespaces ci
 
 # Scan a specific workload pod
-VULN_POD=$(kubectl get pods -n ctf-challenge -l tekton.dev/pipelineTask=run-quality-checks -o name | head -1)
-kubectl kubescape scan workload ${VULN_POD} --namespace ctf-challenge
+VULN_POD=$(kubectl get pods -n ci -l tekton.dev/pipelineTask=run-quality-checks -o name | head -1)
+kubectl kubescape scan workload ${VULN_POD} --namespace ci
 
 # Check for missing NetworkPolicies (C-0260) — after applying defenses
-kubectl kubescape scan control C-0260 -v --include-namespaces ctf-challenge
+kubectl kubescape scan control C-0260 -v --include-namespaces ci
 ```
 
-> For the full before/after comparison, run `./kubescape-demo.sh`. It scans the vulnerable pipeline (Phase 1), applies defenses via `make setup-ctf-challenge-secure` + NetworkPolicies (Phase 2), then re-scans the secured pipeline (Phase 3).
+> For the full before/after comparison, run `./kubescape-demo.sh`. It scans the vulnerable pipeline (Phase 1), applies defenses via `make setup-ci-pr-pipeline-secure` + NetworkPolicies (Phase 2), then re-scans the secured pipeline (Phase 3).
 
 **Controls checked in the demo:**
 
@@ -194,13 +194,13 @@ kubectl kubescape scan control C-0260 -v --include-namespaces ctf-challenge
 **Additional findings from full framework scans:**
 ```
 ❌ C-0017: Excessive RBAC permissions
-   Resource: ServiceAccount/default (namespace: ctf-challenge)
+   Resource: ServiceAccount/default (namespace: ci)
    Issue: Can access all secrets in namespace
    Severity: Critical
    Recommendation: Use least-privilege ServiceAccounts
 
 ❌ C-0074: Missing network policies
-   Namespace: ctf-challenge
+   Namespace: ci
    Issue: No egress restrictions
    Severity: High
    Recommendation: Apply NetworkPolicy to prevent data exfiltration
@@ -285,8 +285,8 @@ kubectl get clusterpolicy
 kubectl get networkpolicy --all-namespaces
 
 # Check ServiceAccounts
-kubectl get sa -n ctf-challenge
-kubectl describe role pr-pipeline-minimal -n ctf-challenge
+kubectl get sa -n ci
+kubectl describe role pr-pipeline-minimal -n ci
 ```
 
 ---
@@ -305,14 +305,14 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: test-blocked-sa
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   pipelineRef:
     name: pr-quality-check-pipeline
   serviceAccountName: default  # ❌ Should be BLOCKED
   params:
   - name: pr-repo-url
-    value: http://gitea.gitea.svc.cluster.local/ctf/test-repo.git
+    value: http://gitea.gitea.svc.cluster.local/sc-admin/test-repo.git
   - name: pr-sha
     value: main
   - name: pr-number
@@ -326,7 +326,7 @@ EOF
 **Expected result:**
 ```
 Error from server: admission webhook "validate.kyverno.svc" denied the request:
-  policy PipelineRun/ctf-challenge/test-blocked-sa for resource violation:
+  policy PipelineRun/ci/test-blocked-sa for resource violation:
   restrict-tekton-pr-pipelines:
     require-readonly-serviceaccount-for-prs: validation error: PR pipelines must
     use 'pr-pipeline-readonly' ServiceAccount. Using the default or privileged
@@ -335,10 +335,10 @@ Error from server: admission webhook "validate.kyverno.svc" denied the request:
 
 **Fix and retry:**
 ```bash
-make setup-ctf-challenge-secure
+make setup-ci-pr-pipeline-secure
 ```
 Close or re-open the pull request. 
-Then, verify if the pipelinerun was triggered, and that the init code was unsuccessful in reading the ctf-flag secret
+Then, verify if the pipelinerun was triggered, and that the init code was unsuccessful in reading the registry-credentials secret
 ```bash
 $ tkn pr list
 NAME                     STARTED          DURATION   STATUS
@@ -348,7 +348,7 @@ pr-quality-check-86plr   37 minutes ago   39s        Succeeded
 pr-quality-check-4jwqd   4 hours ago      1m4s       Succeeded
 $ tkn pr logs -f pr-quality-check-qzltm
 # ... Skipping
-[run-quality-checks : run-quality-script] Secret retrieved : {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"secrets \"ctf-flag\" is forbidden: User \"system:serviceaccount:ctf-challenge:pr-pipeline-readonly\" cannot get resource \"secrets\" in API group \"\" in the namespace \"ctf-challenge\"","reason":"Forbidden","details":{"name":"ctf-flag","kind":"secrets"},"code":403}
+[run-quality-checks : run-quality-script] Secret retrieved : {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"secrets \"registry-credentials\" is forbidden: User \"system:serviceaccount:ci:pr-pipeline-readonly\" cannot get resource \"secrets\" in API group \"\" in the namespace \"ci\"","reason":"Forbidden","details":{"name":"registry-credentials","kind":"secrets"},"code":403}
 # ... Skipping
 ``` 
 
@@ -356,7 +356,7 @@ $ tkn pr logs -f pr-quality-check-qzltm
 
 ```bash
 # Create a test pod with pr-pipeline-readonly ServiceAccount
-kubectl run -n ctf-challenge rbac-test \
+kubectl run -n ci rbac-test \
   --image=curlimages/curl:latest \
   --serviceaccount=pr-pipeline-readonly \
   --rm -it --restart=Never -- sh
@@ -365,7 +365,7 @@ kubectl run -n ctf-challenge rbac-test \
 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 curl -H "Authorization: Bearer $TOKEN" \
   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-  https://kubernetes.default.svc/api/v1/namespaces/ctf-challenge/secrets/ctf-flag
+  https://kubernetes.default.svc/api/v1/namespaces/ci/secrets/registry-credentials
 ```
 
 **Expected result:**
@@ -374,7 +374,7 @@ curl -H "Authorization: Bearer $TOKEN" \
   "kind": "Status",
   "apiVersion": "v1",
   "status": "Failure",
-  "message": "secrets \"ctf-flag\" is forbidden: User \"system:serviceaccount:ctf-challenge:pr-pipeline-readonly\" cannot get resource \"secrets\" in API group \"\" in the namespace \"ctf-challenge\"",
+  "message": "secrets \"registry-credentials\" is forbidden: User \"system:serviceaccount:ci:pr-pipeline-readonly\" cannot get resource \"secrets\" in API group \"\" in the namespace \"ci\"",
   "reason": "Forbidden",
   "code": 403
 }
@@ -385,8 +385,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 #### (NOT YET TESTED) Test 3: Network Policy Blocks Exfiltration
 
 ```bash
-# Create a test pod in ctf-challenge namespace
-kubectl run -n ctf-challenge netpol-test \
+# Create a test pod in ci namespace
+kubectl run -n ci netpol-test \
   --image=curlimages/curl:latest \
   --rm -it --restart=Never -- sh
 
@@ -424,11 +424,11 @@ curl -m 5 http://gitea.gitea.svc.cluster.local:3000
 # View policy violations
 kubectl get policyreport -A
 
-# Detailed report for ctf-challenge namespace
-kubectl describe policyreport -n ctf-challenge
+# Detailed report for ci namespace
+kubectl describe policyreport -n ci
 
 # Query PolicyReports for specific failures (as in kyverno-demo.sh)
-kubectl get policyreport -n ctf-challenge -o json | \
+kubectl get policyreport -n ci -o json | \
   jq '.items[] | select(.summary.fail > 0) | {task: .scope.name, kind: .scope.kind, failures: [.results[] | select(.result == "fail") | {rule, message}]}'
 ```
 
@@ -447,13 +447,13 @@ kubectl describe workloadconfigurationscans -n kubescape
 If using Audicia.io:
 ```bash
 # Connect to audit log stream
-audicia connect --cluster-name ctf-cluster
+audicia connect --cluster-name ci-cluster
 
 # Detect anomalous secret access
 audicia analyze --anomalies --resource-type secrets
 
 # Generate minimal RBAC based on actual usage
-audicia generate-rbac --namespace ctf-challenge --output optimized-rbac.yaml
+audicia generate-rbac --namespace ci --output optimized-rbac.yaml
 ```
 
 Manual audit log analysis:
@@ -607,10 +607,10 @@ kubectl describe clusterpolicy restrict-tekton-pr-pipelines
 
 ```bash
 # Verify namespace labels
-kubectl get namespace ctf-challenge -o yaml | grep labels -A 5
+kubectl get namespace ci -o yaml | grep labels -A 5
 
 # Check policy is applied
-kubectl get networkpolicy -n ctf-challenge
+kubectl get networkpolicy -n ci
 
 # Verify CNI supports network policies
 kubectl get nodes -o wide
@@ -621,16 +621,16 @@ kubectl get nodes -o wide
 
 ```bash
 # Check ServiceAccount exists
-kubectl get sa pr-pipeline-readonly -n ctf-challenge
+kubectl get sa pr-pipeline-readonly -n ci
 
 # Verify Role and RoleBinding
-kubectl describe role pr-pipeline-minimal -n ctf-challenge
-kubectl describe rolebinding pr-pipeline-readonly-binding -n ctf-challenge
+kubectl describe role pr-pipeline-minimal -n ci
+kubectl describe rolebinding pr-pipeline-readonly-binding -n ci
 
 # Test permissions
 kubectl auth can-i get secrets \
-  --as=system:serviceaccount:ctf-challenge:pr-pipeline-readonly \
-  -n ctf-challenge
+  --as=system:serviceaccount:ci:pr-pipeline-readonly \
+  -n ci
 # Should return: no
 ```
 

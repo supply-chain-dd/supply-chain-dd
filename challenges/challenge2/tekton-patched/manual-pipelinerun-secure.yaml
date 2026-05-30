@@ -6,17 +6,17 @@ apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
   generateName: secure-build-run-
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   pipelineRef:
     name: push-build-pipeline-secure
   params:
     - name: repo-url
-      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
+      value: http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git
     - name: revision
       value: main
     - name: trusted-repo-url
-      value: http://gitea-http.gitea.svc.cluster.local:3000/ctf-admin/recipe-api.git
+      value: http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git
     - name: image-name
       value: recipe-api
     - name: image-tag

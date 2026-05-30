@@ -12,7 +12,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
   name: pr-quality-check-pipeline
-  namespace: ctf-challenge
+  namespace: ci
   annotations:
     security/trust-level: "untrusted-pr"
     security/required-serviceaccount: "pr-pipeline-readonly"

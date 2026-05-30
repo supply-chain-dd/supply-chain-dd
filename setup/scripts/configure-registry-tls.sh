@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REGISTRY_NODE_PORT="${REGISTRY_NODE_PORT:-30000}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
 CERT_FILE="${1:-certs/registry.crt}"
 
 echo "Registry TLS Configuration Helper"
@@ -55,7 +57,7 @@ case $choice in
         echo ""
         echo "Configuring per-registry certificate trust..."
 
-        CONTAINERS_CERT_DIR="/etc/containers/certs.d/localhost:${REGISTRY_NODE_PORT}"
+        CONTAINERS_CERT_DIR="/etc/containers/certs.d/${REGISTRY_HOST}"
         echo "  Creating directory: ${CONTAINERS_CERT_DIR}"
         sudo mkdir -p "${CONTAINERS_CERT_DIR}"
         echo "  Copying certificate..."
@@ -63,7 +65,7 @@ case $choice in
         sudo chmod 644 "${CONTAINERS_CERT_DIR}/ca.crt"
         echo "  -> Podman/Buildah configured"
 
-        DOCKER_CERT_DIR="/etc/docker/certs.d/localhost:${REGISTRY_NODE_PORT}"
+        DOCKER_CERT_DIR="/etc/docker/certs.d/${REGISTRY_HOST}"
         echo "  Creating directory: ${DOCKER_CERT_DIR}"
         sudo mkdir -p "${DOCKER_CERT_DIR}"
         echo "  Copying certificate..."
@@ -127,12 +129,12 @@ case $choice in
         echo "==================================="
         echo ""
         echo "For Podman (per-registry):"
-        echo "  sudo mkdir -p /etc/containers/certs.d/localhost:${REGISTRY_NODE_PORT}"
-        echo "  sudo cp ${CERT_FILE} /etc/containers/certs.d/localhost:${REGISTRY_NODE_PORT}/ca.crt"
+        echo "  sudo mkdir -p /etc/containers/certs.d/${REGISTRY_HOST}"
+        echo "  sudo cp ${CERT_FILE} /etc/containers/certs.d/${REGISTRY_HOST}/ca.crt"
         echo ""
         echo "For Docker (per-registry):"
-        echo "  sudo mkdir -p /etc/docker/certs.d/localhost:${REGISTRY_NODE_PORT}"
-        echo "  sudo cp ${CERT_FILE} /etc/docker/certs.d/localhost:${REGISTRY_NODE_PORT}/ca.crt"
+        echo "  sudo mkdir -p /etc/docker/certs.d/${REGISTRY_HOST}"
+        echo "  sudo cp ${CERT_FILE} /etc/docker/certs.d/${REGISTRY_HOST}/ca.crt"
         echo "  sudo systemctl restart docker"
         echo ""
         echo "For system-wide trust (RHEL/Fedora/CentOS):"
@@ -153,8 +155,8 @@ esac
 
 echo ""
 echo "Test the configuration:"
-echo "  ${RUNTIME} login localhost:${REGISTRY_NODE_PORT} -u ctf-admin -p CTFRegistryPass123!"
+echo "  ${RUNTIME} login ${REGISTRY_HOST} -u sc-admin -p RegistryPass123!"
 echo "  ${RUNTIME} pull nginx:latest"
-echo "  ${RUNTIME} tag nginx:latest localhost:${REGISTRY_NODE_PORT}/nginx:test"
-echo "  ${RUNTIME} push localhost:${REGISTRY_NODE_PORT}/nginx:test"
+echo "  ${RUNTIME} tag nginx:latest ${REGISTRY_HOST}/nginx:test"
+echo "  ${RUNTIME} push ${REGISTRY_HOST}/nginx:test"
 echo ""

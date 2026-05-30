@@ -57,11 +57,11 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: ctf-challenge-egress-restriction
-  namespace: ctf-challenge
+  name: ci-egress-restriction
+  namespace: ci
   annotations:
     description: >-
-      Restricts egress traffic from CTF challenge pipelines.
+      Restricts egress traffic from deep dive challenge pipelines.
       Allows only the traffic needed by the build pipeline:
       DNS, K8s API, Gitea, local registry, and HTTPS to external
       hosts (Alpine packages, Go proxy, GitHub releases for tools).

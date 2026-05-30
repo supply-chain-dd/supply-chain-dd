@@ -26,7 +26,7 @@ spec:
               - production
       verifyImages:
       - imageReferences:
-        - "localhost:30000/*"
+        - "registry.sc.local:30443/*"
         - "*.dkr.ecr.*.amazonaws.com/*"
         - "ghcr.io/*"
         attestors:

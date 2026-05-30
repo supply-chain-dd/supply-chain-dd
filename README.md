@@ -1,6 +1,6 @@
-# Supply Chain CTF Environment
+# Supply Chain Deep Dive Environment
 
-This repository contains a Capture The Flag (CTF) environment focused on supply chain security. Participants will work through challenges involving Kubernetes, Tekton Pipelines, container registries, and Git-based workflows.
+This repository contains a supply chain security deep dive environment focused on supply chain security. Participants will work through challenges involving Kubernetes, Tekton Pipelines, container registries, and Git-based workflows.
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ make setup
 ```
 
 This will:
-1. Create a KinD cluster named `ctf-cluster`
+1. Create a KinD cluster named `ci-cluster`
 2. Install Gitea (self-hosted Git service)
 3. Install Tekton Pipelines and Triggers
 4. Deploy a local Docker registry with TLS
@@ -44,10 +44,10 @@ This interactive helper will guide you through installing the registry's self-si
 
 ### Next Steps
 
-Once the environment is set up and the registry is configured, proceed to set up the CTF challenges:
+Once the environment is set up and the registry is configured, proceed to set up the deep dive challenges:
 
 ```bash
-make setup-ctf-challenge
+make setup-ci-pr-pipeline
 ```
 
 Then follow the detailed instructions in **[challenges/challenge1/SETUP.md](challenges/challenge1/SETUP.md)** to complete the victim repository setup and webhook configuration.
@@ -56,14 +56,14 @@ Then follow the detailed instructions in **[challenges/challenge1/SETUP.md](chal
 
 After setup, you'll have access to:
 
-- **Kubernetes Cluster**: `kind-ctf-cluster` (via kubectl)
-- **Gitea Web UI**: http://localhost:30002
-  - Username: `ctf-admin`
-  - Password: `CTFSecurePass123!`
-- **Gitea SSH**: ssh://git@localhost:30003
-- **Docker Registry**: https://localhost:30000
-  - Username: `ctf-admin`
-  - Password: `CTFRegistryPass123!`
+- **Kubernetes Cluster**: `kind-ci-cluster` (via kubectl)
+- **Gitea Web UI**: http://gitea.sc.local:30080
+  - Username: `sc-admin`
+  - Password: `SecurePass123!`
+- **Gitea SSH**: ssh://git@gitea.sc.local:30003
+- **Docker Registry**: https://registry.sc.local:30443
+  - Username: `sc-admin`
+  - Password: `RegistryPass123!`
 
 ## Useful Commands
 
@@ -77,7 +77,7 @@ make clean                # Cleanup environment and start fresh
 make help                 # Display all available commands
 ```
 
-## CTF Challenges
+## Deep Dive Challenges
 
 This environment contains multiple supply chain security challenges:
 

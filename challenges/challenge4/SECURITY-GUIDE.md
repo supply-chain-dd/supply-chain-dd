@@ -382,7 +382,7 @@ argocd app sync recipe-api-production --prune
 
 ```bash
 # Switch to production cluster
-kubectl config use-context kind-ctf-production-cluster
+kubectl config use-context kind-production-cluster
 
 # Apply all security controls
 make apply-challenge4-security

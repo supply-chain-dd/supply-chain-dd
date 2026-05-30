@@ -4,7 +4,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: git-clone
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: Clone a git repository
   params:
@@ -68,7 +68,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: print-results
-  namespace: ctf-challenge
+  namespace: ci
 spec:
   description: Print build and push results
   workspaces:

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/domains.sh"
+
 SIGSTORE_SCAFFOLD_VERSION="${SIGSTORE_SCAFFOLD_VERSION:-v0.7.24}"
 KNATIVE_VERSION="${KNATIVE_VERSION:-1.18.0}"
-REKOR_NODE_PORT="${REKOR_NODE_PORT:-30006}"
-TUF_NODE_PORT="${TUF_NODE_PORT:-30007}"
-FULCIO_NODE_PORT="${FULCIO_NODE_PORT:-30008}"
 
 echo "============================================"
 echo "Deploying local Sigstore stack (scaffolding)"
@@ -14,8 +14,8 @@ echo "  Knative:     v${KNATIVE_VERSION}"
 echo "============================================"
 echo ""
 
-create_nodeport_service() {
-    local NAME=$1 NAMESPACE=$2 NODE_PORT=$3
+create_gateway_backend_service() {
+    local NAME=$1 NAMESPACE=$2
     cat <<EOSVC | kubectl apply -f -
 apiVersion: v1
 kind: Service
@@ -23,13 +23,12 @@ metadata:
   name: ${NAME}-nodeport
   namespace: ${NAMESPACE}
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     serving.knative.dev/service: ${NAME}
   ports:
   - port: 8080
     targetPort: 8080
-    nodePort: ${NODE_PORT}
     protocol: TCP
 EOSVC
 }
@@ -154,12 +153,12 @@ if kubectl get ksvc tuf -n tuf-system &>/dev/null 2>&1; then
         echo "✓ Sigstore scaffolding already fully deployed (including TUF)"
         echo ""
 
-        # Ensure TUF root ConfigMap exists in ctf-challenge
-        if ! kubectl get configmap sigstore-tuf-root -n ctf-challenge &>/dev/null; then
-            echo "Creating TUF root ConfigMap in ctf-challenge..."
+        # Ensure TUF root ConfigMap exists in ci
+        if ! kubectl get configmap sigstore-tuf-root -n ci &>/dev/null; then
+            echo "Creating TUF root ConfigMap in ci..."
             kubectl -n tuf-system get secrets tuf-root -ojsonpath='{.data.root}' | base64 -d > /tmp/tuf-root.json
-            kubectl create namespace ctf-challenge 2>/dev/null || true
-            kubectl create configmap sigstore-tuf-root -n ctf-challenge --from-file=root.json=/tmp/tuf-root.json
+            kubectl create namespace ci 2>/dev/null || true
+            kubectl create configmap sigstore-tuf-root -n ci --from-file=root.json=/tmp/tuf-root.json
             rm -f /tmp/tuf-root.json
             echo "  ✓ sigstore-tuf-root ConfigMap created"
         fi
@@ -169,9 +168,9 @@ if kubectl get ksvc tuf -n tuf-system &>/dev/null 2>&1; then
         FULCIO_URL=$(kubectl -n fulcio-system get ksvc fulcio -ojsonpath='{.status.url}' 2>/dev/null || echo "unknown")
         TUF_MIRROR=$(kubectl -n tuf-system get ksvc tuf -ojsonpath='{.status.url}' 2>/dev/null || echo "unknown")
         # Ensure NodePort services exist
-        create_nodeport_service rekor rekor-system "${REKOR_NODE_PORT}"
-        create_nodeport_service tuf tuf-system "${TUF_NODE_PORT}"
-        create_nodeport_service fulcio fulcio-system "${FULCIO_NODE_PORT}"
+        create_gateway_backend_service rekor rekor-system
+        create_gateway_backend_service tuf tuf-system
+        create_gateway_backend_service fulcio fulcio-system
 
         echo ""
         echo "Service endpoints (internal):"
@@ -179,10 +178,10 @@ if kubectl get ksvc tuf -n tuf-system &>/dev/null 2>&1; then
         echo "  Rekor:  ${REKOR_URL}"
         echo "  TUF:    ${TUF_MIRROR}"
         echo ""
-        echo "Host access (NodePort):"
-        echo "  Rekor:  http://localhost:${REKOR_NODE_PORT}"
-        echo "  TUF:    http://localhost:${TUF_NODE_PORT}"
-        echo "  Fulcio: http://localhost:${FULCIO_NODE_PORT}"
+        echo "Host access (via Gateway):"
+        echo "  Rekor:  http://${REKOR_HOST}"
+        echo "  TUF:    http://${TUF_HOST}"
+        echo "  Fulcio: http://${FULCIO_HOST}"
         exit 0
     fi
 fi
@@ -226,8 +225,8 @@ rmdir "${REKOR_DIR}"
 echo "  Waiting for Rekor..."
 kubectl wait --timeout 5m -n rekor-system --for=condition=Complete jobs --all
 kubectl wait --timeout 5m -n rekor-system --for=condition=Ready ksvc rekor
-create_nodeport_service rekor rekor-system "${REKOR_NODE_PORT}"
-echo "  ✓ Rekor accessible at http://localhost:${REKOR_NODE_PORT}"
+create_gateway_backend_service rekor rekor-system
+echo "  ✓ Rekor accessible at http://${REKOR_HOST}"
 
 # --- 3c. Fulcio ---
 echo "[3/6] Installing Fulcio..."
@@ -235,7 +234,7 @@ FULCIO_PASS=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen)
 FULCIO_DIR=$(mktemp -d)
 openssl ecparam -name prime256v1 -genkey | openssl pkcs8 -passout "pass:${FULCIO_PASS}" -topk8 -out "${FULCIO_DIR}/key.pem"
 openssl req -x509 -new -key "${FULCIO_DIR}/key.pem" -out "${FULCIO_DIR}/cert.pem" \
-    -sha256 -days 365 -subj "/O=ctf/CN=fulcio.scaffolding.ctf" -passin "pass:${FULCIO_PASS}"
+    -sha256 -days 365 -subj "/O=sc/CN=fulcio.scaffolding.sc" -passin "pass:${FULCIO_PASS}"
 
 FULCIO_YAML=$(mktemp --tmpdir fulcioXXX)
 curl -Ls -o "${FULCIO_YAML}" "${RELEASE_BASE}/release-fulcio.yaml"
@@ -250,8 +249,8 @@ kubectl -n fulcio-system get job 2>&1 | grep -q 'No resources found' || \
     kubectl wait --timeout 5m -n fulcio-system --for=condition=Complete jobs --all
 kubectl wait --timeout 5m -n fulcio-system --for=condition=Ready ksvc fulcio
 kubectl wait --timeout 5m -n fulcio-system --for=condition=Ready ksvc fulcio-grpc 2>/dev/null || true
-create_nodeport_service fulcio fulcio-system "${FULCIO_NODE_PORT}"
-echo "  ✓ Fulcio accessible at http://localhost:${FULCIO_NODE_PORT}"
+create_gateway_backend_service fulcio fulcio-system
+echo "  ✓ Fulcio accessible at http://${FULCIO_HOST}"
 
 # --- 3d. CTLog ---
 echo "[4/6] Installing CT Log..."
@@ -302,8 +301,8 @@ kubectl -n tsa-system get secrets tsa-cert-chain -oyaml | \
 echo "  Waiting for TUF..."
 kubectl wait --timeout 4m -n tuf-system --for=condition=Complete jobs --all
 kubectl wait --timeout 2m -n tuf-system --for=condition=Ready ksvc tuf
-create_nodeport_service tuf tuf-system "${TUF_NODE_PORT}"
-echo "  ✓ TUF accessible at http://localhost:${TUF_NODE_PORT}"
+create_gateway_backend_service tuf tuf-system
+echo "  ✓ TUF accessible at http://${TUF_HOST}"
 
 echo ""
 echo "✓ Sigstore stack deployed successfully"
@@ -316,12 +315,12 @@ echo ""
 echo "Extracting TUF root..."
 kubectl -n tuf-system get secrets tuf-root -ojsonpath='{.data.root}' | base64 -d > /tmp/tuf-root.json
 
-kubectl create namespace ctf-challenge 2>/dev/null || true
-kubectl create configmap sigstore-tuf-root -n ctf-challenge \
+kubectl create namespace ci 2>/dev/null || true
+kubectl create configmap sigstore-tuf-root -n ci \
     --from-file=root.json=/tmp/tuf-root.json \
     --dry-run=client -o yaml | kubectl apply -f -
 rm -f /tmp/tuf-root.json
-echo "  ✓ sigstore-tuf-root ConfigMap created in ctf-challenge"
+echo "  ✓ sigstore-tuf-root ConfigMap created in ci"
 
 # ============================================================
 # Step 5: Print endpoints
@@ -332,6 +331,37 @@ FULCIO_URL=$(kubectl -n fulcio-system get ksvc fulcio -ojsonpath='{.status.url}'
 FULCIO_GRPC_URL=$(kubectl -n fulcio-system get ksvc fulcio-grpc -ojsonpath='{.status.url}' 2>/dev/null || echo "N/A")
 TUF_MIRROR=$(kubectl -n tuf-system get ksvc tuf -ojsonpath='{.status.url}')
 
+# ============================================================
+# Step 6: Create Gateway routes for Sigstore services
+# ============================================================
+
+if kubectl get gateway sc-local -n envoy-gateway-system &>/dev/null; then
+    echo ""
+    echo "Creating Gateway routes for Sigstore services..."
+    for ns_svc in "rekor-system:rekor:${REKOR_HOST}" "tuf-system:tuf:${TUF_HOST}" "fulcio-system:fulcio:${FULCIO_HOST}"; do
+        IFS=: read -r ns svc domain <<< "${ns_svc}"
+        kubectl apply -f - <<EORT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${svc}
+  namespace: ${ns}
+spec:
+  parentRefs:
+  - name: sc-local
+    namespace: envoy-gateway-system
+    sectionName: http
+  hostnames:
+  - "${domain}"
+  rules:
+  - backendRefs:
+    - name: ${svc}-nodeport
+      port: 8080
+EORT
+    done
+    echo "  ✓ Gateway routes created"
+fi
+
 echo ""
 echo "✓ Local Sigstore stack setup complete"
 echo ""
@@ -341,10 +371,10 @@ echo "  Fulcio gRPC: ${FULCIO_GRPC_URL}"
 echo "  Rekor:       ${REKOR_URL}"
 echo "  TUF:         ${TUF_MIRROR}"
 echo ""
-echo "Host access (NodePort):"
-echo "  Rekor:  http://localhost:${REKOR_NODE_PORT}"
-echo "  TUF:    http://localhost:${TUF_NODE_PORT}"
-echo "  Fulcio: http://localhost:${FULCIO_NODE_PORT}"
+echo "Host access (via Gateway):"
+echo "  Rekor:  http://${REKOR_HOST}"
+echo "  TUF:    http://${TUF_HOST}"
+echo "  Fulcio: http://${FULCIO_HOST}"
 echo ""
 echo "OIDC issuer (for keyless verification):"
 echo "  kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer'"
