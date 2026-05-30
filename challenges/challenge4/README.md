@@ -115,10 +115,10 @@ Use stolen credentials to access ArgoCD Web UI or API:
 
 ```bash
 # Web UI
-https://argocd.sc.local:31443
+http://argocd.sc.local:31080
 
 # CLI
-argocd login argocd.sc.local:31443 --auth-token=$ARGOCD_AUTH_TOKEN --insecure
+argocd login argocd.sc.local:31080 --auth-token=$ARGOCD_AUTH_TOKEN --insecure
 ```
 
 ### Phase 3: Modify Deployment

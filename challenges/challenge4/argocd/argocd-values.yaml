@@ -2,7 +2,7 @@
 # This configuration is intentionally permissive for the deep dive demonstration
 
 global:
-  domain: argocd.sc.local:31443
+  domain: argocd.sc.local:31080
 
 server:
   service:

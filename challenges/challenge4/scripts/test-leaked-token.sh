@@ -15,8 +15,8 @@ echo "1. Testing ArgoCD token authentication..."
 export ARGOCD_AUTH_TOKEN="$LEAKED_TOKEN"
 
 # Test app list
-echo "   Running: argocd app list --auth-token=\$ARGOCD_AUTH_TOKEN --server argocd.sc.local:31443 --insecure --grpc-web"
-if argocd app list --auth-token="$ARGOCD_AUTH_TOKEN" --server argocd.sc.local:31443 --insecure --grpc-web > /dev/null 2>&1; then
+echo "   Running: argocd app list --auth-token=\$ARGOCD_AUTH_TOKEN --server argocd.sc.local:31080 --insecure --grpc-web"
+if argocd app list --auth-token="$ARGOCD_AUTH_TOKEN" --server argocd.sc.local:31080 --insecure --grpc-web > /dev/null 2>&1; then
     echo "   ✓ Token authentication successful!"
 else
     echo "   ✗ Token authentication failed!"
@@ -25,7 +25,7 @@ fi
 
 echo ""
 echo "2. Testing application access..."
-if argocd app get recipe-api-production --auth-token="$ARGOCD_AUTH_TOKEN" --server argocd.sc.local:31443 --insecure --grpc-web > /dev/null 2>&1; then
+if argocd app get recipe-api-production --auth-token="$ARGOCD_AUTH_TOKEN" --server argocd.sc.local:31080 --insecure --grpc-web > /dev/null 2>&1; then
     echo "   ✓ Can access recipe-api-production application!"
 else
     echo "   ⚠ recipe-api-production application not found (may not be deployed yet)"
@@ -33,12 +33,12 @@ fi
 
 echo ""
 echo "3. Testing web UI access (password)..."
-echo "   URL: https://argocd.sc.local:31443"
+echo "   URL: http://argocd.sc.local:31080"
 echo "   Username: admin"
 echo "   Password: admin123"
 
 # Test login with password
-if echo y | argocd login argocd.sc.local:31443 --username admin --password admin123 --insecure --grpc-web > /dev/null 2>&1; then
+if echo y | argocd login argocd.sc.local:31080 --username admin --password admin123 --insecure --grpc-web > /dev/null 2>&1; then
     echo "   ✓ Web UI login credentials work!"
 else
     echo "   ✗ Web UI login failed!"
@@ -50,5 +50,5 @@ echo "==> All tests passed! Challenge 4 is ready."
 echo ""
 echo "Attackers can use this token (from .env.production) to access ArgoCD:"
 echo "  export ARGOCD_AUTH_TOKEN='$LEAKED_TOKEN'"
-echo "  argocd app list --auth-token=\"\$ARGOCD_AUTH_TOKEN\" --server argocd.sc.local:31443 --insecure --grpc-web"
+echo "  argocd app list --auth-token=\"\$ARGOCD_AUTH_TOKEN\" --server argocd.sc.local:31080 --insecure --grpc-web"
 echo ""

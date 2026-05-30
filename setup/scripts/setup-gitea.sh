@@ -8,8 +8,6 @@ GITEA_HELM_VERSION="${GITEA_HELM_VERSION:-v12.5.0}"
 GITEA_NAMESPACE="gitea"
 GITEA_ADMIN_USER="sc-admin"
 GITEA_ADMIN_PASSWORD="SecurePass123!"
-GITEA_HTTP_PORT="${GITEA_HTTP_PORT:-30002}"
-GITEA_SSH_PORT="${GITEA_SSH_PORT:-30003}"
 
 echo "Installing Gitea Helm chart ${GITEA_HELM_VERSION}..."
 
@@ -47,8 +45,8 @@ helm upgrade --install gitea gitea-charts/gitea \
   --set gitea.config.actions.ENABLED=true \
   --set gitea.config.actions.DEFAULT_ACTIONS_URL=https://github.com \
   --set gitea.config.webhook.ALLOWED_HOST_LIST=*.svc.cluster.local \
-  --set gitea.config.server.ROOT_URL=http://${GITEA_HOST} \
-  --set gitea.config.server.DOMAIN=${GITEA_HOST} \
+  --set gitea.config.server.ROOT_URL=http://gitea-http.gitea.svc.cluster.local:3000 \
+  --set gitea.config.server.DOMAIN=gitea-http.gitea.svc.cluster.local \
   --set gitea.config.server.HTTP_PORT=3000 \
   --set persistence.enabled=true \
   --set persistence.size=10Gi \

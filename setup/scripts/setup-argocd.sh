@@ -79,9 +79,33 @@ LEAKED_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiO
 
 echo ""
 echo "==> ArgoCD installed successfully!"
+# Create Gateway TLSRoute for ArgoCD
+if kubectl get gateway sc-local -n envoy-gateway-system &>/dev/null; then
+    echo "Creating Gateway HTTPRoute for ArgoCD..."
+    kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd
+  namespace: ${ARGOCD_NAMESPACE}
+spec:
+  parentRefs:
+  - name: sc-local
+    namespace: envoy-gateway-system
+    sectionName: http
+  hostnames:
+  - "${ARGOCD_DOMAIN}"
+  rules:
+  - backendRefs:
+    - name: argocd-server
+      port: 80
+EOF
+    echo "  ✓ ArgoCD Gateway route created"
+fi
+
 echo ""
 echo "Access ArgoCD:"
-echo "  Web UI: https://${ARGOCD_HOST}"
+echo "  Web UI: http://${ARGOCD_HOST}"
 echo "  Username: admin"
 echo "  Password: $ADMIN_PASSWORD"
 echo ""

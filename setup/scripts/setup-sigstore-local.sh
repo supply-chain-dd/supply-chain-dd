@@ -338,8 +338,8 @@ TUF_MIRROR=$(kubectl -n tuf-system get ksvc tuf -ojsonpath='{.status.url}')
 if kubectl get gateway sc-local -n envoy-gateway-system &>/dev/null; then
     echo ""
     echo "Creating Gateway routes for Sigstore services..."
-    for ns_svc in "rekor-system:rekor:${REKOR_HOST}" "tuf-system:tuf:${TUF_HOST}" "fulcio-system:fulcio:${FULCIO_HOST}"; do
-        IFS=: read -r ns svc domain <<< "${ns_svc}"
+    for ns_svc in "rekor-system|rekor|${REKOR_DOMAIN}" "tuf-system|tuf|${TUF_DOMAIN}" "fulcio-system|fulcio|${FULCIO_DOMAIN}"; do
+        IFS='|' read -r ns svc domain <<< "${ns_svc}"
         kubectl apply -f - <<EORT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

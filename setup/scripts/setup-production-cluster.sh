@@ -7,7 +7,7 @@
 set -euo pipefail
 
 CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-production-cluster}"
-KIND_VERSION="${KIND_VERSION:-v1.27.3}"
+KIND_VERSION="${KIND_VERSION:-v1.31.4}"
 ARGOCD_VERSION="${ARGOCD_VERSION:-5.51.0}"
 
 echo "==> Setting up production KinD cluster for Challenge 4..."

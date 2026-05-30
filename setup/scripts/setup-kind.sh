@@ -2,7 +2,7 @@
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-ci-cluster}"
-KIND_VERSION="${KIND_VERSION:-v1.27.3}"
+KIND_VERSION="${KIND_VERSION:-v1.31.4}"
 
 echo "Setting up KinD cluster: ${CLUSTER_NAME}"
 

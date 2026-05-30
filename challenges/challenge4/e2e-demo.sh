@@ -40,7 +40,7 @@ p "=== DEMO : Workflow CI/CD de bout en bout — Du code source à la production
 
 p "  PHASE 0 — État initial de la production"
 
-p "1. Interface ArgoCD : http://argocd.sc.local:31443"
+p "1. Interface ArgoCD : http://argocd.sc.local:31080"
 p "→ Ouvrez l'interface ArgoCD pour suivre le déploiement en temps réel"
 
 p "2. Vérifier que l'API de production est fonctionnelle"
@@ -212,7 +212,7 @@ done
 pe "kubectl --context ${PROD_CONTEXT} get application recipe-api-production -n argocd \
   -o jsonpath='{\"Sync: \"}{.status.sync.status}{\"  Health: \"}{.status.health.status}' && echo"
 
-p "→ Vérifiez dans l'interface ArgoCD : https://argocd.sc.local:31443"
+p "→ Vérifiez dans l'interface ArgoCD : http://argocd.sc.local:31080"
 
 p "14. Vérifier que la nouvelle version est accessible"
 pe "curl -s http://app.sc.local:31080/recipes | jq ."

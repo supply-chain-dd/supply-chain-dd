@@ -308,6 +308,30 @@ kubectl create secret docker-registry production-registry-auth \
   -n production \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# Create Gateway TLSRoute for production registry
+if kubectl get gateway sc-local -n envoy-gateway-system &>/dev/null; then
+    echo "Creating Gateway TLSRoute for production registry..."
+    kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: registry-prod
+  namespace: ${REGISTRY_NAMESPACE}
+spec:
+  parentRefs:
+  - name: sc-local
+    namespace: envoy-gateway-system
+    sectionName: registry-prod-passthrough
+  hostnames:
+  - "${REGISTRY_PROD_DOMAIN}"
+  rules:
+  - backendRefs:
+    - name: registry
+      port: 5000
+EOF
+    echo "  ✓ Registry Gateway route created"
+fi
+
 echo ""
 echo "✓ Production registry setup complete!"
 echo ""

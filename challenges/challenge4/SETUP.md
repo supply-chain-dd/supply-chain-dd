@@ -190,7 +190,7 @@ kubectl get pods -n argocd
 
 **Access ArgoCD Web UI**:
 ```
-URL: https://argocd.sc.local:31443
+URL: http://argocd.sc.local:31080
 Username: admin
 Password: admin123
 ```
@@ -247,7 +247,7 @@ kubectl get all -n production
 ```
 
 **In ArgoCD Web UI**:
-1. Navigate to https://argocd.sc.local:31443
+1. Navigate to http://argocd.sc.local:31080
 2. Login as admin
 3. You should see the `recipe-api-production` application
 4. Status should be "Synced" and "Healthy"
@@ -282,7 +282,7 @@ make verify-challenge4
   - Accessible at http://gitea-prod.sc.local:31080
   - Internal URL: http://gitea-http.gitea.svc.cluster.local:3000
 - ✅ ArgoCD with **vulnerable RBAC** (cluster-admin access)
-  - Web UI: https://argocd.sc.local:31443
+  - Web UI: http://argocd.sc.local:31080
 - ✅ Production namespace with recipe-api deployed
 - ✅ ArgoCD syncing from production Gitea
 - ⚠️ **No admission policies** (Kyverno not installed - vulnerable!)
@@ -362,7 +362,7 @@ make seed-production-repo
 **Solution**:
 ```bash
 # Force sync
-argocd app sync recipe-api-production --server argocd.sc.local:31443 --insecure
+argocd app sync recipe-api-production --server argocd.sc.local:31080 --insecure
 
 # Or via kubectl
 kubectl patch application recipe-api-production -n argocd \

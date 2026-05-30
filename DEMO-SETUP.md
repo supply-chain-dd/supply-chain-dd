@@ -111,7 +111,7 @@ After `make setup-demo` completes:
 | Gitea | CI | http://gitea.sc.local:30080 | sc-admin | SecurePass123! |
 | Registry | CI | https://registry.sc.local:30443 | sc-admin | RegistryPass123! |
 | Gitea (production) | Production | http://gitea-prod.sc.local:31080 | sc-admin | SecurePass123! |
-| ArgoCD | Production | https://argocd.sc.local:31443 | admin | admin123 |
+| ArgoCD | Production | http://argocd.sc.local:31080 | admin | admin123 |
 
 ## Verification
 

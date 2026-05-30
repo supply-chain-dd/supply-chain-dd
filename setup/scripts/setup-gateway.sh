@@ -52,7 +52,7 @@ EOF
     # Registry route (may not exist yet if setup-registry hasn't run)
     if kubectl get namespace registry &>/dev/null; then
         kubectl apply -f - <<EOF
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: registry
@@ -75,8 +75,8 @@ EOF
 
     # Sigstore routes (created later by setup-sigstore-local)
     local sigstore_created=false
-    for ns_svc in "rekor-system:rekor:${REKOR_DOMAIN}" "tuf-system:tuf:${TUF_DOMAIN}" "fulcio-system:fulcio:${FULCIO_DOMAIN}"; do
-        IFS=: read -r ns svc domain <<< "${ns_svc}"
+    for ns_svc in "rekor-system|rekor|${REKOR_DOMAIN}" "tuf-system|tuf|${TUF_DOMAIN}" "fulcio-system|fulcio|${FULCIO_DOMAIN}"; do
+        IFS='|' read -r ns svc domain <<< "${ns_svc}"
         if kubectl get namespace "${ns}" &>/dev/null; then
             kubectl apply -f - <<EOF
 apiVersion: gateway.networking.k8s.io/v1
@@ -105,9 +105,11 @@ EOF
 }
 
 create_production_routes() {
-    kubectl apply -f - <<EOF
-apiVersion: gateway.networking.k8s.io/v1alpha2
-kind: TLSRoute
+    # ArgoCD — created later by setup-argocd
+    if kubectl get namespace argocd &>/dev/null; then
+        kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: argocd
   namespace: argocd
@@ -115,16 +117,21 @@ spec:
   parentRefs:
   - name: sc-local
     namespace: envoy-gateway-system
-    sectionName: argocd-passthrough
+    sectionName: http
   hostnames:
   - "${ARGOCD_DOMAIN}"
   rules:
   - backendRefs:
     - name: argocd-server
-      port: 443
+      port: 80
 EOF
+    else
+        echo "  ⚠ ArgoCD namespace not found — route will be created by setup-argocd"
+    fi
 
-    kubectl apply -f - <<EOF
+    # Gitea + Recipe API (default namespace always exists)
+    if kubectl get namespace gitea &>/dev/null; then
+        kubectl apply -f - <<EOF
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -141,12 +148,17 @@ spec:
   - backendRefs:
     - name: gitea-http
       port: 3000
----
+EOF
+    else
+        echo "  ⚠ Gitea namespace not found — route will be created by setup-production-gitea"
+    fi
+
+    kubectl apply -f - <<EOF
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: recipe-api
-  namespace: default
+  namespace: production
 spec:
   parentRefs:
   - name: sc-local
@@ -157,11 +169,13 @@ spec:
   rules:
   - backendRefs:
     - name: recipe-api
-      port: 8080
+      port: 80
 EOF
 
-    kubectl apply -f - <<EOF
-apiVersion: gateway.networking.k8s.io/v1alpha2
+    # Production registry
+    if kubectl get namespace registry &>/dev/null; then
+        kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: registry-prod
@@ -178,6 +192,9 @@ spec:
     - name: registry
       port: 5000
 EOF
+    else
+        echo "  ⚠ Registry namespace not found — route will be created by setup-production-registry"
+    fi
 }
 
 # ============================================================
@@ -297,15 +314,6 @@ spec:
     allowedRoutes:
       namespaces:
         from: All
-  - name: argocd-passthrough
-    protocol: TLS
-    port: ${GATEWAY_PROD_HTTPS_PORT}
-    hostname: "${ARGOCD_DOMAIN}"
-    tls:
-      mode: Passthrough
-    allowedRoutes:
-      namespaces:
-        from: All
   - name: registry-prod-passthrough
     protocol: TLS
     port: ${GATEWAY_PROD_HTTPS_PORT}
@@ -393,7 +401,7 @@ if [ "${CLUSTER_TYPE}" = "ci" ]; then
     echo "  Gitea SSH:  ssh://git@${GITEA_DOMAIN}:${GITEA_SSH_PORT}"
 else
     echo "Service URLs:"
-    echo "  ArgoCD:          https://${ARGOCD_HOST}"
+    echo "  ArgoCD:          http://${ARGOCD_HOST}"
     echo "  Gitea (prod):    http://${GITEA_PROD_HOST}"
     echo "  Registry (prod): https://${REGISTRY_PROD_HOST}"
     echo "  Recipe API:      http://${APP_HOST}"
