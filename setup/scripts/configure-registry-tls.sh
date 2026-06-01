@@ -2,9 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SETUP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/domains.sh"
 
-CERT_FILE="${1:-certs/registry.crt}"
+CERT_FILE="${1:-${SETUP_DIR}/certs/registry.crt}"
 
 echo "Registry TLS Configuration Helper"
 echo "=================================="
@@ -18,6 +19,33 @@ if [ ! -f "${CERT_FILE}" ]; then
 fi
 
 echo "Certificate found: ${CERT_FILE}"
+echo "Target registry:   ${REGISTRY_HOST}"
+echo ""
+
+# Validate that the certificate's SANs match the target registry domain
+CERT_SANS=$(openssl x509 -in "${CERT_FILE}" -noout -text 2>/dev/null \
+    | grep -A1 "Subject Alternative Name" \
+    | tail -1 \
+    | tr ',' '\n' \
+    | sed 's/^[[:space:]]*//' \
+    | grep "^DNS:" \
+    | sed 's/DNS://')
+
+if ! echo "${CERT_SANS}" | grep -qw "${REGISTRY_DOMAIN}"; then
+    echo "ERROR: Certificate SAN mismatch!"
+    echo ""
+    echo "  Target registry domain: ${REGISTRY_DOMAIN}"
+    echo "  Certificate SANs:       $(echo ${CERT_SANS} | tr '\n' ', ')"
+    echo ""
+    echo "  The certificate does not cover '${REGISTRY_DOMAIN}'."
+    echo "  Installing it would break TLS for ${REGISTRY_HOST}."
+    echo ""
+    echo "  Possible fixes:"
+    echo "    - Use the correct certificate file for this registry"
+    echo "    - Re-run 'make setup-registry' to regenerate the certificate"
+    exit 1
+fi
+echo "✓ Certificate SANs match target domain '${REGISTRY_DOMAIN}'"
 echo ""
 
 # Detect container runtime (respect CONTAINER_RUNTIME env var if set)
@@ -44,114 +72,54 @@ else
     echo "✓ Using CONTAINER_RUNTIME=$RUNTIME"
 fi
 
+echo "Configuring per-registry certificate trust..."
+
+CONTAINERS_CERT_DIR="/etc/containers/certs.d/${REGISTRY_HOST}"
+echo "  Creating directory: ${CONTAINERS_CERT_DIR}"
+sudo mkdir -p "${CONTAINERS_CERT_DIR}"
+echo "  Copying certificate..."
+sudo cp "${CERT_FILE}" "${CONTAINERS_CERT_DIR}/ca.crt"
+sudo chmod 644 "${CONTAINERS_CERT_DIR}/ca.crt"
+echo "  -> Podman/Buildah configured"
+
+DOCKER_CERT_DIR="/etc/docker/certs.d/${REGISTRY_HOST}"
+echo "  Creating directory: ${DOCKER_CERT_DIR}"
+sudo mkdir -p "${DOCKER_CERT_DIR}"
+echo "  Copying certificate..."
+sudo cp "${CERT_FILE}" "${DOCKER_CERT_DIR}/ca.crt"
+sudo chmod 644 "${DOCKER_CERT_DIR}/ca.crt"
+echo "  -> Docker/crane/oras configured"
+
+if [ "$RUNTIME" = "docker" ]; then
+    echo "  Restarting Docker..."
+    sudo systemctl restart docker
+fi
+
 echo ""
-echo "Choose configuration method:"
-echo "  1) Per-registry configuration (Recommended)"
-echo "  2) System-wide CA trust"
-echo "  3) Show manual instructions and exit"
+echo "Certificate installed in both /etc/containers and /etc/docker cert directories."
+
+# Verify the cert file matches what the live server is actually serving.
+# The registry pod caches its cert at startup; if the K8s secret was updated
+# after the pod started, the pod serves a stale cert.
 echo ""
-read -p "Enter choice [1-3]: " choice
+echo "Verifying certificate matches the live registry..."
+LIVE_FP=$(openssl s_client -connect "${REGISTRY_HOST}" -servername "${REGISTRY_DOMAIN}" </dev/null 2>/dev/null \
+    | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)
+FILE_FP=$(openssl x509 -in "${CERT_FILE}" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)
 
-case $choice in
-    1)
-        echo ""
-        echo "Configuring per-registry certificate trust..."
+KUBECTL_CTX=( ${REGISTRY_KUBECTL_CONTEXT:+--context "${REGISTRY_KUBECTL_CONTEXT}"} )
 
-        CONTAINERS_CERT_DIR="/etc/containers/certs.d/${REGISTRY_HOST}"
-        echo "  Creating directory: ${CONTAINERS_CERT_DIR}"
-        sudo mkdir -p "${CONTAINERS_CERT_DIR}"
-        echo "  Copying certificate..."
-        sudo cp "${CERT_FILE}" "${CONTAINERS_CERT_DIR}/ca.crt"
-        sudo chmod 644 "${CONTAINERS_CERT_DIR}/ca.crt"
-        echo "  -> Podman/Buildah configured"
-
-        DOCKER_CERT_DIR="/etc/docker/certs.d/${REGISTRY_HOST}"
-        echo "  Creating directory: ${DOCKER_CERT_DIR}"
-        sudo mkdir -p "${DOCKER_CERT_DIR}"
-        echo "  Copying certificate..."
-        sudo cp "${CERT_FILE}" "${DOCKER_CERT_DIR}/ca.crt"
-        sudo chmod 644 "${DOCKER_CERT_DIR}/ca.crt"
-        echo "  -> Docker/crane/oras configured"
-
-        if [ "$RUNTIME" = "docker" ]; then
-            echo "  Restarting Docker..."
-            sudo systemctl restart docker
-        fi
-
-        echo ""
-        echo "Certificate installed in both /etc/containers and /etc/docker cert directories."
-        ;;
-    2)
-        echo ""
-        echo "Configuring system-wide CA trust..."
-
-        # Detect OS
-        if [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ] || [ -f /etc/centos-release ]; then
-            # Fedora/RHEL/CentOS
-            echo "  Detected RHEL-based system"
-            echo "  Copying certificate to /etc/pki/ca-trust/source/anchors/..."
-            sudo cp "${CERT_FILE}" /etc/pki/ca-trust/source/anchors/registry.crt
-            echo "  Updating CA trust..."
-            sudo update-ca-trust
-            echo ""
-            echo "✓ System CA trust updated (RHEL/Fedora/CentOS)"
-        elif [ -f /etc/debian_version ]; then
-            # Debian/Ubuntu
-            echo "  Detected Debian-based system"
-            echo "  Copying certificate to /usr/local/share/ca-certificates/..."
-            sudo cp "${CERT_FILE}" /usr/local/share/ca-certificates/registry.crt
-            echo "  Updating CA certificates..."
-            sudo update-ca-certificates
-            echo ""
-            echo "✓ System CA trust updated (Debian/Ubuntu)"
-        else
-            echo "  Warning: OS not detected. Manual configuration required."
-            echo ""
-            echo "For RHEL/Fedora/CentOS:"
-            echo "  sudo cp ${CERT_FILE} /etc/pki/ca-trust/source/anchors/registry.crt"
-            echo "  sudo update-ca-trust"
-            echo ""
-            echo "For Debian/Ubuntu:"
-            echo "  sudo cp ${CERT_FILE} /usr/local/share/ca-certificates/registry.crt"
-            echo "  sudo update-ca-certificates"
-            exit 1
-        fi
-
-        # Restart Docker if it's the runtime
-        if [ "$RUNTIME" = "docker" ]; then
-            echo "  Restarting Docker..."
-            sudo systemctl restart docker
-        fi
-        ;;
-    3)
-        echo ""
-        echo "Manual Configuration Instructions:"
-        echo "==================================="
-        echo ""
-        echo "For Podman (per-registry):"
-        echo "  sudo mkdir -p /etc/containers/certs.d/${REGISTRY_HOST}"
-        echo "  sudo cp ${CERT_FILE} /etc/containers/certs.d/${REGISTRY_HOST}/ca.crt"
-        echo ""
-        echo "For Docker (per-registry):"
-        echo "  sudo mkdir -p /etc/docker/certs.d/${REGISTRY_HOST}"
-        echo "  sudo cp ${CERT_FILE} /etc/docker/certs.d/${REGISTRY_HOST}/ca.crt"
-        echo "  sudo systemctl restart docker"
-        echo ""
-        echo "For system-wide trust (RHEL/Fedora/CentOS):"
-        echo "  sudo cp ${CERT_FILE} /etc/pki/ca-trust/source/anchors/registry.crt"
-        echo "  sudo update-ca-trust"
-        echo ""
-        echo "For system-wide trust (Debian/Ubuntu):"
-        echo "  sudo cp ${CERT_FILE} /usr/local/share/ca-certificates/registry.crt"
-        echo "  sudo update-ca-certificates"
-        echo ""
-        exit 0
-        ;;
-    *)
-        echo "Invalid choice. Exiting."
-        exit 1
-        ;;
-esac
+if [ -n "${LIVE_FP}" ] && [ "${LIVE_FP}" != "${FILE_FP}" ]; then
+    echo "  Certificate mismatch detected!"
+    echo "    File:   ${FILE_FP}"
+    echo "    Server: ${LIVE_FP}"
+    echo "  Restarting registry pod to load the current certificate..."
+    kubectl "${KUBECTL_CTX[@]}" rollout restart deployment/registry -n registry 2>/dev/null
+    kubectl "${KUBECTL_CTX[@]}" rollout status deployment/registry -n registry --timeout=60s 2>/dev/null
+    echo "✓ Registry pod restarted — certificate is now in sync"
+else
+    echo "✓ Certificate matches live server"
+fi
 
 echo ""
 echo "Test the configuration:"

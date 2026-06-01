@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/domains.sh"
+source "${SCRIPT_DIR}/cert-utils.sh"
 
 CLUSTER_NAME="${CLUSTER_NAME:-ci-cluster}"
 REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-registry}"
@@ -11,9 +12,13 @@ REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-registry}"
 REGISTRY_USER="${REGISTRY_USER:-sc-admin}"
 REGISTRY_PASS="${REGISTRY_PASS:-RegistryPass123!}"
 
-# TLS configuration
-CERT_DIR="$(mktemp -d)"
-trap "rm -rf ${CERT_DIR}" EXIT
+# Persistent TLS certificate storage
+CERTS_OUTPUT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)/certs"
+mkdir -p "${CERTS_OUTPUT_DIR}"
+CERT_FILE="${CERTS_OUTPUT_DIR}/registry.crt"
+KEY_FILE="${CERTS_OUTPUT_DIR}/registry.key"
+
+CERT_REGENERATED=false
 
 echo "Setting up Docker registry in KinD cluster: ${CLUSTER_NAME}"
 
@@ -28,11 +33,16 @@ fi
 echo "Creating registry namespace..."
 kubectl create namespace "${REGISTRY_NAMESPACE}" 2>/dev/null || echo "  Namespace '${REGISTRY_NAMESPACE}' already exists"
 
-# Generate self-signed TLS certificate
-echo "Generating self-signed TLS certificate..."
+# Generate self-signed TLS certificate only when needed
+if cert_is_valid "${CERT_FILE}" "${KEY_FILE}" && cert_sans_match "${CERT_FILE}" "${REGISTRY_DOMAIN}"; then
+    echo "✓ Existing TLS certificate is valid and matches domain, reusing it."
+else
+    echo "Generating self-signed TLS certificate..."
 
-# Create OpenSSL config for Subject Alternative Names
-cat > "${CERT_DIR}/openssl.cnf" <<EOF
+    TMPCNF=$(mktemp)
+    trap "rm -f ${TMPCNF}" EXIT
+
+    cat > "${TMPCNF}" <<EOF
 [req]
 default_bits = 2048
 prompt = no
@@ -62,33 +72,47 @@ DNS.6 = ${REGISTRY_DOMAIN}
 IP.1 = 127.0.0.1
 EOF
 
-# Generate private key and certificate
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout "${CERT_DIR}/tls.key" \
-  -out "${CERT_DIR}/tls.crt" \
-  -config "${CERT_DIR}/openssl.cnf" \
-  -extensions req_ext 2>/dev/null
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout "${KEY_FILE}" \
+      -out "${CERT_FILE}" \
+      -config "${TMPCNF}" \
+      -extensions req_ext 2>/dev/null
 
-if [ ! -f "${CERT_DIR}/tls.crt" ]; then
-    echo "Error: Failed to generate TLS certificate"
-    exit 1
+    rm -f "${TMPCNF}"
+    trap - EXIT
+
+    if [ ! -f "${CERT_FILE}" ]; then
+        echo "Error: Failed to generate TLS certificate"
+        exit 1
+    fi
+
+    chmod 600 "${KEY_FILE}"
+    chmod 644 "${CERT_FILE}"
+
+    CERT_REGENERATED=true
+    echo "✓ TLS certificate generated"
+    echo "  Certificate saved to: ${CERT_FILE}"
 fi
 
-echo "✓ TLS certificate generated"
-
-# Save certificate to local directory for client configuration
-CERTS_OUTPUT_DIR="${PWD}/certs"
-mkdir -p "${CERTS_OUTPUT_DIR}"
-cp "${CERT_DIR}/tls.crt" "${CERTS_OUTPUT_DIR}/registry.crt"
-echo "  Certificate saved to: ${CERTS_OUTPUT_DIR}/registry.crt"
-
-# Create TLS secret
-echo "Creating TLS secret..."
-kubectl create secret tls registry-tls \
-  --cert="${CERT_DIR}/tls.crt" \
-  --key="${CERT_DIR}/tls.key" \
-  -n "${REGISTRY_NAMESPACE}" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Create or update TLS secret only when needed
+if [ "${CERT_REGENERATED}" = "true" ]; then
+    echo "Updating TLS secret with new certificate..."
+    kubectl create secret tls registry-tls \
+      --cert="${CERT_FILE}" \
+      --key="${KEY_FILE}" \
+      -n "${REGISTRY_NAMESPACE}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+elif ! kubectl get secret registry-tls -n "${REGISTRY_NAMESPACE}" &>/dev/null; then
+    echo "Creating TLS secret..."
+    kubectl create secret tls registry-tls \
+      --cert="${CERT_FILE}" \
+      --key="${KEY_FILE}" \
+      -n "${REGISTRY_NAMESPACE}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    CERT_REGENERATED=true
+else
+    echo "✓ TLS secret already exists, no update needed."
+fi
 
 # Generate htpasswd for basic auth
 echo "Generating registry credentials..."
@@ -299,10 +323,44 @@ data:
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
 EOF
 
-# Wait for registry to be ready
+# Restart the deployment only if the certificate changed
+if [ "${CERT_REGENERATED}" = "true" ]; then
+    echo "Certificate changed — restarting registry deployment..."
+    kubectl rollout restart deployment/registry -n "${REGISTRY_NAMESPACE}"
+fi
+
 echo "Waiting for registry to be ready..."
-kubectl wait --for=condition=available --timeout=120s deployment/registry -n "${REGISTRY_NAMESPACE}"
+kubectl rollout status deployment/registry -n "${REGISTRY_NAMESPACE}" --timeout=120s
 kubectl wait --for=condition=ready --timeout=120s pod -l app=registry -n "${REGISTRY_NAMESPACE}"
+
+# Propagate CA certificate to downstream namespaces only if cert changed
+if [ "${CERT_REGENERATED}" = "true" ]; then
+    for ns in ci tekton-chains; do
+        if kubectl get namespace "${ns}" &>/dev/null; then
+            echo "Updating registry-ca-cert ConfigMap in ${ns}..."
+            kubectl create configmap registry-ca-cert \
+              --from-file=ca.crt="${CERT_FILE}" \
+              -n "${ns}" \
+              --dry-run=client -o yaml | kubectl apply -f -
+        fi
+    done
+    if kubectl get namespace release-pipeline &>/dev/null; then
+        echo "Updating ci-registry-ca-cert ConfigMap in release-pipeline..."
+        kubectl create configmap ci-registry-ca-cert \
+          --from-file=ca.crt="${CERT_FILE}" \
+          -n release-pipeline \
+          --dry-run=client -o yaml | kubectl apply -f -
+    fi
+fi
+
+# Restart controllers that cache the CA certificate only if cert changed
+if [ "${CERT_REGENERATED}" = "true" ]; then
+    if kubectl get deployment tekton-chains-controller -n tekton-chains &>/dev/null; then
+        echo "Restarting Tekton Chains controller to pick up new certificate..."
+        kubectl rollout restart deployment/tekton-chains-controller -n tekton-chains
+        kubectl rollout status deployment/tekton-chains-controller -n tekton-chains --timeout=60s
+    fi
+fi
 
 # Create Gateway TLSRoute if Gateway exists
 if kubectl get gateway sc-local -n envoy-gateway-system &>/dev/null; then
@@ -343,7 +401,7 @@ echo "Password: ${REGISTRY_PASS}"
 echo ""
 echo "TLS Certificate:"
 echo "================"
-echo "Location: ${CERTS_OUTPUT_DIR}/registry.crt"
+echo "Location: ${CERT_FILE}"
 echo ""
 echo "⚠  Configure TLS trust before using the registry:"
 echo "  make configure-registry-tls"
@@ -354,5 +412,5 @@ echo "  podman login ${REGISTRY_HOST} -u ${REGISTRY_USER} -p ${REGISTRY_PASS}"
 echo "  podman tag nginx:latest ${REGISTRY_HOST}/nginx:test"
 echo "  podman push ${REGISTRY_HOST}/nginx:test"
 echo ""
-echo "  curl --cacert ${CERTS_OUTPUT_DIR}/registry.crt -u ${REGISTRY_USER}:${REGISTRY_PASS} https://${REGISTRY_HOST}/v2/_catalog"
+echo "  curl --cacert ${CERT_FILE} -u ${REGISTRY_USER}:${REGISTRY_PASS} https://${REGISTRY_HOST}/v2/_catalog"
 echo ""
