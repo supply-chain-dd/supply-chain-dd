@@ -26,6 +26,10 @@ source "${SCRIPT_DIR}/domains.sh"
 cat <<EOF | kind create cluster --name "${CLUSTER_NAME}" --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+      NoNewKeyring = true
 nodes:
 - role: control-plane
   extraPortMappings:

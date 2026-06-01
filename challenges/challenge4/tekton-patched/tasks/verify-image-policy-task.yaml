@@ -1,0 +1,192 @@
+---
+# Task: verify-image-policy
+#
+# Validates a container image against Conforma (Enterprise Contract) policy
+# using keyless verification (Fulcio + Rekor) before promotion to production.
+#
+# This task acts as a gate in the release pipeline: if the image lacks valid
+# signatures, SLSA provenance, or fails policy checks, the pipeline stops
+# and the image never reaches the production registry.
+#
+# Prerequisites:
+#   - Local Sigstore stack deployed: make setup-sigstore-local
+#   - ConfigMap: sigstore-tuf-root in release-pipeline (TUF root.json)
+#   - ConfigMap: ci-registry-ca-cert in release-pipeline (ca.crt)
+#   - Secret:   ci-registry-credentials in release-pipeline
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: verify-image-policy
+  namespace: release-pipeline
+spec:
+  description: |
+    Validates a container image against Conforma policy using keyless
+    verification (Fulcio + Rekor). Blocks the release pipeline if the
+    image is unsigned, lacks SLSA provenance, or violates policy.
+  params:
+    - name: source-image-url
+      type: string
+      description: Source image URL from CI registry
+    - name: source-image-digest
+      type: string
+      description: Source image digest (sha256:...)
+    - name: REKOR_URL
+      type: string
+      description: Rekor transparency log URL (internal)
+      default: "http://rekor.rekor-system.svc"
+    - name: TUF_MIRROR
+      type: string
+      description: TUF root mirror URL (internal)
+      default: "http://tuf.tuf-system.svc"
+    - name: CERTIFICATE_IDENTITY_REGEXP
+      type: string
+      description: Regexp matching allowed signing identities
+      default: "https://kubernetes.io/namespaces/(ci|tekton-chains)/serviceaccounts/(pipeline-keyless-signer|tekton-chains-controller)"
+    - name: POLICY_CONFIGURATION
+      type: string
+      description: Inline Conforma policy JSON
+      default: >-
+        {"sources":[{"name":"sbom-baseline","policy":["/conforma-policies/"]}]}
+    - name: EXTRA_RULE_DATA
+      type: string
+      description: Extra rule data for policy evaluator
+      default: >-
+        allowed_registry_prefixes=["registry.registry.svc.cluster.local:5000","registry.sc.local:30443"]
+    - name: CONFORMA_VERSION
+      type: string
+      description: Conforma CLI GitHub release tag
+      default: "v0.9.25"
+    - name: COSIGN_VERSION
+      type: string
+      description: Cosign version for TUF initialization
+      default: "v3.0.6"
+  results:
+    - name: POLICY_RESULT
+      description: PASS if all policy checks succeeded
+  volumes:
+    - name: ci-registry-ca-cert
+      configMap:
+        name: ci-registry-ca-cert
+    - name: ci-registry-credentials
+      secret:
+        secretName: ci-registry-credentials
+    - name: tuf-root
+      configMap:
+        name: sigstore-tuf-root
+    - name: conforma-policies
+      configMap:
+        name: conforma-sbom-policy
+  steps:
+    - name: verify-policy
+      image: alpine:3.20
+      env:
+        - name: SSL_CERT_DIR
+          value: /certs
+      volumeMounts:
+        - name: ci-registry-ca-cert
+          mountPath: /certs
+          readOnly: true
+        - name: ci-registry-credentials
+          mountPath: /auth/ci
+          readOnly: true
+        - name: tuf-root
+          mountPath: /tuf
+          readOnly: true
+        - name: conforma-policies
+          mountPath: /conforma-policies/sbom-baseline-check.rego
+          subPath: sbom-baseline-check.rego
+          readOnly: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl ca-certificates jq > /dev/null 2>&1
+
+        cp /certs/ca.crt /usr/local/share/ca-certificates/registry.crt
+        update-ca-certificates > /dev/null 2>&1
+
+        # Download cosign for TUF initialization
+        echo "Downloading cosign $(params.COSIGN_VERSION)..."
+        curl -fsSL "https://github.com/sigstore/cosign/releases/download/$(params.COSIGN_VERSION)/cosign-linux-amd64" -o /usr/local/bin/cosign
+        chmod +x /usr/local/bin/cosign
+
+        # Download ec CLI
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64)        EC_ARCH="amd64" ;;
+          aarch64|arm64) EC_ARCH="arm64" ;;
+          *)             EC_ARCH="amd64" ;;
+        esac
+        EC_URL="https://github.com/conforma/cli/releases/download/$(params.CONFORMA_VERSION)/ec_linux_${EC_ARCH}"
+        echo "Downloading Conforma CLI $(params.CONFORMA_VERSION) (linux/${EC_ARCH})..."
+        curl -sSfL "${EC_URL}" -o /tmp/ec
+        chmod +x /tmp/ec
+        echo "Tools ready"
+        echo ""
+
+        # Initialize TUF root for local Sigstore
+        echo "Initializing TUF from local mirror..."
+        cosign initialize \
+          --mirror=$(params.TUF_MIRROR) \
+          --root=/tuf/root.json
+
+        # Build image reference
+        SOURCE_URL=$(echo "$(params.source-image-url)" | sed 's/:[^/]*$//')
+        IMAGE_REF="${SOURCE_URL}@$(params.source-image-digest)"
+        OIDC_ISSUER="https://kubernetes.default.svc.cluster.local"
+
+        echo ""
+        echo "============================================"
+        echo "Conforma Policy Verification (Release Gate)"
+        echo "============================================"
+        echo "Image:    ${IMAGE_REF}"
+        echo "Rekor:    $(params.REKOR_URL)"
+        echo "Issuer:   ${OIDC_ISSUER}"
+        echo "Identity: $(params.CERTIFICATE_IDENTITY_REGEXP)"
+        echo ""
+
+        # Retry loop: Tekton Chains may still be generating attestations
+        EXTRA_RULE_DATA=$(printf '%s' '$(params.EXTRA_RULE_DATA)' | sed 's/"/""/g')
+        EXTRA_RULE_DATA="\"${EXTRA_RULE_DATA}\""
+
+        MAX_ATTEMPTS=3
+        ATTEMPT=0
+        EC_EXIT=1
+
+        while [ $ATTEMPT -lt $MAX_ATTEMPTS ] && [ $EC_EXIT -ne 0 ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            if [ $ATTEMPT -gt 1 ]; then
+                echo ""
+                echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS} (waiting for attestations)..."
+                sleep 15
+            fi
+
+            set +e
+            /tmp/ec validate image \
+              --image "${IMAGE_REF}" \
+              --policy '$(params.POLICY_CONFIGURATION)' \
+              --certificate-identity-regexp '$(params.CERTIFICATE_IDENTITY_REGEXP)' \
+              --certificate-oidc-issuer "${OIDC_ISSUER}" \
+              --rekor-url $(params.REKOR_URL) \
+              --extra-rule-data "${EXTRA_RULE_DATA}" \
+              --strict true \
+              --output text
+            EC_EXIT=$?
+            set -e
+        done
+
+        echo ""
+        if [ "$EC_EXIT" -eq 0 ]; then
+            echo "============================================"
+            echo "POLICY VERIFICATION PASSED"
+            echo "============================================"
+            echo "Image is approved for promotion to production."
+            printf 'PASS' > /tekton/results/POLICY_RESULT
+        else
+            echo "============================================"
+            echo "POLICY VERIFICATION FAILED"
+            echo "============================================"
+            echo "Image blocked: does not meet release policy requirements."
+            echo "The image will NOT be promoted to production."
+            exit 1
+        fi

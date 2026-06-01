@@ -1,0 +1,39 @@
+---
+# Manual PipelineRun for the Challenge 4 build pipeline with release gate.
+# Use: kubectl create -f challenges/challenge4/tekton-patched/manual-build-pipelinerun-with-release-gate.yaml
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: manual-release-gate-build-
+  namespace: ci
+  labels:
+    tekton.dev/pipeline: push-build-pipeline-with-release-gate
+spec:
+  serviceAccountName: pipeline-keyless-signer
+  pipelineRef:
+    name: push-build-pipeline-with-release-gate
+  taskRunSpecs:
+    - pipelineTaskName: sign-image-keyless
+      taskServiceAccountName: pipeline-keyless-signer
+    - pipelineTaskName: attest-sbom
+      taskServiceAccountName: pipeline-keyless-signer
+  params:
+    - name: repo-url
+      value: "http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git"
+    - name: revision
+      value: "main"
+    - name: image-name
+      value: "recipe-api"
+    - name: image-tag
+      value: "v4.0"
+    - name: registry-url
+      value: "registry.registry.svc.cluster.local:5000"
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi

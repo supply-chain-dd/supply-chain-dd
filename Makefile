@@ -6,7 +6,7 @@
 .PHONY: setup-sigstore-local verify-sigstore-local setup-challenge2-tekton-keyless trigger-challenge2-build-keyless
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3 setup-challenge3-tekton trigger-challenge3-build-with-chains
 .PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-e2e-scenario verify-e2e-scenario clean-e2e-scenario apply-challenge4-security test-challenge4-attack
-.PHONY: setup-release-pipeline trigger-release-pipeline
+.PHONY: setup-release-pipeline trigger-release-pipeline setup-release-pipeline-secure trigger-release-pipeline-secure trigger-build-with-release-gate
 .PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard
 .PHONY: setup-gateway setup-gateway-production configure-hosts
 
@@ -30,6 +30,8 @@ FULCIO_NODE_PORT ?= 30008
 REGISTRY_USER ?= sc-admin
 REGISTRY_PASS ?= RegistryPass123!
 PRODUCTION_REGISTRY_NODE_PORT ?= 30082
+REGISTRY_PROD_DOMAIN ?= registry-prod.sc.local
+GATEWAY_PROD_HTTPS_PORT ?= 31443
 
 # Container runtime selection (podman or docker)
 CONTAINER_RUNTIME ?= podman
@@ -291,7 +293,7 @@ setup-registry: ## Setup local Docker registry with authentication
 	@cd setup && ./scripts/setup-registry.sh
 
 configure-registry-tls: ## Configure TLS trust for the registry (interactive)
-	@cd setup && ./scripts/configure-registry-tls.sh
+	@./setup/scripts/configure-registry-tls.sh
 
 setup-gateway: ## Deploy Gateway API with Envoy Gateway for *.sc.local domains (ci cluster)
 	@cd setup && ./scripts/setup-gateway.sh ci
@@ -1240,7 +1242,7 @@ setup-production-registry: ## Setup Docker registry on production cluster
 	@cd setup && ./scripts/setup-production-registry.sh
 
 configure-production-registry-tls: ## Configure TLS trust for the production registry (interactive)
-	@cd setup && REGISTRY_DOMAIN=$(REGISTRY_PROD_DOMAIN) ./scripts/configure-registry-tls.sh certs/production-registry.crt
+	@REGISTRY_DOMAIN=$(REGISTRY_PROD_DOMAIN) GATEWAY_HTTPS_PORT=$(GATEWAY_PROD_HTTPS_PORT) REGISTRY_KUBECTL_CONTEXT=kind-$(PRODUCTION_CLUSTER_NAME) ./setup/scripts/configure-registry-tls.sh setup/certs/production-registry.crt
 
 push-recipe-api-to-production: ## Copy recipe-api image from CI registry to production registry
 	@echo "Copying recipe-api:v1.0 from CI registry to production registry..."
@@ -1301,6 +1303,40 @@ setup-release-pipeline: ## Deploy release pipeline resources (namespace, tasks, 
 trigger-release-pipeline: ## Manually trigger the release pipeline
 	@kubectl --context kind-$(CLUSTER_NAME) create -f challenges/e2e-scenario/tekton/manual-release-pipelinerun.yaml
 	@echo "✓ Release pipeline triggered. Monitor: kubectl get pipelineruns -n release-pipeline -w"
+
+setup-release-pipeline-secure: setup-release-pipeline ## Deploy secured release pipeline with Conforma verification gate
+	@echo "========================================"
+	@echo "Setting up Secured Release Pipeline"
+	@echo "========================================"
+	@echo "Copying sigstore-tuf-root ConfigMap to release-pipeline namespace..."
+	@kubectl --context kind-$(CLUSTER_NAME) get configmap sigstore-tuf-root -n ci -o json | \
+		jq '.metadata.namespace = "release-pipeline" | del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields)' | \
+		kubectl --context kind-$(CLUSTER_NAME) apply -f -
+	@echo "Creating Conforma SBOM policy ConfigMap in release-pipeline namespace..."
+	@kubectl --context kind-$(CLUSTER_NAME) create configmap conforma-sbom-policy \
+		--from-file=sbom-baseline-check.rego=challenges/challenge3/security/conforma-policies/sbom-baseline-check.rego \
+		-n release-pipeline --dry-run=client -o yaml | kubectl --context kind-$(CLUSTER_NAME) apply -f -
+	@echo "Applying RBAC for Chains annotation check..."
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton-patched/rbac/
+	@echo "Applying build pipeline with release gate (notify-release in finally)..."
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton-patched/tasks/
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton-patched/pipelines/
+	@echo "Applying secured release pipeline resources..."
+	@kubectl --context kind-$(CLUSTER_NAME) apply -f challenges/challenge4/tekton-patched/triggers/
+	@echo "✓ Secured release pipeline deployed:"
+	@echo "  Build:   push-build-pipeline-with-release-gate (finally waits for Chains)"
+	@echo "  Release: release-pipeline-secure (verify-image-policy → copy-image → create-pr)"
+
+trigger-release-pipeline-secure: ## Manually trigger the secured release pipeline
+	@kubectl --context kind-$(CLUSTER_NAME) create -f challenges/challenge4/tekton-patched/manual-release-pipelinerun-secure.yaml
+	@echo "✓ Secured release pipeline triggered. Monitor: kubectl get pipelineruns -n release-pipeline -w"
+
+trigger-build-with-release-gate: ## Trigger Challenge 4 build pipeline (finally block + Chains check + auto-release)
+	@echo "Triggering build pipeline with release gate..."
+	@kubectl --context kind-$(CLUSTER_NAME) create -f challenges/challenge4/tekton-patched/manual-build-pipelinerun-with-release-gate.yaml
+	@echo "✓ Build pipeline triggered. The finally block will auto-trigger the release pipeline after Chains signs."
+	@echo "Monitor build:   tkn pr logs -f -n ci --last"
+	@echo "Monitor release: kubectl get pipelineruns -n release-pipeline -w"
 
 setup-e2e-scenario: setup-production-cluster setup-production-registry setup-gateway-production setup-production-gitea push-recipe-api-to-production setup-argocd seed-production-repo ## Complete Challenge 4 setup
 	@echo ""

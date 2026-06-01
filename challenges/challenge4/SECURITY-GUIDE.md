@@ -376,6 +376,71 @@ argocd app sync recipe-api-production --prune
 - Automated security scans in CI (Kubescape, Trivy)
 - CODEOWNERS file for critical paths
 
+## Release Pipeline Verification Gate
+
+### Concept
+
+The default pipelines have two weaknesses:
+1. **Build pipeline**: `notify-release` fires right after `push-container-image`, in parallel with signing and attestation — the release pipeline is triggered before Tekton Chains completes
+2. **Release pipeline**: promotes images to production **without any policy verification**
+
+The secured pipeline addresses both:
+
+**Build pipeline** (`push-build-pipeline-with-release-gate`): moves `notify-release` to a `finally` block that:
+- Waits for all post-push tasks (sign, attest-sbom, scan, create-source-vsa) to succeed via `when` conditions
+- Polls `chains.tekton.dev/signed=true` on the `push-container-image` TaskRun before sending the notification — following the [Konflux pattern](https://github.com/konflux-ci/integration-service) where the Integration Service waits for Chains annotation before creating Snapshots
+
+**Release pipeline** (`release-pipeline-secure`): adds a Conforma (ec) verification gate:
+
+```
+verify-image-policy → copy-image-to-production → clone-and-create-pr
+```
+
+The `verify-image-policy` task runs `ec validate image` with keyless verification against the local Sigstore stack (Fulcio + Rekor). It checks:
+- **Image signature** — valid cryptographic signature from `pipeline-keyless-signer` or `tekton-chains-controller`
+- **SLSA provenance** — attestation exists with correct builder ID
+- **Policy compliance** — image meets the `@minimal` Conforma policy profile
+
+If verification fails at either gate, the image is **blocked from reaching production**.
+
+### Setup
+
+```bash
+# Deploy both secured pipelines (requires setup-release-pipeline first)
+make setup-release-pipeline-secure
+
+# Trigger the release manually (replace digest with actual value)
+make trigger-release-pipeline-secure
+```
+
+### Interactive Demo
+
+Run the interactive demo to see both gates in action:
+
+```bash
+cd challenges/challenge4
+./release-verification-demo.sh
+```
+
+The demo walks through:
+1. Showing the vulnerable pipelines (no verification gates)
+2. Deploying the secured build + release pipelines
+3. Comparing the pipeline structures (finally block, verification task)
+4. Triggering a release with a signed image
+5. Observing the Conforma verification pass before promotion
+
+### Tekton Resources
+
+| Resource | File | Purpose |
+|----------|------|---------|
+| `notify-release-verified` Task | `tekton-patched/tasks/notify-release-verified-task.yaml` | Polls Chains annotation, then notifies release pipeline |
+| `verify-image-policy` Task | `tekton-patched/tasks/verify-image-policy-task.yaml` | Runs ec validate with keyless verification |
+| `push-build-pipeline-with-release-gate` Pipeline | `tekton-patched/pipelines/push-build-pipeline-with-release-gate.yaml` | Build pipeline with finally-gated release notification |
+| `release-pipeline-secure` Pipeline | `tekton-patched/pipelines/release-pipeline-secure.yaml` | 3-task release pipeline with verification gate |
+| EventListener | `tekton-patched/triggers/release-eventlistener-secure.yaml` | Webhook trigger for secured release pipeline |
+| RBAC | `tekton-patched/rbac/taskrun-reader.yaml` | Allows pipeline SA to read TaskRun annotations |
+| Manual PipelineRun | `tekton-patched/manual-release-pipelinerun-secure.yaml` | Manual trigger template |
+
 ## Implementation Guide
 
 ### Quick Setup (All Controls)
