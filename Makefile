@@ -2,7 +2,7 @@
 .PHONY: setup-security-tools setup-kyverno setup-kubescape security-scan apply-prevention-policies verify-security create-security-policies
 .PHONY: check-cli-tools install-tkn install-kubescape install-conforma verify-registry configure-registry-tls verify-tektonchains
 .PHONY: setup-conforma verify-conforma
-.PHONY: setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build trigger-challenge2-build-with-chains
+.PHONY: require-registry setup-challenge1 setup-challenge2 build-recipe-api push-recipe-api verify-challenge2 setup-challenge2-tekton trigger-challenge2-build trigger-challenge2-build-with-chains
 .PHONY: setup-sigstore-local verify-sigstore-local setup-challenge2-tekton-keyless trigger-challenge2-build-keyless
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3 setup-challenge3-tekton trigger-challenge3-build-with-chains
 .PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-e2e-scenario verify-e2e-scenario clean-e2e-scenario apply-challenge4-security test-challenge4-attack
@@ -294,6 +294,13 @@ setup-registry: ## Setup local Docker registry with authentication
 
 configure-registry-tls: ## Configure TLS trust for the registry (interactive)
 	@./setup/scripts/configure-registry-tls.sh
+
+require-registry: ## Verify the registry is deployed and running (fails with instructions if not)
+	@kubectl get deployment/registry -n registry &>/dev/null && \
+	 kubectl wait --for=condition=available --timeout=5s deployment/registry -n registry &>/dev/null || \
+	 { echo "Error: Registry is not running."; \
+	   echo "Run 'make setup-registry' (or 'make setup') first."; \
+	   exit 1; }
 
 setup-gateway: ## Deploy Gateway API with Envoy Gateway for *.sc.local domains (ci cluster)
 	@cd setup && ./scripts/setup-gateway.sh ci
@@ -715,7 +722,7 @@ verify-security: ## Verify security tools and policies are working
 # Challenge 2: Container Image Layer Leak
 # ============================================================
 
-setup-challenge2: setup-registry seed-legitimate-base-image build-recipe-api push-recipe-api ## Setup Challenge 2 (container layer leak)
+setup-challenge2: require-registry seed-legitimate-base-image build-recipe-api push-recipe-api ## Setup Challenge 2 (container layer leak)
 	@echo ""
 	@echo "========================================"
 	@echo "Challenge 2: Container Image Layer Leak"
@@ -1057,7 +1064,7 @@ verify-demo-readiness: ## Verify all prerequisites for deep dive demo are met
 # Challenge 3: Malware in Base Image
 # ============================================================
 
-setup-challenge3: setup-registry ## Setup Challenge 3 (base image poisoning)
+setup-challenge3: require-registry ## Setup Challenge 3 (base image poisoning)
 	@echo ""
 	@echo "============================================"
 	@echo "Challenge 3: Malware in Base Image Attack"

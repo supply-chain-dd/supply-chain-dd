@@ -1,7 +1,7 @@
 [
   {
     "spdxid": "SPDXRef-DocumentRoot-Image-registry.registry.svc.cluster.local-5000-golang",
-    "purl": "pkg:oci/registry.registry.svc.cluster.local%3A5000%2Fgolang@sha256%3A8b717d8bcb13eca0f7d33fe71ee4e7495c5e26357e81f63db233191fb55d4b2e?arch=&tag=1.25-alpine"
+    "purl": "pkg:oci/registry.registry.svc.cluster.local%3A5000%2Fgolang@sha256%3Ac4ea15b4a7912716eb362a022e2b12317762eca387423760bc59c0f9ae69423c?arch=amd64&tag=1.25-alpine"
   },
   {
     "spdxid": "SPDXRef-Package-apk-alpine-baselayout-307598d85e573e0f",

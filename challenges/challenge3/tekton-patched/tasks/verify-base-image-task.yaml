@@ -181,7 +181,7 @@ spec:
             --artifact-type "application/spdx+json" \
             --format json \
             --registry-config /docker-config/config.json \
-            "$IMAGE_REF" 2>/dev/null || echo '{"manifests":[]}')
+            "$IMAGE_REF" || echo '{"manifests":[]}')
 
           SBOM_COUNT=$(echo "$REFERRERS" | jq '.manifests | length' 2>/dev/null || echo "0")
           if [ "$SBOM_COUNT" -gt 0 ]; then
@@ -212,7 +212,7 @@ spec:
           rm -f /sbom/current-sbom.json
           if ! /tmp/syft scan "$BUILD_IMAGE_REF" \
             -o spdx-json \
-            --file /sbom/current-sbom.json 2>/dev/null; then
+            --file /sbom/current-sbom.json; then
             log "  FAIL: Could not generate SBOM for image"
             SBOM_STATUS="FAIL"
           else

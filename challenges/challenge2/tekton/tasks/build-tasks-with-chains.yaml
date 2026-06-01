@@ -609,7 +609,6 @@ spec:
 
         set +e
         /tmp/trivy image \
-          # --scanners vuln,secret \ # Activate this after challenge3
           --scanners secret \
           --image-config-scanners secret \
           --format json \
@@ -622,7 +621,7 @@ spec:
 
         set +e
         /tmp/trivy image \
-          # --scanners vuln,secret \
+          --scanners secret \
           --image-config-scanners secret \
           --format table \
           --skip-java-db-update \

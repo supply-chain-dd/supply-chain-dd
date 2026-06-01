@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/domains.sh"
+source "${SCRIPT_DIR}/cert-utils.sh"
 
 CLUSTER_NAME="${PRODUCTION_CLUSTER_NAME:-production-cluster}"
 REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-registry}"
@@ -10,8 +11,13 @@ REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-registry}"
 REGISTRY_USER="${REGISTRY_USER:-sc-admin}"
 REGISTRY_PASS="${REGISTRY_PASS:-RegistryPass123!}"
 
-CERT_DIR="$(mktemp -d)"
-trap "rm -rf ${CERT_DIR}" EXIT
+# Persistent TLS certificate storage
+CERTS_OUTPUT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)/certs"
+mkdir -p "${CERTS_OUTPUT_DIR}"
+CERT_FILE="${CERTS_OUTPUT_DIR}/production-registry.crt"
+KEY_FILE="${CERTS_OUTPUT_DIR}/production-registry.key"
+
+CERT_REGENERATED=false
 
 echo "==> Setting up Docker registry on production cluster: ${CLUSTER_NAME}"
 
@@ -35,10 +41,16 @@ fi
 echo "Creating registry namespace..."
 kubectl create namespace "${REGISTRY_NAMESPACE}" 2>/dev/null || echo "  Namespace '${REGISTRY_NAMESPACE}' already exists"
 
-# Generate self-signed TLS certificate
-echo "Generating self-signed TLS certificate..."
+# Generate self-signed TLS certificate only when needed
+if cert_is_valid "${CERT_FILE}" "${KEY_FILE}" && cert_sans_match "${CERT_FILE}" "${REGISTRY_PROD_HOST}"; then
+    echo "✓ Existing TLS certificate is valid and matches domain, reusing it."
+else
+    echo "Generating self-signed TLS certificate..."
 
-cat > "${CERT_DIR}/openssl.cnf" <<EOF
+    TMPCNF=$(mktemp)
+    trap "rm -f ${TMPCNF}" EXIT
+
+    cat > "${TMPCNF}" <<EOF
 [req]
 default_bits = 2048
 prompt = no
@@ -69,31 +81,47 @@ DNS.7 = production-cluster-control-plane.dns.podman
 IP.1 = 127.0.0.1
 EOF
 
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout "${CERT_DIR}/tls.key" \
-  -out "${CERT_DIR}/tls.crt" \
-  -config "${CERT_DIR}/openssl.cnf" \
-  -extensions req_ext 2>/dev/null
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout "${KEY_FILE}" \
+      -out "${CERT_FILE}" \
+      -config "${TMPCNF}" \
+      -extensions req_ext 2>/dev/null
 
-if [ ! -f "${CERT_DIR}/tls.crt" ]; then
-    echo "Error: Failed to generate TLS certificate"
-    exit 1
+    rm -f "${TMPCNF}"
+    trap - EXIT
+
+    if [ ! -f "${CERT_FILE}" ]; then
+        echo "Error: Failed to generate TLS certificate"
+        exit 1
+    fi
+
+    chmod 600 "${KEY_FILE}"
+    chmod 644 "${CERT_FILE}"
+
+    CERT_REGENERATED=true
+    echo "✓ TLS certificate generated"
+    echo "  Certificate saved to: ${CERT_FILE}"
 fi
 
-echo "✓ TLS certificate generated"
-
-CERTS_OUTPUT_DIR="${PWD}/certs"
-mkdir -p "${CERTS_OUTPUT_DIR}"
-cp "${CERT_DIR}/tls.crt" "${CERTS_OUTPUT_DIR}/production-registry.crt"
-echo "  Certificate saved to: ${CERTS_OUTPUT_DIR}/production-registry.crt"
-
-# Create TLS secret
-echo "Creating TLS secret..."
-kubectl create secret tls registry-tls \
-  --cert="${CERT_DIR}/tls.crt" \
-  --key="${CERT_DIR}/tls.key" \
-  -n "${REGISTRY_NAMESPACE}" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Create or update TLS secret only when needed
+if [ "${CERT_REGENERATED}" = "true" ]; then
+    echo "Updating TLS secret with new certificate..."
+    kubectl create secret tls registry-tls \
+      --cert="${CERT_FILE}" \
+      --key="${KEY_FILE}" \
+      -n "${REGISTRY_NAMESPACE}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+elif ! kubectl get secret registry-tls -n "${REGISTRY_NAMESPACE}" &>/dev/null; then
+    echo "Creating TLS secret..."
+    kubectl create secret tls registry-tls \
+      --cert="${CERT_FILE}" \
+      --key="${KEY_FILE}" \
+      -n "${REGISTRY_NAMESPACE}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    CERT_REGENERATED=true
+else
+    echo "✓ TLS secret already exists, no update needed."
+fi
 
 # Generate htpasswd for basic auth
 echo "Generating registry credentials..."
@@ -294,9 +322,14 @@ data:
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
 EOF
 
-# Wait for registry to be ready
+# Restart the deployment only if the certificate changed
+if [ "${CERT_REGENERATED}" = "true" ]; then
+    echo "Certificate changed — restarting registry deployment..."
+    kubectl rollout restart deployment/registry -n "${REGISTRY_NAMESPACE}"
+fi
+
 echo "Waiting for registry to be ready..."
-kubectl wait --for=condition=available --timeout=120s deployment/registry -n "${REGISTRY_NAMESPACE}"
+kubectl rollout status deployment/registry -n "${REGISTRY_NAMESPACE}" --timeout=120s
 kubectl wait --for=condition=ready --timeout=120s pod -l app=registry -n "${REGISTRY_NAMESPACE}"
 
 # Create production namespace and imagePullSecret
@@ -348,5 +381,5 @@ echo "Password: ${REGISTRY_PASS}"
 echo ""
 echo "TLS Certificate:"
 echo "================"
-echo "Location: ${CERTS_OUTPUT_DIR}/production-registry.crt"
+echo "Location: ${CERT_FILE}"
 echo ""
