@@ -1,0 +1,140 @@
+---
+# Task: notify-release-verified
+#
+# Waits for Tekton Chains to complete signing (chains.tekton.dev/signed=true
+# on the push-container-image TaskRun), then notifies the release pipeline.
+#
+# This follows the Konflux pattern: the Integration Service controller
+# watches for chains.tekton.dev/signed=true before creating Snapshots.
+# Here we replicate that gate inside a finally task — the release pipeline
+# is only notified once Chains has finished generating attestations.
+#
+# Chains annotates individual TaskRuns as they complete, independently of
+# the PipelineRun lifecycle. So the push-container-image TaskRun annotation
+# is available while finally tasks are still running.
+#
+# Prerequisites:
+#   - SA running the pipeline needs get/list on TaskRuns in ci namespace
+#   - Release EventListener deployed in release-pipeline namespace
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: notify-release-verified
+  namespace: ci
+spec:
+  description: |
+    Waits for Tekton Chains to sign the push-container-image TaskRun,
+    then notifies the release pipeline EventListener.
+  params:
+    - name: image-url
+      type: string
+      description: Full image URL from build pipeline
+    - name: image-digest
+      type: string
+      description: Image digest from build pipeline
+    - name: image-tag
+      type: string
+      description: Image tag
+      default: "v1.0"
+    - name: pipelinerun-name
+      type: string
+      description: Name of the parent PipelineRun (use context.pipelineRun.name)
+    - name: push-task-name
+      type: string
+      description: Name of the push task to check for Chains annotation
+      default: "push-container-image"
+    - name: chains-timeout
+      type: string
+      description: Max seconds to wait for Chains to sign
+      default: "120"
+    - name: release-listener-url
+      type: string
+      default: "http://el-release-pipeline-secure-listener.release-pipeline.svc.cluster.local:8080"
+  steps:
+    - name: wait-for-chains
+      image: alpine:3.20
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl jq > /dev/null 2>&1
+
+        APISERVER="https://kubernetes.default.svc"
+        TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+        CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        NAMESPACE="ci"
+        PR_NAME="$(params.pipelinerun-name)"
+        TASK_NAME="$(params.push-task-name)"
+        TIMEOUT=$(params.chains-timeout)
+
+        echo "============================================"
+        echo "Waiting for Tekton Chains signing"
+        echo "============================================"
+        echo "PipelineRun: ${PR_NAME}"
+        echo "Task:        ${TASK_NAME}"
+        echo "Timeout:     ${TIMEOUT}s"
+        echo ""
+
+        ELAPSED=0
+        SIGNED=""
+
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+            SIGNED=$(curl -s --cacert $CACERT \
+              -H "Authorization: Bearer $TOKEN" \
+              "${APISERVER}/apis/tekton.dev/v1beta1/namespaces/${NAMESPACE}/taskruns?labelSelector=tekton.dev/pipelineRun=${PR_NAME},tekton.dev/pipelineTask=${TASK_NAME}" \
+              | jq -r '.items[0].metadata.annotations["chains.tekton.dev/signed"] // empty' 2>/dev/null)
+
+            if [ "$SIGNED" = "true" ]; then
+                echo "Chains signing completed (${ELAPSED}s)"
+                break
+            elif [ "$SIGNED" = "failed" ]; then
+                echo "Chains signing FAILED — aborting release notification"
+                exit 1
+            fi
+
+            sleep 5
+            ELAPSED=$((ELAPSED + 5))
+            echo "  waiting... (${ELAPSED}s/${TIMEOUT}s)"
+        done
+
+        if [ "$SIGNED" != "true" ]; then
+            echo "Timeout: Chains did not sign within ${TIMEOUT}s — aborting"
+            exit 1
+        fi
+
+    - name: notify
+      image: alpine:3.20
+      script: |
+        #!/bin/sh
+        set -e
+
+        apk add --no-cache curl > /dev/null 2>&1
+
+        echo "============================================"
+        echo "Notifying Secured Release Pipeline"
+        echo "============================================"
+        echo "Image URL:    $(params.image-url)"
+        echo "Image Digest: $(params.image-digest)"
+        echo "Image Tag:    $(params.image-tag)"
+        echo "Listener:     $(params.release-listener-url)"
+        echo ""
+
+        RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"image-url\": \"$(params.image-url)\",
+            \"image-digest\": \"$(params.image-digest)\",
+            \"image-tag\": \"$(params.image-tag)\"
+          }" \
+          "$(params.release-listener-url)" 2>/dev/null || echo -e "\n000")
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        BODY=$(echo "$RESPONSE" | head -n -1)
+
+        if [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+            echo "Release pipeline triggered (HTTP ${HTTP_CODE})"
+        elif [ "$HTTP_CODE" = "000" ]; then
+            echo "Could not reach release EventListener — release pipeline may not be deployed"
+        else
+            echo "Unexpected response (HTTP ${HTTP_CODE}): ${BODY}"
+        fi

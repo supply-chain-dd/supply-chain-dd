@@ -1,0 +1,19 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: release-secure-manual-
+  namespace: release-pipeline
+  labels:
+    tekton.dev/pipeline: release-pipeline-secure
+    trigger-type: manual
+spec:
+  serviceAccountName: release-pipeline-sa
+  pipelineRef:
+    name: release-pipeline-secure
+  params:
+    - name: image-url
+      value: registry.registry.svc.cluster.local:5000/recipe-api
+    - name: image-digest
+      value: "REPLACE_WITH_ACTUAL_DIGEST"
+    - name: image-tag
+      value: v1.0

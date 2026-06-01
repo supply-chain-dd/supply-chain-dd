@@ -54,6 +54,8 @@ nodes:
         protocol: TCP
 containerdConfigPatches:
 - |-
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+    NoNewKeyring = true
   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."${REGISTRY_PROD_HOST}"]
     endpoint = ["https://${REGISTRY_PROD_HOST}"]
   [plugins."io.containerd.grpc.v1.cri".registry.configs."${REGISTRY_PROD_HOST}".tls]

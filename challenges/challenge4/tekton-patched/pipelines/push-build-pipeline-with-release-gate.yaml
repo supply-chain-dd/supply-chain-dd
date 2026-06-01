@@ -1,0 +1,284 @@
+---
+# Pipeline: push-build-pipeline-with-release-gate (Challenge 4 — release-gated)
+#
+# Extends Challenge 3's secure pipeline with a release notification gate:
+# notify-release runs in a finally block, only after ALL post-push tasks
+# (sign, attest, scan, vsa) have succeeded, AND Tekton Chains has finished
+# signing the push-container-image TaskRun.
+#
+# This follows the Konflux pattern: the Integration Service controller
+# watches for chains.tekton.dev/signed=true before creating Snapshots.
+# Here the finally task polls the TaskRun annotation before notifying
+# the release pipeline.
+#
+# Pipeline DAG:
+#
+#   verify-source
+#     └─ git-clone
+#          └─ verify-base-image
+#               └─ build-go-app
+#                    └─ run-quality-checks
+#                         └─ push-container-image
+#                              ├─ sign-image-keyless
+#                              ├─ create-source-vsa
+#                              ├─ scan-image
+#                              └─ generate-sbom
+#                                   └─ attest-sbom
+#
+#   finally:
+#     notify-release-verified    <- only if sign, attest, scan, vsa Succeeded
+#                                   AND chains.tekton.dev/signed=true on
+#                                   push-container-image TaskRun
+#
+# Prerequisites (same as push-build-pipeline-with-chains-secure):
+#   - Local Sigstore stack: make setup-sigstore-local
+#   - All tasks from challenge3 secure pipeline
+#   - Task: notify-release-verified (challenge4)
+#   - SA needs get/list on TaskRuns in ci namespace (for Chains check)
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: push-build-pipeline-with-release-gate
+  namespace: ci
+spec:
+  params:
+    - name: repo-url
+      type: string
+      description: Git repository URL to clone
+    - name: revision
+      type: string
+      description: Git revision (branch, tag, or SHA)
+      default: "main"
+    - name: trusted-repo-url
+      type: string
+      description: Trusted source repository URL (source verification checks repo-url against this)
+      default: "http://gitea-http.gitea.svc.cluster.local:3000/sc-admin/recipe-api.git"
+    - name: image-name
+      type: string
+      description: Container image name
+      default: "recipe-api"
+    - name: image-tag
+      type: string
+      description: Container image tag
+      default: "latest"
+    - name: registry-url
+      type: string
+      description: Internal registry URL (cluster-accessible)
+      default: "registry.registry.svc.cluster.local:5000"
+
+  workspaces:
+    - name: source
+      description: Shared workspace for source code
+
+  results:
+    - name: IMAGE_URL
+      description: Full URL of the pushed image
+      value: $(tasks.push-container-image.results.IMAGE_URL)
+    - name: IMAGE_DIGEST
+      description: Digest of the pushed image
+      value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    # --- Git provenance materials (Chains type hint) ---
+    - name: CHAINS-GIT_COMMIT
+      description: Git commit SHA (Tekton Chains type hint for provenance materials)
+      value: $(tasks.verify-source.results.VERIFIED_GIT_COMMIT)
+    - name: CHAINS-GIT_URL
+      description: Git repository URL (Tekton Chains type hint for provenance materials)
+      value: $(tasks.verify-source.results.VERIFIED_GIT_URL)
+
+    # --- Source VSA artifact (Chains type hint for provenance subject) ---
+    - name: SOURCE_VSA-ARTIFACT_URI
+      description: OCI URI of the Source VSA artifact (Chains type hint)
+      value: $(tasks.create-source-vsa.results.SOURCE_VSA-ARTIFACT_URI)
+    - name: SOURCE_VSA-ARTIFACT_DIGEST
+      description: Digest of the Source VSA referrer (Chains type hint)
+      value: $(tasks.create-source-vsa.results.SOURCE_VSA-ARTIFACT_DIGEST)
+
+    # --- Secret scan artifact (Chains type hint for provenance subject) ---
+    - name: SCAN_RESULTS-ARTIFACT_URI
+      description: OCI URI of the secret scan results artifact (Chains type hint)
+      value: $(tasks.scan-image.results.SCAN_RESULTS-ARTIFACT_URI)
+    - name: SCAN_RESULTS-ARTIFACT_DIGEST
+      description: Digest of the secret scan results referrer (Chains type hint)
+      value: $(tasks.scan-image.results.SCAN_RESULTS-ARTIFACT_DIGEST)
+
+    # --- SBOM artifact (Chains type hint for provenance subject) ---
+    - name: SBOM-ARTIFACT_URI
+      description: OCI URI of the SBOM artifact (Chains type hint)
+      value: $(tasks.generate-sbom.results.SBOM-ARTIFACT_URI)
+    - name: SBOM-ARTIFACT_DIGEST
+      description: Digest of the SBOM referrer (Chains type hint)
+      value: $(tasks.generate-sbom.results.SBOM-ARTIFACT_DIGEST)
+
+    # --- Informational results (not type-hinted) ---
+    - name: VSA_DIGEST
+      description: Digest of the Source VSA attached via OCI referrers
+      value: $(tasks.create-source-vsa.results.VSA_DIGEST)
+    - name: SBOM_DIGEST
+      description: Digest of the SBOM attached via OCI referrers
+      value: $(tasks.generate-sbom.results.SBOM_DIGEST)
+    - name: SCAN_STATUS
+      description: PASS or FAIL for secret scan
+      value: $(tasks.scan-image.results.SCAN_STATUS)
+    - name: IMAGE_SIGNATURE
+      description: Keyless signing status
+      value: $(tasks.sign-image-keyless.results.IMAGE_SIGNATURE)
+    - name: BASE_IMAGE_VERIFIED
+      description: Base image verification status
+      value: $(tasks.verify-base-image.results.BASE_IMAGE_VERIFIED)
+    - name: SBOM_BASELINE_STATUS
+      description: SBOM baseline comparison status
+      value: $(tasks.verify-base-image.results.SBOM_BASELINE_STATUS)
+
+  tasks:
+    - name: verify-source
+      taskRef:
+        name: verify-source-provenance
+      params:
+        - name: repo-url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: trusted-repo-url
+          value: $(params.trusted-repo-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: git-clone
+      runAfter: ["verify-source"]
+      taskRef:
+        name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: deleteExisting
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: source
+
+    - name: verify-base-image
+      runAfter: ["git-clone"]
+      taskRef:
+        name: verify-base-image
+      params:
+        - name: registry-url
+          value: $(params.registry-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: build-go-app
+      runAfter: ["verify-base-image"]
+      taskRef:
+        name: build-go-app
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: run-quality-checks
+      runAfter: ["build-go-app"]
+      taskRef:
+        name: quality-check-task
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: push-container-image
+      runAfter: ["run-quality-checks"]
+      taskRef:
+        name: push-container-image-with-chains
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.image-tag)
+        - name: registry-url
+          value: $(params.registry-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    # --- Post-push tasks (all run in parallel) ---
+
+    - name: sign-image-keyless
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: sign-image-keyless
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    - name: create-source-vsa
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: create-source-vsa
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+        - name: SOURCE_VSA
+          value: $(tasks.verify-source.results.SOURCE_VSA)
+
+    - name: scan-image
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: scan-image
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    - name: generate-sbom
+      runAfter: ["push-container-image"]
+      taskRef:
+        name: generate-sbom
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+    - name: attest-sbom
+      runAfter: ["generate-sbom"]
+      taskRef:
+        name: attest-sbom-keyless
+      params:
+        - name: IMAGE_URL
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+
+  finally:
+    - name: notify-release
+      taskRef:
+        name: notify-release-verified
+      when:
+        - input: "$(tasks.sign-image-keyless.status)"
+          operator: in
+          values: ["Succeeded"]
+        - input: "$(tasks.attest-sbom.status)"
+          operator: in
+          values: ["Succeeded"]
+        - input: "$(tasks.scan-image.status)"
+          operator: in
+          values: ["Succeeded"]
+        - input: "$(tasks.create-source-vsa.status)"
+          operator: in
+          values: ["Succeeded"]
+      params:
+        - name: image-url
+          value: $(tasks.push-container-image.results.IMAGE_URL)
+        - name: image-digest
+          value: $(tasks.push-container-image.results.IMAGE_DIGEST)
+        - name: image-tag
+          value: $(params.image-tag)
+        - name: pipelinerun-name
+          value: $(context.pipelineRun.name)
