@@ -328,7 +328,7 @@ setup-ci-pr-pipeline: seed-victim-repo ## Install Tekton deep dive challenge res
 	@echo ""
 	@echo "Creating registry credentials secret with registry credentials..."
 	@kubectl create secret generic registry-credentials \
-		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
+		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}' \
 		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
 		--from-literal=registry-user='$(REGISTRY_USER)' \
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
@@ -356,7 +356,7 @@ setup-ci-pr-pipeline-secure: ## Install Tekton deep dive challenge with SECURE c
 	@echo ""
 	@echo "Step 3: Creating registry credentials secret with registry credentials..."
 	@kubectl create secret generic registry-credentials \
-		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
+		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}' \
 		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
 		--from-literal=registry-user='$(REGISTRY_USER)' \
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
@@ -798,7 +798,7 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 	@echo ""
 	@echo "Creating registry credentials secret with registry credentials (if not exists)..."
 	@kubectl create secret generic registry-credentials \
-		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
+		--from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}' \
 		--from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
 		--from-literal=registry-user='$(REGISTRY_USER)' \
 		--from-literal=registry-password='$(REGISTRY_PASS)' \
