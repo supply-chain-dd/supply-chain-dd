@@ -259,17 +259,9 @@ spec:
         echo "Attaching VSA as OCI referrer..."
         ATTACH_OUTPUT=$(/tmp/oras attach \
           --artifact-type "application/vnd.slsa.verification_summary+json" \
-          --distribution-spec v1.1-referrers-api \
           --registry-config /docker-config/config.json \
           "$IMAGE_REF" \
-          source-vsa.json:application/json ) || {
-          echo "WARNING: oras attach failed, trying without referrers API flag..."
-          ATTACH_OUTPUT=$(/tmp/oras attach \
-            --artifact-type "application/vnd.slsa.verification_summary+json" \
-            --registry-config /docker-config/config.json \
-            "$IMAGE_REF" \
-            source-vsa.json:application/json )
-        }
+          source-vsa.json:application/json)
 
         echo "$ATTACH_OUTPUT"
 
