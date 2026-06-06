@@ -7,7 +7,7 @@
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3 setup-challenge3-tekton trigger-challenge3-build-with-chains
 .PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-e2e-scenario verify-e2e-scenario clean-e2e-scenario apply-challenge4-security test-challenge4-attack
 .PHONY: setup-release-pipeline trigger-release-pipeline setup-release-pipeline-secure trigger-release-pipeline-secure trigger-build-with-release-gate
-.PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard reset-to-challenge1
+.PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard reset-to-challenge1 reset-to-challenge2
 .PHONY: setup-gateway setup-gateway-production configure-hosts
 
 CLUSTER_NAME ?= ci-cluster
@@ -1062,6 +1062,9 @@ verify-demo-readiness: ## Verify all prerequisites for deep dive demo are met
 
 reset-to-challenge1: ## Reset environment to Challenge 1 starting state (vulnerable PR pipeline)
 	@./setup/scripts/reset-to-challenge1.sh
+
+reset-to-challenge2: ## Reset environment to Challenge 2 starting state (vulnerable container image with leaked .git)
+	@./setup/scripts/reset-to-challenge2.sh
 
 # ============================================================
 # Challenge 3: Malware in Base Image
