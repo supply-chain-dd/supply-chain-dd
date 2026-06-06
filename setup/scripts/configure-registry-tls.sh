@@ -104,9 +104,10 @@ echo "Certificate installed in both /etc/containers and /etc/docker cert directo
 echo ""
 echo "Verifying certificate matches the live registry..."
 LIVE_FP=$(openssl s_client -connect "${REGISTRY_HOST}" -servername "${REGISTRY_DOMAIN}" </dev/null 2>/dev/null \
-    | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)
+    | openssl x509 -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 || true)
 FILE_FP=$(openssl x509 -in "${CERT_FILE}" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)
 
+REGISTRY_KUBECTL_CONTEXT="${REGISTRY_KUBECTL_CONTEXT:-}"
 KUBECTL_CTX=( ${REGISTRY_KUBECTL_CONTEXT:+--context "${REGISTRY_KUBECTL_CONTEXT}"} )
 
 if [ -n "${LIVE_FP}" ] && [ "${LIVE_FP}" != "${FILE_FP}" ]; then
