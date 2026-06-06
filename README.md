@@ -7,14 +7,76 @@ This repository contains a supply chain security deep dive environment focused o
 ### Prerequisites
 
 Ensure you have the following installed:
-- **Docker** or **Podman**: Container runtime
+
+**Core tools (required for `make setup`):**
+- **podman** or **docker**: Container runtime
 - **kubectl**: Kubernetes command-line tool
 - **kind**: Kubernetes in Docker (https://kind.sigs.k8s.io/)
 - **helm**: Kubernetes package manager (https://helm.sh/)
-- **cosign**: Container signing tool (https://docs.sigstore.dev/cosign/installation/) - Required for Tekton Chains
 - **make**: Build automation tool
-- **scorecard**: CLI to run scorecard locally
-- **tkn**: CLI to query tekton resources on the cluster
+- **git**: Version control
+- **curl**: HTTP client
+- **jq**: JSON processor
+- **openssl**: TLS certificate generation
+- **go**: Go compiler — required for `ampel` installation (`go install`)
+
+**Supply chain security tools (required for challenges):**
+- **cosign**: Container signing and verification (https://docs.sigstore.dev/cosign/installation/)
+- **crane**: OCI registry interaction (https://github.com/google/go-containerregistry/tree/main/cmd/crane)
+- **oras**: OCI Registry As Storage — push/pull OCI artifacts (https://oras.land/)
+- **skopeo**: Container image inspection and copy (https://github.com/containers/skopeo)
+- **syft**: SBOM generation (https://github.com/anchore/syft)
+- **trivy**: Vulnerability scanning (https://github.com/aquasecurity/trivy)
+- **scorecard**: OpenSSF Scorecard CLI (https://github.com/ossf/scorecard)
+- **git-filter-repo**: Git history rewriting for secret removal (https://github.com/newren/git-filter-repo)
+- **yq**: YAML processor (https://github.com/mikefarah/yq)
+
+**GitOps tools (required for challenge 4 and e2e scenario):**
+- **argocd**: ArgoCD CLI (https://argo-cd.readthedocs.io/en/stable/cli_installation/)
+
+**Installable via Makefile** (run these after `make setup`):
+- **tkn**: Tekton CLI — `make install-tkn`
+- **kubescape**: Kubernetes security scanner — `make install-kubescape`
+- **ec**: Conforma (Enterprise Contract) CLI — `make install-conforma`
+- **ampel**: Post-pipeline attestation verification — `make install-ampel`
+
+### Host System Configuration (requires root)
+
+This environment runs many components in a single KinD node (Envoy Gateway, Kyverno, Kubescape, Tekton, Sigstore, Gitea, registries, ArgoCD). Without the tuning below, the cluster will become unstable under load.
+
+**Netlink socket buffers** — kube-proxy uses netlink to sync iptables rules. With many Services and Gateway routes, the default buffer (208KB) is too small and `iptables-restore` fails with "Message too long", crashing kube-proxy:
+
+```bash
+sudo sysctl -w net.core.wmem_max=8388608
+sudo sysctl -w net.core.rmem_max=8388608
+sudo sysctl -w net.core.wmem_default=8388608
+```
+
+**inotify limits** — controllers watching many resources exhaust the default inotify limits, causing "too many open files" errors:
+
+```bash
+sudo sysctl -w fs.inotify.max_user_watches=524288
+sudo sysctl -w fs.inotify.max_user_instances=512
+```
+
+**Kernel keyring limits** — each container creates a session keyring. With many pods, the default limit (200) is exhausted and containers fail with `StartError` / exit code 128 ("disk quota exceeded"):
+
+```bash
+sudo sysctl -w kernel.keys.maxkeys=2000
+sudo sysctl -w kernel.keys.maxbytes=200000
+```
+
+**Podman keyring** — if using Podman as the container runtime, disable kernel keyring creation to avoid the same issue on the host side:
+
+```bash
+mkdir -p ~/.config/containers
+cat >> ~/.config/containers/containers.conf <<EOF
+[containers]
+keyring = false
+EOF
+```
+
+> **Note**: The KinD cluster setup already configures containerd with `NoNewKeyring = true` to prevent keyring exhaustion inside the cluster. The sysctl changes above are host-level and do not persist across reboots — add them to `/etc/sysctl.d/99-supply-chain-dd.conf` to make them permanent.
 
 ### Setup
 

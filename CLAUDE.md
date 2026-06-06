@@ -467,6 +467,37 @@ Optional tools:
 
 All scripts assume bash and use `set -euo pipefail` for safety.
 
+### Host System Configuration (requires root)
+
+Running the full stack (Envoy Gateway, Kyverno, Kubescape, Tekton, Sigstore, Gitea, registries, ArgoCD) in a single KinD node exhausts several default kernel limits. These must be tuned on the host before setup:
+
+```bash
+# Netlink socket buffers — prevents kube-proxy "Message too long" iptables-restore failures
+sudo sysctl -w net.core.wmem_max=8388608
+sudo sysctl -w net.core.rmem_max=8388608
+sudo sysctl -w net.core.wmem_default=8388608
+
+# inotify limits — prevents "too many open files" from controllers watching many resources
+sudo sysctl -w fs.inotify.max_user_watches=524288
+sudo sysctl -w fs.inotify.max_user_instances=512
+
+# Kernel keyring limits — prevents container StartError/exit 128 "disk quota exceeded"
+sudo sysctl -w kernel.keys.maxkeys=2000
+sudo sysctl -w kernel.keys.maxbytes=200000
+```
+
+For Podman users, disable kernel keyring creation:
+```bash
+mkdir -p ~/.config/containers
+cat >> ~/.config/containers/containers.conf <<EOF
+[containers]
+keyring = false
+EOF
+```
+
+The KinD cluster setup already configures containerd with `NoNewKeyring = true` inside the cluster.
+These sysctl changes do not persist across reboots — add them to `/etc/sysctl.d/99-supply-chain-dd.conf` to make them permanent.
+
 ## Working with victim-repo-sample
 
 **IMPORTANT**: The `challenges/victim-repo-sample/` directory contains a `_git` folder (NOT `.git`) to avoid conflicts with the main supply-chain-dd git repository.
