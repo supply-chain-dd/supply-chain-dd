@@ -50,7 +50,7 @@ pe "kubectl delete pipelineruns --all -n ci"
 p "5. Création d'un PipelineRun avec le SA pr-pipeline-readonly"
 
 PR_SHA=$(kubectl get pipelinerun -n ci -o jsonpath='{.items[0].spec.params[?(@.name=="pr-sha")].value}' 2>/dev/null || echo "main")
-PR_URL=$(kubectl get pipelinerun -n ci -o jsonpath='{.items[0].spec.params[?(@.name=="pr-repo-url")].value}' 2>/dev/null || echo "http://gitea-http.gitea.svc.cluster.local:3000/hacker/recipe-api.git")
+PR_URL=$(kubectl get pipelinerun -n ci -o jsonpath='{.items[0].spec.params[?(@.name=="pr-repo-url")].value}' 2>/dev/null || echo "http://gitea-http.gitea.svc.cluster.local:3000/hacker_challenge1/recipe-api.git")
 
 cat > /tmp/kubescape-demo-pipelinerun.yaml <<YAML
 apiVersion: tekton.dev/v1beta1

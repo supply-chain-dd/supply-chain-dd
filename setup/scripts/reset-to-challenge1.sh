@@ -82,7 +82,17 @@ echo "[2/7] Cleaning completed pipeline runs and pods..."
 PR_COUNT=$(kubectl get pipelineruns -n ci --no-headers 2>/dev/null | wc -l || echo "0")
 TR_COUNT=$(kubectl get taskruns -n ci --no-headers 2>/dev/null | wc -l || echo "0")
 
+# Strip Tekton Chains finalizers (they block deletion indefinitely)
+for pr in $(kubectl get pipelineruns -n ci -o name 2>/dev/null); do
+    kubectl patch "$pr" -n ci --type=json \
+        -p='[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null || true
+done
 kubectl delete pipelineruns --all -n ci --ignore-not-found 2>/dev/null || true
+
+for tr in $(kubectl get taskruns -n ci -o name 2>/dev/null); do
+    kubectl patch "$tr" -n ci --type=json \
+        -p='[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null || true
+done
 kubectl delete taskruns --all -n ci --ignore-not-found 2>/dev/null || true
 kubectl delete pods --field-selector=status.phase!=Running -n ci --ignore-not-found 2>/dev/null || true
 
@@ -131,7 +141,7 @@ kubectl apply -f "${CHALLENGE1_DIR}/tekton/tasks/vulnerable-quality-check-task.y
 kubectl apply -f "${CHALLENGE1_DIR}/tekton/pipelines/vulnerable-pr-quality-pipeline.yaml"
 
 kubectl create secret generic registry-credentials \
-    --from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us}' \
+    --from-literal=flag='FLAG{t3kt0n_pwn_r3qu3st_1s_d4ng3r0us:NEXT:registry_layer_leak}' \
     --from-literal=registry-url='https://registry.registry.svc.cluster.local:5000' \
     --from-literal=registry-user="${REGISTRY_USER}" \
     --from-literal=registry-password="${REGISTRY_PASS}" \
