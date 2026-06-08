@@ -16,6 +16,7 @@ set -uo pipefail
 #=============================================================================
 DEMO_MAGIC_DIR="${HOME}/demo-magic"
 DEMO_MAGIC_SCRIPT="${DEMO_MAGIC_DIR}/demo-magic.sh"
+SCRIPT_DIR="$(pwd)"
 
 install_demo_magic() {
     echo "╔════════════════════════════════════════════════════════════════════╗"
@@ -109,13 +110,13 @@ DEMO_CMD_COLOR=$WHITE
 #=============================================================================
 # VARIABLES DE CONFIGURATION
 #=============================================================================
-GITEA_URL="http://localhost:30002"
+GITEA_URL="http://gitea.sc.local:30080/"
 GITEA_USER="hacker_challenge1"
 GITEA_PASS="Test1234"
 GITEA_EMAIL="${GITEA_USER}@example.com"
-UPSTREAM_OWNER="ctf-admin"
+UPSTREAM_OWNER="sc-admin"
 UPSTREAM_REPO="recipe-api"
-MALICIOUS_SRC="./malicious-gitea-issue.go"
+MALICIOUS_SRC="${SCRIPT_DIR}/malicious-gitea-issue.go"
 TARGET_PATH="scripts/quality-check/main.go"
 BRANCH_NAME="fix/improve-quality-check"
 COMMIT_MSG="fix: improve quality check script performance"
@@ -312,7 +313,7 @@ wait
 pe "cd ${WORK_DIR}"
 
 p "# Clone du fork..."
-pe "git clone http://${GITEA_USER}:${GITEA_PASS}@localhost:30002/${GITEA_USER}/${UPSTREAM_REPO}.git"
+pe "git clone http://${GITEA_USER}:${GITEA_PASS}@gitea.sc.local:30080/${GITEA_USER}/${UPSTREAM_REPO}.git"
 
 wait
 
