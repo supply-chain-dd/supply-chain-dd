@@ -26,7 +26,7 @@ pe "scorecard --repo=github.com/sherine-k/gophers-api --checks=Dangerous-Workflo
 
 p "Modification de l'origine du code source"
 p "(sur la branche test_pr_target*2*)"
-pe "git diff test_pr_target2"
+pe "git diff main test_pr_target2"
 pe "git checkout test_pr_target2"
 p "COMMIT_ID=git rev-parse --short HEAD"
 COMMIT_ID=`git rev-parse --short HEAD`
