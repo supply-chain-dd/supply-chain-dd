@@ -18,6 +18,9 @@ IMAGE_REF="${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}"
 REKOR_URL_LOCAL="http://${REKOR_HOST}"
 TUF_MIRROR_LOCAL="http://${TUF_HOST}"
 
+source "${SCRIPT_DIR}/../../setup/scripts/check-sigstore.sh"
+check_tuf_root
+
 if ! command -v cosign &>/dev/null; then
     echo "cosign n'est pas installe. Voir: https://docs.sigstore.dev/cosign/installation/"
     exit 1

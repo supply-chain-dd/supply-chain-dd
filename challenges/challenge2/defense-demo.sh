@@ -47,9 +47,8 @@ pe "cat Dockerfile"
 
 
 p "3. Trivy image --scanners secret sur l'image vulnérable"
-p "→ Trivy fusionne les couches (union filesystem) — le whiteout de rm -rf .git masque .git"
 pe "trivy image --scanners secret --insecure registry.sc.local:30443/recipe-api:v1.0"
-p "→ 0 secrets détectés — Trivy ne voit pas les secrets supprimés dans les couches supérieures"
+p "→ 0 secrets détectés — Trivy ne voit pas les secrets enfuits dans un .git"
 
 p "4. Politique Rego custom pour détecter le pattern dangereux"
 p "→ Seul un scan de misconfiguration du Dockerfile peut détecter le pattern dangereux"
