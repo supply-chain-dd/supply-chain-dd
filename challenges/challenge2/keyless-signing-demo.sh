@@ -30,6 +30,9 @@ fi
 REKOR_URL_LOCAL="http://${REKOR_HOST}"
 TUF_MIRROR_LOCAL="http://${TUF_HOST}"
 
+source "${SCRIPT_DIR}/../../setup/scripts/check-sigstore.sh"
+check_tuf_root
+
 cleanup() {
     [ -n "${TUF_ROOT_FILE:-}" ] && rm -f "${TUF_ROOT_FILE}" 2>/dev/null || true
 }
@@ -106,7 +109,7 @@ p "Contrairement à la vérification par clé, le keyless utilise l'identité ce
 p "D'abord, initialiser la racine TUF de cosign pour faire confiance au CA Fulcio et à la clé Rekor locaux"
 ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
 TUF_ROOT_FILE=$(mktemp)
-kubectl get configmap sigstore-tuf-root -n ci -o jsonpath='{.data.root\.json}' > "${TUF_ROOT_FILE}"
+pe "kubectl get configmap sigstore-tuf-root -n ci -o jsonpath='{.data.root\.json}' > ${TUF_ROOT_FILE}"
 pe "cosign initialize --mirror=${TUF_MIRROR_LOCAL} --root=${TUF_ROOT_FILE}"
 
 pe "cosign verify \
