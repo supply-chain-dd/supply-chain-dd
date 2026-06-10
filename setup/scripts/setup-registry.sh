@@ -331,7 +331,12 @@ fi
 
 echo "Waiting for registry to be ready..."
 kubectl rollout status deployment/registry -n "${REGISTRY_NAMESPACE}" --timeout=120s
-kubectl wait --for=condition=ready --timeout=120s pod -l app=registry -n "${REGISTRY_NAMESPACE}"
+# Wait only for the pod owned by the current ReplicaSet (avoids racing with a terminating old pod)
+CURRENT_RS=$(kubectl get deployment registry -n "${REGISTRY_NAMESPACE}" -o jsonpath='{.status.updatedReplicas}' 2>/dev/null)
+CURRENT_POD=$(kubectl get pods -l app=registry -n "${REGISTRY_NAMESPACE}" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "${CURRENT_POD}" ]; then
+    kubectl wait --for=condition=ready --timeout=120s pod/"${CURRENT_POD}" -n "${REGISTRY_NAMESPACE}"
+fi
 
 # Propagate CA certificate to downstream namespaces only if cert changed
 if [ "${CERT_REGENERATED}" = "true" ]; then
