@@ -806,7 +806,7 @@ End-to-end demo showing the full defense in action:
 4. **Push to Gitea** — webhook triggers the secured pipeline automatically
 5. **Watch pipeline** — `verify-base-image` validates registry, digest, SBOM, baseline
 6. **Post-pipeline verification** — Conforma and Ampel policy enforcement
-7. **Failure case** — shows how poisoned images are rejected
+7. **Attestation inspection** — shows provenance subjects (image, SBOM, scan results, source VSA), SBOM attestation content, digest cross-reference, and OCI artifact tree
 
 ```bash
 bash challenges/challenge3/defense-demo.sh

@@ -15,6 +15,9 @@ PROD_GITEA_URL="http://${GITEA_PROD_HOST}"
 GITEA_USER="sc-admin"
 GITEA_PASS="SecurePass123!"
 
+source "${SCRIPT_DIR}/../../setup/scripts/check-sigstore.sh"
+check_tuf_root
+
 p "=== DEMO DÉFENSE : Challenge 4 — Pipeline de release sécurisée ==="
 p "  Deux améliorations :"
 p "    1. Pipeline de BUILD : notify-release dans un bloc finally, attend Tekton Chains"

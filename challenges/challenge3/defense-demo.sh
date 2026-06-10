@@ -17,6 +17,9 @@ REGISTRY_USER="sc-admin"
 REGISTRY_PASS="RegistryPass123!"
 CA_CERT="${SCRIPT_DIR}/../../setup/certs/registry.crt"
 
+source "${SCRIPT_DIR}/../../setup/scripts/check-sigstore.sh"
+check_tuf_root
+
 WORK_DIR=$(mktemp -d)
 cleanup() {
     rm -rf "${WORK_DIR}"
@@ -271,5 +274,99 @@ else
     p "17. Ampel non installé — installer avec : make install-ampel"
 fi
 
+
+# ============================================================================
+# PHASE 6 — Contenu des attestations et chaîne de confiance
+# ============================================================================
+
+p "  PHASE 6 — Contenu des attestations et chaîne de confiance"
+p "Tekton Chains avec deep-inspection inspecte chaque TaskRun du PipelineRun."
+p "Les résultats typés (*-ARTIFACT_URI / *-ARTIFACT_DIGEST) deviennent des sujets"
+p "dans l'attestation de provenance SLSA — pas seulement l'image finale."
+
+p "18. Vérifier et afficher l'attestation de provenance SLSA"
+pe "cosign verify-attestation \
+  --certificate-identity=https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \
+  --certificate-oidc-issuer=${OIDC_ISSUER} \
+  --rekor-url=http://${REKOR_HOST} \
+  --insecure-ignore-sct \
+  --type slsaprovenance \
+  --registry-cacert=${CA_CERT} \
+  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>&1 | head -5"
+p "L'attestation de provenance SLSA est valide et signée par Tekton Chains"
+
+p "18a. Sujets de la provenance — tous les artefacts dont la provenance est attestée"
+pe "cosign verify-attestation \
+  --certificate-identity=https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \
+  --certificate-oidc-issuer=${OIDC_ISSUER} \
+  --rekor-url=http://${REKOR_HOST} \
+  --insecure-ignore-sct \
+  --type slsaprovenance \
+  --registry-cacert=${CA_CERT} \
+  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
+  | jq -r '.payload' | base64 -d | jq '.subject'"
+p "Chaque entrée est un artefact couvert par la provenance :"
+p "  - L'image conteneur (IMAGE_URL / IMAGE_DIGEST)"
+p "  - Le SBOM (SBOM-ARTIFACT_URI / SBOM-ARTIFACT_DIGEST)"
+p "  - Les résultats du scan (SCAN_RESULTS-ARTIFACT_URI / SCAN_RESULTS-ARTIFACT_DIGEST)"
+p "  - Le Source VSA (SOURCE_VSA-ARTIFACT_URI / SOURCE_VSA-ARTIFACT_DIGEST)"
+
+p "18b. Builder et matériaux source"
+pe "cosign verify-attestation \
+  --certificate-identity=https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \
+  --certificate-oidc-issuer=${OIDC_ISSUER} \
+  --rekor-url=http://${REKOR_HOST} \
+  --insecure-ignore-sct \
+  --type slsaprovenance \
+  --registry-cacert=${CA_CERT} \
+  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
+  | jq -r '.payload' | base64 -d | jq '{predicateType, builder: .predicate.builder, materials: .predicate.materials}'"
+p "builder.id : identifie Tekton Chains comme builder"
+p "materials : source git (URL + commit) utilisée pour le build"
+
+p "19. Contenu de l'attestation SBOM (signée en pipeline par cosign attest)"
+pe "cosign verify-attestation \
+  --certificate-identity=https://kubernetes.io/namespaces/ci/serviceaccounts/pipeline-keyless-signer \
+  --certificate-oidc-issuer=${OIDC_ISSUER} \
+  --rekor-url=http://${REKOR_HOST} \
+  --insecure-ignore-sct \
+  --type spdxjson \
+  --registry-cacert=${CA_CERT} \
+  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
+  | jq -r '.payload' | base64 -d | jq '{predicateType: .predicateType, packageCount: (.predicate.packages | length), topPackages: [.predicate.packages[:5][] | .name]}'"
+p "L'attestation SBOM est signée par le ServiceAccount pipeline-keyless-signer"
+p "Elle contient la liste complète des paquets (format SPDX JSON)"
+
+p "20. Vérification croisée : le digest du SBOM dans les sujets de la provenance"
+SBOM_DIGEST_FROM_PR=$(kubectl get pipelinerun ${LATEST_PR_NAME} -n ci -o jsonpath='{.status.results[?(@.name=="SBOM-ARTIFACT_DIGEST")].value}' 2>/dev/null)
+SBOM_DIGEST_FROM_PROVENANCE=$(cosign verify-attestation \
+  --certificate-identity=https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \
+  --certificate-oidc-issuer=${OIDC_ISSUER} \
+  --rekor-url=http://${REKOR_HOST} \
+  --insecure-ignore-sct \
+  --type slsaprovenance \
+  --registry-cacert=${CA_CERT} \
+  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
+  | jq -r '.payload' | base64 -d | jq -r '.subject[] | select(.name | contains("SBOM")) | .digest.sha256' | head -1)
+pe "echo \"SBOM digest (résultat pipeline) : ${SBOM_DIGEST_FROM_PR}\""
+pe "echo \"SBOM digest (sujet provenance) : sha256:${SBOM_DIGEST_FROM_PROVENANCE}\""
+if [ -n "${SBOM_DIGEST_FROM_PROVENANCE}" ] && echo "${SBOM_DIGEST_FROM_PR}" | grep -q "${SBOM_DIGEST_FROM_PROVENANCE}"; then
+    p "Les digests correspondent — l'intégrité du SBOM est couverte par la provenance"
+else
+    p "Note : les digests ne correspondent pas ou n'ont pas pu être extraits."
+    p "Vérifiez la configuration de deep-inspection dans chains-config."
+fi
+
+p "21. Arbre des artefacts OCI"
+pe "cosign tree --registry-cacert=${CA_CERT} ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null || echo 'cosign tree non disponible'"
+p ".sig : signature cosign de l'image"
+p ".att : attestation(s) signée(s) — provenance SLSA + SBOM"
+
+p "=== Résumé de la chaîne de confiance ==="
+p "  1. L'image est signée (keyless via Fulcio)"
+p "  2. La provenance SLSA atteste QUI a construit QUOI, à partir de QUEL source"
+p "  3. Le SBOM, le scan, et le Source VSA sont des sujets de la provenance"
+p "  4. Chaque artefact est vérifiable indépendamment (cosign verify-attestation)"
+p "  5. L'ensemble forme une chaîne de confiance vérifiable de bout en bout"
 
 p "✅"
