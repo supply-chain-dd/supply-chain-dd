@@ -46,7 +46,18 @@ p "=== DEMO : Comparaison SBOM — Détection de l'empoisonnement d'image de bas
 p "  PHASE 1 — SBOM de l'image de base officielle (golang:1.25-alpine)"
 p "1. Générer le SBOM de l'image propre depuis Docker Hub"
 pe "${SYFT_CMD} scan golang:1.25-alpine -o spdx-json --file ${WORK_DIR}/sbom-clean.json"
-p "2. Extraire les composants (nom + version)"
+
+p "2. À quoi ressemble un SBOM SPDX ? Voici les métadonnées et les 3 premiers paquets"
+pe "cat ${WORK_DIR}/sbom-clean.json | jq '{
+  spdxVersion,
+  dataLicense,
+  name: .name,
+  documentNamespace,
+  creationInfo,
+  packages: [.packages[:3][] | {name, versionInfo, SPDXID, downloadLocation, externalRefs}]
+}'"
+
+p "3. Extraire les composants (nom + version)"
 extract_packages "${WORK_DIR}/sbom-clean.json" > "${WORK_DIR}/clean-packages.txt"
 pe "cat ${WORK_DIR}/clean-packages.txt"
 pe "echo \"Nombre de composants dans l'image propre : \$(wc -l < ${WORK_DIR}/clean-packages.txt)\""
@@ -56,9 +67,9 @@ pe "echo \"Nombre de composants dans l'image propre : \$(wc -l < ${WORK_DIR}/cle
 # ============================================================================
 
 p "  PHASE 2 — SBOM de l'image empoisonnée dans le registre local"
-p "3. Générer le SBOM de l'image empoisonnée"
+p "4. Générer le SBOM de l'image empoisonnée"
 pe "SSL_CERT_FILE=${CA_CERT} ${SYFT_CMD} scan ${REGISTRY_HOST}/golang:1.25-alpine -o spdx-json --file ${WORK_DIR}/sbom-poisoned.json"
-p "4. Extraire les composants (nom + version)"
+p "5. Extraire les composants (nom + version)"
 extract_packages "${WORK_DIR}/sbom-poisoned.json" > "${WORK_DIR}/poisoned-packages.txt"
 pe "cat ${WORK_DIR}/poisoned-packages.txt"
 pe "echo \"Nombre de composants dans l'image empoisonnée : \$(wc -l < ${WORK_DIR}/poisoned-packages.txt)\""
@@ -68,7 +79,7 @@ pe "echo \"Nombre de composants dans l'image empoisonnée : \$(wc -l < ${WORK_DI
 # ============================================================================
 
 p "  PHASE 3 — Comparaison des SBOMs"
-p "5. Différence entre les packets des deux images"
+p "6. Différence entre les packets des deux images"
 pe "diff --color=always ${WORK_DIR}/clean-packages.txt ${WORK_DIR}/poisoned-packages.txt || true"
 
 # ============================================================================
@@ -76,12 +87,12 @@ pe "diff --color=always ${WORK_DIR}/clean-packages.txt ${WORK_DIR}/poisoned-pack
 # ============================================================================
 
 p "  PHASE 4 — Inspection des couches et de l'entrypoint"
-p "6. Nombre de couches — image propre vs empoisonnée"
+p "7. Nombre de couches — image propre vs empoisonnée"
 pe "echo \"Couches image propre     : \$(podman inspect golang:1.25-alpine --format '{{len .RootFS.Layers}}')\""
 pe "echo \"Couches image empoisonnée: \$(podman inspect ${REGISTRY_HOST}/golang:1.25-alpine --format '{{len .RootFS.Layers}}')\""
-p "7. Entrypoint — image propre"
+p "8. Entrypoint — image propre"
 pe "podman inspect golang:1.25-alpine --format '{{json .Config.Entrypoint}}'"
-p "8. Entrypoint — image empoisonnée"
+p "9. Entrypoint — image empoisonnée"
 pe "skopeo inspect --config --tls-verify=false docker://${REGISTRY_HOST}/golang:1.25-alpine | jq '.config.Entrypoint'"
 # p "9. Recherche de fichiers suspects dans l'image empoisonnée"
 # pe "podman run --rm --entrypoint '' ${REGISTRY_HOST}/golang:1.25-alpine ls -la /usr/local/bin/backdoor.sh /etc/profile.d/init.sh 2>/dev/null || echo 'Fichiers non trouvés'"

@@ -16,6 +16,8 @@ echo ""
 
 create_gateway_backend_service() {
     local NAME=$1 NAMESPACE=$2
+    local CONTAINER_PORT
+    CONTAINER_PORT=$(kubectl get ksvc "${NAME}" -n "${NAMESPACE}" -o jsonpath='{.spec.template.spec.containers[0].ports[0].containerPort}' 2>/dev/null || echo "8080")
     cat <<EOSVC | kubectl apply -f -
 apiVersion: v1
 kind: Service
@@ -28,7 +30,7 @@ spec:
     serving.knative.dev/service: ${NAME}
   ports:
   - port: 8080
-    targetPort: 8080
+    targetPort: ${CONTAINER_PORT}
     protocol: TCP
 EOSVC
 }

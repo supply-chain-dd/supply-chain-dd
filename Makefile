@@ -780,6 +780,7 @@ setup-challenge2-tekton: ## Setup Challenge 2 Tekton pipeline resources
 	@echo ""
 	@echo "Setting up ServiceAccounts and RBAC..."
 	@kubectl apply -f challenges/challenge2/tekton/serviceaccounts.yaml
+	@kubectl apply -f challenges/challenge2/tekton/serviceaccounts-keyless.yaml
 	@echo ""
 	@echo "Setting up registry CA certificate for Tekton..."
 	@cd setup/scripts && ./setup-registry-cert-for-tekton.sh
@@ -1193,6 +1194,9 @@ setup-challenge3-tekton-secure: ## Deploy Challenge 3 secured Tekton resources (
 	@echo "============================================"
 	@echo "Setting up Challenge 3 SECURED pipeline"
 	@echo "============================================"
+	@echo ""
+	@echo "Deploying keyless signing ServiceAccount..."
+	@kubectl apply -f challenges/challenge2/tekton/serviceaccounts-keyless.yaml
 	@echo ""
 	@echo "Deploying secured tasks..."
 	@kubectl apply -f challenges/challenge3/tekton-patched/tasks/
