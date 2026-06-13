@@ -27,8 +27,6 @@ p "    2. Pipeline de RELEASE : porte de vérification Conforma avant la promoti
 # PHASE 1 — Déployer les pipelines sécurisées
 # ============================================================================
 
-p "  PHASE 1 — Déployer les pipelines sécurisées"
-
 p "1. Installer les pipelines avec portes de vérification"
 pe "make -C ${PROJECT_ROOT} setup-release-pipeline-secure"
 
@@ -36,32 +34,30 @@ pe "make -C ${PROJECT_ROOT} setup-release-pipeline-secure"
 # PHASE 2 — Explorer les pipelines sécurisées
 # ============================================================================
 
-p "  PHASE 2 — Explorer les pipelines sécurisées"
-
 p "2. Pipeline de build : le bloc finally et ses conditions"
 pe "kubectl --context ${CI_CONTEXT} get pipeline push-build-pipeline-with-release-gate -n ci -o yaml | yq '.spec.finally'"
 
-p "→ notify-release ne s'exécute que si sign-image-keyless, attest-sbom, scan-image et create-source-vsa ont réussi"
+# p "→ notify-release ne s'exécute que si sign-image-keyless, attest-sbom, scan-image et create-source-vsa ont réussi"
 
 p "3. La tâche notify-release-verified : attente de Tekton Chains"
 pe "kubectl --context ${CI_CONTEXT} get task notify-release-verified -n ci -o yaml | yq '.spec.steps'"
 
-p "→ Étape 1 : interroge l'API Kubernetes pour chains.tekton.dev/signed=true sur le TaskRun push-container-image"
-p "→ Étape 2 : envoie le webhook au EventListener de la release pipeline sécurisée"
+# p "→ Étape 1 : interroge l'API Kubernetes pour chains.tekton.dev/signed=true sur le TaskRun push-container-image"
+# p "→ Étape 2 : envoie le webhook au EventListener de la release pipeline sécurisée"
 
 p "4. Pipeline de release : la tâche verify-image-policy (Conforma)"
-pe "kubectl --context ${CI_CONTEXT} get task verify-image-policy -n release-pipeline -o yaml | yq '.spec.steps'"
+pe "kubectl --context ${CI_CONTEXT} get pipeline release-pipeline-secure -n release-pipeline -o yaml | yq '.spec.tasks'"
 
-p "→ Télécharge cosign + ec CLI, initialise TUF, exécute ec validate image avec vérification keyless"
-p "→ Si l'image n'a pas de signature, de provenance SLSA ou échoue aux politiques → pipeline bloquée"
+# p "→ Télécharge cosign + ec CLI, initialise TUF, exécute ec validate image avec vérification keyless"
+# p "→ Si l'image n'a pas de signature, de provenance SLSA ou échoue aux politiques → pipeline bloquée"
 
 # ============================================================================
 # PHASE 3 — Déclencher la pipeline de build avec release gate
 # ============================================================================
 
-p "  PHASE 3 — Déclencher la pipeline de build (auto-trigger release)"
+# p "  PHASE 3 — Déclencher la pipeline de build (auto-trigger release)"
 
-p "5. Lancer la pipeline de build avec le bloc finally"
+p "5. Lancer la pipeline de build"
 pe "make -C ${PROJECT_ROOT} trigger-build-with-release-gate"
 
 sleep 3
@@ -112,7 +108,7 @@ pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT
 # PHASE 4 — Vérifier les résultats
 # ============================================================================
 
-p "  PHASE 4 — Vérifier les résultats"
+# p "  PHASE 4 — Vérifier les résultats"
 
 pe "kubectl --context ${CI_CONTEXT} get pipelinerun ${RELEASE_PR_NAME} -n release-pipeline \
   -o jsonpath='{\"Status: \"}{.status.conditions[0].reason}' && echo"
