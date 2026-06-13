@@ -7,7 +7,7 @@
 .PHONY: setup-challenge3 seed-legitimate-base-image verify-challenge3 setup-challenge3-tekton trigger-challenge3-build-with-chains
 .PHONY: setup-production-cluster setup-production-gitea setup-production-registry configure-production-registry-tls seed-production-repo load-image-to-production push-recipe-api-to-production setup-argocd setup-e2e-scenario verify-e2e-scenario clean-e2e-scenario apply-challenge4-security test-challenge4-attack
 .PHONY: setup-release-pipeline trigger-release-pipeline setup-release-pipeline-secure trigger-release-pipeline-secure trigger-build-with-release-gate
-.PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard reset-to-challenge1 reset-to-challenge2 reset-to-challenge3
+.PHONY: setup-demo setup-gitea-webhooks verify-demo-readiness setup-tekton-dashboard reset-to-challenge1 reset-to-challenge2 reset-to-challenge3 reset-to-challenge4
 .PHONY: setup-gateway setup-gateway-production configure-hosts
 
 CLUSTER_NAME ?= ci-cluster
@@ -1069,6 +1069,9 @@ reset-to-challenge2: ## Reset environment to Challenge 2 starting state (vulnera
 
 reset-to-challenge3: ## Reset environment to Challenge 3 starting state (base image poisoning attack)
 	@./setup/scripts/reset-to-challenge3.sh
+
+reset-to-challenge4: ## Reset environment to Challenge 4 starting state (end of Challenge 3 defense + basic release pipeline)
+	@./setup/scripts/reset-to-challenge4.sh
 
 # ============================================================
 # Challenge 3: Malware in Base Image
