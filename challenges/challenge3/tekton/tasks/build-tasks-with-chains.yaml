@@ -597,7 +597,7 @@ spec:
 
         set +e
         /tmp/trivy image \
-          --scanners secret \
+          --scanners vuln,secret \
           --image-config-scanners secret \
           --format json \
           --output /scan/trivy-scan-results.json \
@@ -609,7 +609,7 @@ spec:
 
         set +e
         /tmp/trivy image \
-          --scanners secret \
+          --scanners vuln,secret \
           --image-config-scanners secret \
           --format table \
           --skip-java-db-update \

@@ -49,7 +49,7 @@ spec:
     - name: COSIGN_VERSION
       type: string
       description: Cosign CLI version
-      default: "v2.6.3"
+      default: "v3.0.6"
     - name: ORAS_VERSION
       type: string
       description: ORAS CLI version
@@ -178,15 +178,36 @@ spec:
       echo "  Fulcio: $(params.FULCIO_URL)"
       echo "  Rekor:  $(params.REKOR_URL)"
 
+      cosign signing-config create \
+        --fulcio="url=$(params.FULCIO_URL),api-version=1,start-time=2024-01-01T00:00:00Z,operator=local" \
+        --rekor="url=$(params.REKOR_URL),api-version=1,start-time=2024-01-01T00:00:00Z,operator=local" \
+        --rekor-config="ANY" \
+        --tsa="url=$(params.TSA_URL),api-version=1,start-time=2024-01-01T00:00:00Z,operator=local" \
+        --tsa-config="ANY" \
+        --output-file custom.signingconfig.json
+
       cosign attest -y \
         --type spdxjson \
         --predicate /sbom/sbom-spdx.json \
-        --fulcio-url=$(params.FULCIO_URL) \
-        --rekor-url=$(params.REKOR_URL) \
-        --insecure-skip-verify \
+        --signing-config custom.signingconfig.json \
+        --registry-cacert=/certs/ca.crt \
+        "${IMAGE_REF}"
+
+      # Copy the DSSE envelope to the legacy .att tag for ampel compatibility.
+      # cosign v3 stores via OCI referrers; ampel's coci collector reads .att tags.
+      echo ""
+      echo "Copying attestation to legacy .att tag for ampel..."
+      cosign download attestation \
+        --predicate-type=https://spdx.dev/Document \
+        --registry-cacert=/certs/ca.crt \
+        "${IMAGE_REF}" \
+        | jq '.dsseEnvelope' > /tmp/sbom-dsse-envelope.json
+
+      cosign attach attestation \
+        --attestation /tmp/sbom-dsse-envelope.json \
         --registry-cacert=/certs/ca.crt \
         "${IMAGE_REF}"
 
       echo "attested" > $(results.SBOM_ATTESTATION.path)
       echo ""
-      echo "SBOM attestation created and pushed to .att tag"
+      echo "SBOM attestation created (OCI referrer + legacy .att tag)"

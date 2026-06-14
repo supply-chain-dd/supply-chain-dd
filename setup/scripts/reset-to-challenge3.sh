@@ -6,7 +6,7 @@
 #   - push-build-pipeline-with-chains deployed (challenge 3 vulnerable pipeline)
 #   - Legitimate golang:1.25-alpine in registry (clean, not poisoned)
 #   - recipe-api:v1.0 in registry (vulnerable single-stage build)
-#   - Gitea recipe-api repo has vulnerable Dockerfile (tag-based FROM, no digest pinning)
+#   - Gitea recipe-api repo has challenge 2 fixed Dockerfile (multi-stage, tag-based FROM, no digest pinning)
 #   - No branch protection on main
 #   - Challenge 3 defense artifacts removed (secure pipeline, kyverno policies, baseline jobs)
 #   - Tekton Chains running, Sigstore stack accessible
@@ -196,6 +196,7 @@ echo "[6/12] Applying challenge 2 baseline Tekton resources..."
 
 kubectl apply -f "${CHALLENGE2_DIR}/tekton/gitea-credentials.yaml"
 kubectl apply -f "${CHALLENGE2_DIR}/tekton/serviceaccounts.yaml"
+kubectl apply -f "${CHALLENGE2_DIR}/tekton/serviceaccounts-keyless.yaml"
 kubectl apply -f "${CHALLENGE2_DIR}/tekton/registry-docker-config-secret.yaml"
 kubectl apply -f "${CHALLENGE2_DIR}/tekton/tasks/"
 kubectl apply -f "${CHALLENGE2_DIR}/tekton/pipelines/"
@@ -243,7 +244,7 @@ echo ""
 # ──────────────────────────────────────────────
 # [9/12] Restore Gitea repository
 # ──────────────────────────────────────────────
-echo "[9/12] Restoring Gitea recipe-api to vulnerable state..."
+echo "[9/12] Restoring Gitea recipe-api to end-of-challenge-2 state..."
 
 # Remove branch protection on main (defense-demo may add it)
 curl -s -X DELETE \
@@ -257,9 +258,40 @@ curl -s -X DELETE \
     "$GITEA_URL/api/v1/repos/$GITEA_USER/$REPO_NAME/branches/fix/pin-base-image-digest" >/dev/null 2>&1 || true
 echo "  ✓ Cleaned up defense-demo branches"
 
-# Re-seed the repository — restores vulnerable Dockerfile, git history with secrets
+# Re-seed the repository — restores base git history (3 original commits)
 "${SCRIPT_DIR}/seed-victim-repo.sh"
-echo "  ✓ Victim repository re-seeded with vulnerable source"
+echo "  ✓ Victim repository re-seeded with base history"
+
+# Apply challenge 2 defense fix on top: multi-stage Dockerfile + .dockerignore
+# This is the state the repo is in at the end of challenge 2's defense-demo.
+# The multi-stage Dockerfile still uses tag-based FROM (not digest-pinned),
+# which is the vulnerability challenge 3 exploits.
+REPO_WORK_DIR=$(mktemp -d)
+GIT_CRED_FILE=$(mktemp)
+GIT_CONFIG_FILE=$(mktemp)
+echo "http://${GITEA_USER}:SecurePass123%21@${GITEA_HOST}" > "$GIT_CRED_FILE"
+chmod 600 "$GIT_CRED_FILE"
+cat > "$GIT_CONFIG_FILE" <<GITCFG
+[user]
+	name = SC Admin
+	email = sc-admin@localhost
+[credential]
+	helper = store --file ${GIT_CRED_FILE}
+GITCFG
+
+GIT_CONFIG_GLOBAL="$GIT_CONFIG_FILE" git clone "${GITEA_URL}/${GITEA_USER}/${REPO_NAME}.git" "${REPO_WORK_DIR}/${REPO_NAME}" 2>/dev/null
+cp "${CHALLENGE2_DIR}/tekton-patched/Dockerfile" "${REPO_WORK_DIR}/${REPO_NAME}/Dockerfile"
+cp "${CHALLENGE2_DIR}/tekton-patched/.dockerignore" "${REPO_WORK_DIR}/${REPO_NAME}/.dockerignore"
+
+cd "${REPO_WORK_DIR}/${REPO_NAME}"
+git add Dockerfile .dockerignore
+GIT_CONFIG_GLOBAL="$GIT_CONFIG_FILE" git commit -m 'fix: multi-stage build + .dockerignore' 2>/dev/null
+git remote set-url origin "http://${GITEA_USER}:SecurePass123%21@${GITEA_HOST}/${GITEA_USER}/${REPO_NAME}.git"
+GIT_CONFIG_GLOBAL="$GIT_CONFIG_FILE" git push origin main 2>/dev/null
+cd "$PROJECT_ROOT"
+
+rm -rf "$REPO_WORK_DIR" "$GIT_CRED_FILE" "$GIT_CONFIG_FILE"
+echo "  ✓ Applied challenge 2 fix (multi-stage Dockerfile + .dockerignore)"
 echo ""
 
 # ──────────────────────────────────────────────
@@ -435,6 +467,7 @@ check_item "sign-image-keyless task" "kubectl get task sign-image-keyless -n ci"
 echo ""
 echo "  RBAC & Secrets:"
 check_item "challenge2-pipeline SA" "kubectl get sa challenge2-pipeline -n ci" || EXIT_CODE=1
+check_item "pipeline-keyless-signer SA" "kubectl get sa pipeline-keyless-signer -n ci" || EXIT_CODE=1
 check_item "tekton-triggers-sa SA" "kubectl get sa tekton-triggers-sa -n ci" || EXIT_CODE=1
 check_item "registry-credentials secret" "kubectl get secret registry-credentials -n ci" || EXIT_CODE=1
 check_item "registry-docker-config secret" "kubectl get secret registry-docker-config -n ci" || EXIT_CODE=1
