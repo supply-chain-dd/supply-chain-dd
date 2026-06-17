@@ -69,18 +69,18 @@ spec:
         - name: source
           workspace: source
 
-    - name: build-container-image
-      runAfter: ["run-quality-checks"]
-      taskRef:
-        name: build-container-image
-      params:
-        - name: image-name
-          value: $(params.image-name)
-        - name: image-tag
-          value: $(params.image-tag)
-      workspaces:
-        - name: source
-          workspace: source
+    # - name: build-container-image
+    #   runAfter: ["run-quality-checks"]
+    #   taskRef:
+    #     name: build-container-image
+    #   params:
+    #     - name: image-name
+    #       value: $(params.image-name)
+    #     - name: image-tag
+    #       value: $(params.image-tag)
+    #   workspaces:
+    #     - name: source
+    #       workspace: source
 
     - name: push-container-image
       runAfter: ["build-container-image"]

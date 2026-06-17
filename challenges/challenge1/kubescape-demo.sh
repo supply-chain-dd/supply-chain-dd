@@ -44,13 +44,14 @@ pe "kubectl get networkpolicy -n ci"
 pe "kubectl describe networkpolicy ci-egress-restriction -n ci"
 
 
-p "4. Suppression des anciens PipelineRuns"
-pe "kubectl delete pipelineruns --all -n ci"
-
-p "5. Création d'un PipelineRun avec le SA pr-pipeline-readonly"
+p "4. Récupération des paramètres du PipelineRun existant avant nettoyage"
 
 PR_SHA=$(kubectl get pipelinerun -n ci -o jsonpath='{.items[0].spec.params[?(@.name=="pr-sha")].value}' 2>/dev/null || echo "main")
 PR_URL=$(kubectl get pipelinerun -n ci -o jsonpath='{.items[0].spec.params[?(@.name=="pr-repo-url")].value}' 2>/dev/null || echo "http://gitea-http.gitea.svc.cluster.local:3000/hacker_challenge1/recipe-api.git")
+
+pe "kubectl delete pipelineruns --all -n ci"
+
+p "5. Création d'un PipelineRun avec le SA pr-pipeline-readonly"
 
 cat > /tmp/kubescape-demo-pipelinerun.yaml <<YAML
 apiVersion: tekton.dev/v1beta1
@@ -80,9 +81,9 @@ spec:
               storage: 1Gi
 YAML
 
-pe "kubectl create -f /tmp/kubescape-demo-pipelinerun.yaml"
+pe "kubectl create -f /tmp/kubescape-demo-pipelinerun.yaml -n ci"
 
-pe "tkn pr logs -f pr-quality-check-secure-test"
+pe "tkn pr logs -f pr-quality-check-secure-test -n ci"
 
 # p "8. Scan du pod quality-check de la pipeline SÉCURISÉE"
 # SECURE_POD=$(kubectl get pods -n ci -l tekton.dev/pipelineTask=run-quality-checks -o name 2>/dev/null | head -1)
