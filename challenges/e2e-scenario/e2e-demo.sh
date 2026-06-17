@@ -39,12 +39,13 @@ p "=== DEMO : Workflow CI/CD de bout en bout — Du code source à la production
 # ============================================================================
 
 p "  PHASE 0 — État initial de la production"
+# p "2. Vérifier que l'API de production est fonctionnelle"
+pe "curl -s http://app.sc.local:31080/recipes | jq ."
 
 p "1. Interface ArgoCD : http://argocd.sc.local:31080"
-p "→ Ouvrez l'interface ArgoCD pour suivre le déploiement en temps réel"
+# p "→ Ouvrez l'interface ArgoCD pour suivre le déploiement en temps réel"
 
-p "2. Vérifier que l'API de production est fonctionnelle"
-pe "curl -s http://app.sc.local:31080/recipes | jq ."
+
 
 # ============================================================================
 # PHASE 1 — Modification du code source
@@ -52,7 +53,7 @@ pe "curl -s http://app.sc.local:31080/recipes | jq ."
 
 p "  PHASE 1 — Modification du code source"
 
-p "3. Cloner le dépôt recipe-api depuis Gitea"
+# p "3. Cloner le dépôt recipe-api depuis Gitea"
 
 # Git config pour éviter les problèmes d'identité
 cat > ${WORK_DIR}/.gitconfig <<EOF
@@ -66,7 +67,7 @@ echo "http://${GITEA_USER}:${GITEA_PASS}@gitea.sc.local:30080" > ${WORK_DIR}/.gi
 
 pe "GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git clone ${GITEA_URL}/${GITEA_USER}/recipe-api.git ${WORK_DIR}/recipe-api"
 
-p "4. Modifier le code — ajouter un commentaire pour déclencher un nouveau build"
+# p "4. Modifier le code — ajouter un commentaire pour déclencher un nouveau build"
 cd ${WORK_DIR}/recipe-api
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -75,7 +76,7 @@ pe "tail -3 main.go"
 
 BEFORE_PR_COUNT=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ci --no-headers 2>/dev/null | wc -l)
 
-p "5. Commit et push vers main"
+# p "5. Commit et push vers main"
 GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git add .
 pe "GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git commit -m 'feat: bump version to v2.0-${TIMESTAMP}'"
 
@@ -88,11 +89,11 @@ cd "${SCRIPT_DIR}"
 # PHASE 2 — Pipeline de build
 # ============================================================================
 
-p "  PHASE 2 — Pipeline de build déclenchée par le webhook"
+p "  PHASE 2 — Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
 
-p "→ Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
+# p "→ Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
 
-p "6. Attente du déclenchement de la pipeline de build..."
+# p "6. Attente du déclenchement de la pipeline de build..."
 TIMEOUT=60
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ]; do
@@ -116,11 +117,11 @@ fi
 BUILD_PR_NAME=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ci \
   --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
 
-p "7. Suivi des logs de la pipeline de build"
+# p "7. Suivi des logs de la pipeline de build"
 pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT}"
 
-pe "kubectl --context ${CI_CONTEXT} get pipelinerun ${BUILD_PR_NAME} -n ci \
-  -o jsonpath='{.status.conditions[0].reason}' && echo"
+# pe "kubectl --context ${CI_CONTEXT} get pipelinerun ${BUILD_PR_NAME} -n ci \
+#   -o jsonpath='{.status.conditions[0].reason}' && echo"
 
 # ============================================================================
 # PHASE 3 — Pipeline de release
@@ -128,9 +129,9 @@ pe "kubectl --context ${CI_CONTEXT} get pipelinerun ${BUILD_PR_NAME} -n ci \
 
 p "  PHASE 3 — Pipeline de release"
 
-p "→ La tâche notify-release a envoyé un webhook à l'EventListener de release"
+# p "→ La tâche notify-release a envoyé un webhook à l'EventListener de release"
 
-p "8. Vérification du déclenchement de la pipeline de release"
+# p "8. Vérification du déclenchement de la pipeline de release"
 TIMEOUT=30
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ]; do
@@ -147,7 +148,7 @@ if [ "$RELEASE_COUNT" -gt 0 ]; then
     RELEASE_PR_NAME=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n release-pipeline \
       --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
 
-    p "9. Suivi des logs de la pipeline de release"
+    # p "9. Suivi des logs de la pipeline de release"
     pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT}"
 else
     p "⚠ La pipeline de release n'a pas été déclenchée automatiquement"
@@ -160,7 +161,7 @@ fi
 
 p "  PHASE 4 — Revue et merge de la PR de release"
 
-p "10. Lister les PR ouvertes dans production-manifests"
+# p "10. Lister les PR ouvertes dans production-manifests"
 pe "curl -s -u ${GITEA_USER}:${GITEA_PASS} \
   ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls?state=open | jq '.[].title'"
 
@@ -169,17 +170,17 @@ PR_NUMBER=$(curl -s -u ${GITEA_USER}:${GITEA_PASS} \
   | jq -r '.[0].number // empty' 2>/dev/null)
 
 if [ -n "$PR_NUMBER" ]; then
-    p "11. Contenu de la PR #${PR_NUMBER}"
+    # p "11. Contenu de la PR #${PR_NUMBER}"
     pe "curl -s -u ${GITEA_USER}:${GITEA_PASS} \
   ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls/${PR_NUMBER} \
   | jq '{title: .title, body: .body, head: .head.label, base: .base.label}'"
 
-    p "12. Merger la PR"
-    pe "curl -s -X POST -u ${GITEA_USER}:${GITEA_PASS} \
-  -H 'Content-Type: application/json' \
-  -d '{\"Do\": \"merge\"}' \
-  ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls/${PR_NUMBER}/merge \
-  | jq '.sha // .message'"
+#     p "12. Merger la PR"
+#     pe "curl -s -X POST -u ${GITEA_USER}:${GITEA_PASS} \
+#   -H 'Content-Type: application/json' \
+#   -d '{\"Do\": \"merge\"}' \
+#   ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls/${PR_NUMBER}/merge \
+#   | jq '.sha // .message'"
 
     p "→ PR mergée — le manifeste de production est mis à jour avec le nouveau digest"
 else
@@ -190,11 +191,11 @@ fi
 # PHASE 5 — Déploiement ArgoCD
 # ============================================================================
 
-p "  PHASE 5 — Déploiement ArgoCD"
+p "  PHASE 5 → ArgoCD détecte le changement dans le dépôt Git et synchronise"
 
-p "→ ArgoCD détecte le changement dans le dépôt Git et synchronise"
+# p "→ ArgoCD détecte le changement dans le dépôt Git et synchronise"
 
-p "13. Attente de la synchronisation ArgoCD..."
+# p "13. Attente de la synchronisation ArgoCD..."
 TIMEOUT=60
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ]; do
@@ -209,12 +210,12 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     ELAPSED=$((ELAPSED + 5))
 done
 
-pe "kubectl --context ${PROD_CONTEXT} get application recipe-api-production -n argocd \
-  -o jsonpath='{\"Sync: \"}{.status.sync.status}{\"  Health: \"}{.status.health.status}' && echo"
+# pe "kubectl --context ${PROD_CONTEXT} get application recipe-api-production -n argocd \
+#   -o jsonpath='{\"Sync: \"}{.status.sync.status}{\"  Health: \"}{.status.health.status}' && echo"
 
 p "→ Vérifiez dans l'interface ArgoCD : http://argocd.sc.local:31080"
 
-p "14. Vérifier que la nouvelle version est accessible"
+# p "14. Vérifier que la nouvelle version est accessible"
 pe "curl -s http://app.sc.local:31080/recipes | jq ."
 
 p "→ Le workflow complet : code source → build → release → PR → merge → ArgoCD → production"
