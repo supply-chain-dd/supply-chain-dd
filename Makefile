@@ -1019,7 +1019,7 @@ trigger-challenge2-build-keyless: ## Trigger Challenge 2 keyless signing pipelin
 # Deep Dive Demo Setup (Challenges 1-4)
 # ============================================================
 
-setup-demo: setup seed-legitimate-base-image setup-security-tools setup-ci-pr-pipeline setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-e2e-scenario setup-release-pipeline configure-production-registry-tls verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
+setup-demo: setup seed-legitimate-base-image setup-kubescape setup-ci-pr-pipeline setup-sigstore-local setup-tektonchains setup-challenge2-tekton setup-gitea-webhooks trigger-challenge2-build build-recipe-api push-recipe-api setup-e2e-scenario setup-release-pipeline configure-production-registry-tls verify-demo-readiness ## Complete automated setup for deep dive demo (Challenges 1-4)
 	@echo ""
 	@echo "Restoring kubectl context to CI cluster..."
 	@kubectl config use-context kind-$(CLUSTER_NAME)
