@@ -42,7 +42,7 @@ p "  PHASE 0 — État initial de la production"
 # p "2. Vérifier que l'API de production est fonctionnelle"
 pe "curl -s http://app.sc.local:31080/recipes | jq ."
 
-p "1. Interface ArgoCD : http://argocd.sc.local:31080"
+p "Interface ArgoCD : http://argocd.sc.local:31080"
 # p "→ Ouvrez l'interface ArgoCD pour suivre le déploiement en temps réel"
 
 
@@ -162,18 +162,17 @@ fi
 p "  PHASE 4 — Revue et merge de la PR de release"
 
 # p "10. Lister les PR ouvertes dans production-manifests"
-pe "curl -s -u ${GITEA_USER}:${GITEA_PASS} \
-  ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls?state=open | jq '.[].title'"
+p "Revoir et merger :  ${PROD_GITEA_URL}/sc-admin/production-manifests/pulls?state=open"
 
-PR_NUMBER=$(curl -s -u ${GITEA_USER}:${GITEA_PASS} \
-  ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls?state=open \
-  | jq -r '.[0].number // empty' 2>/dev/null)
+# PR_NUMBER=$(curl -s -u ${GITEA_USER}:${GITEA_PASS} \
+#   ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls?state=open \
+#   | jq -r '.[0].number // empty' 2>/dev/null)
 
-if [ -n "$PR_NUMBER" ]; then
-    # p "11. Contenu de la PR #${PR_NUMBER}"
-    pe "curl -s -u ${GITEA_USER}:${GITEA_PASS} \
-  ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls/${PR_NUMBER} \
-  | jq '{title: .title, body: .body, head: .head.label, base: .base.label}'"
+# if [ -n "$PR_NUMBER" ]; then
+#     # p "11. Contenu de la PR #${PR_NUMBER}"
+#     pe "curl -s -u ${GITEA_USER}:${GITEA_PASS} \
+#   ${PROD_GITEA_URL}/api/v1/repos/sc-admin/production-manifests/pulls/${PR_NUMBER} \
+#   | jq '{title: .title, body: .body, head: .head.label, base: .base.label}'"
 
 #     p "12. Merger la PR"
 #     pe "curl -s -X POST -u ${GITEA_USER}:${GITEA_PASS} \

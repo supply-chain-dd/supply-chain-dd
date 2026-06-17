@@ -149,6 +149,10 @@ spec:
       description: Digest of the pushed image (for Tekton Chains to sign)
     - name: IMAGE_URL
       description: Full URL of the pushed image (for Tekton Chains)
+  stepTemplate:
+    env:
+      - name: HOME
+        value: /tekton/home
   volumes:
     - name: docker-config
       secret:

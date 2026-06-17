@@ -83,7 +83,7 @@ spec:
     #       workspace: source
 
     - name: push-container-image
-      runAfter: ["build-container-image"]
+      runAfter: ["run-quality-checks"]
       taskRef:
         name: push-container-image
       params:
