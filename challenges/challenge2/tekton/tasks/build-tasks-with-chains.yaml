@@ -41,6 +41,10 @@ spec:
   workspaces:
     - name: source
       description: Workspace containing the Dockerfile and build context
+  stepTemplate:
+    env:
+      - name: HOME
+        value: /tekton/home
   volumes:
     - name: docker-config
       secret:
