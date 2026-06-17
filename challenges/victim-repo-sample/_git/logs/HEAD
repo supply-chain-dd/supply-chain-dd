@@ -1,0 +1,13 @@
+f6049022866224b28dc3d81debf24b632e256c17 f6049022866224b28dc3d81debf24b632e256c17 sherine-k <skhoury@redhat.com> 1781732141 +0200	reset: moving to HEAD
+f6049022866224b28dc3d81debf24b632e256c17 6be5090ede99e79dbd8853d41d8bac69f2c0d75f sherine-k <skhoury@redhat.com> 1781732141 +0200	rebase (start): checkout 6be5090ede99e79dbd8853d41d8bac69f2c0d75f
+6be5090ede99e79dbd8853d41d8bac69f2c0d75f 26e05debd598be671c8fc8c738c58a1464842ba2 sherine-k <skhoury@redhat.com> 1781732141 +0200	rebase: fast-forward
+26e05debd598be671c8fc8c738c58a1464842ba2 ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e sherine-k <skhoury@redhat.com> 1781732141 +0200	rebase: fast-forward
+ed9f32e8da7979f3aa4e3ce8dfedb0a48d5afd9e f6049022866224b28dc3d81debf24b632e256c17 sherine-k <skhoury@redhat.com> 1781732141 +0200	rebase: fast-forward
+f6049022866224b28dc3d81debf24b632e256c17 f6049022866224b28dc3d81debf24b632e256c17 sherine-k <skhoury@redhat.com> 1781732141 +0200	rebase (finish): returning to refs/heads/main
+f6049022866224b28dc3d81debf24b632e256c17 f6049022866224b28dc3d81debf24b632e256c17 sherine-k <skhoury@redhat.com> 1781732188 +0200	reset: moving to HEAD
+f6049022866224b28dc3d81debf24b632e256c17 26e05debd598be671c8fc8c738c58a1464842ba2 sherine-k <skhoury@redhat.com> 1781732188 +0200	checkout: moving from main to rewrite
+26e05debd598be671c8fc8c738c58a1464842ba2 5fd5fd47c38b100ced35d2cf5871b812a3fe1b15 sherine-k <skhoury@redhat.com> 1781732209 +0200	commit (amend): Initial commit: Recipe API v1.0
+5fd5fd47c38b100ced35d2cf5871b812a3fe1b15 7839550708bcc7c32177ccd98493efba17c88bc0 sherine-k <skhoury@redhat.com> 1781732218 +0200	cherry-pick: Security fix: Remove accidentally committed production secrets
+7839550708bcc7c32177ccd98493efba17c88bc0 95e21010b64c8181540512b982209c236cd42fd3 sherine-k <skhoury@redhat.com> 1781732218 +0200	cherry-pick: Add health and readiness endpoints
+95e21010b64c8181540512b982209c236cd42fd3 0000000000000000000000000000000000000000 sherine-k <skhoury@redhat.com> 1781732255 +0200	Branch: renamed refs/heads/rewrite to refs/heads/main
+0000000000000000000000000000000000000000 95e21010b64c8181540512b982209c236cd42fd3 sherine-k <skhoury@redhat.com> 1781732255 +0200	Branch: renamed refs/heads/rewrite to refs/heads/main

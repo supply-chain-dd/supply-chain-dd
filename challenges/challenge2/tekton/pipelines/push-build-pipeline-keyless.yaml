@@ -9,12 +9,11 @@
 #     └─ git-clone                                   <- emits url + commit results
 #          └─ build-go-app
 #               └─ run-quality-checks
-#                    └─ build-container-image
-#                         └─ push-container-image-with-chains   <- emits IMAGE_URL + IMAGE_DIGEST
-#                              ├─ sign-image-keyless            <- cosign keyless sign (Fulcio + Rekor)
-#                              ├─ create-source-vsa             <- attaches unsigned Source VSA via OCI referrers
-#                              ├─ scan-image                    <- Trivy vuln+secret scan -> oras attach
-#                              └─ generate-sbom                 <- Trivy SBOM + oras attach
+#                     └─ push-container-image-with-chains   <- emits IMAGE_URL + IMAGE_DIGEST
+#                          ├─ sign-image-keyless            <- cosign keyless sign (Fulcio + Rekor)
+#                          ├─ create-source-vsa             <- attaches unsigned Source VSA via OCI referrers
+#                          ├─ scan-image                    <- Trivy vuln+secret scan -> oras attach
+#                          └─ generate-sbom                 <- Trivy SBOM + oras attach
 #
 # The sign-image-keyless task uses a projected serviceAccountToken volume
 # (audience: sigstore) as an OIDC identity token. The local Fulcio issues a
@@ -31,7 +30,7 @@
 #   - Tasks: verify-source-provenance, create-source-vsa (verify-source-task.yaml)
 #   - Tasks: push-container-image-with-chains, generate-sbom, scan-image
 #            (build-tasks-with-chains.yaml)
-#   - All other tasks: git-clone, build-go-app, quality-check-task, build-container-image
+#   - All other tasks: git-clone, build-go-app, quality-check-task
 #   - ConfigMap: sigstore-tuf-root    in ci (TUF root.json)
 #   - ConfigMap: registry-ca-cert     in ci (ca.crt)
 #   - Secret:    registry-docker-config in ci
