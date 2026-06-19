@@ -327,7 +327,7 @@ wait
 
 p ""
 p "# Contenu actuel du fichier cible :"
-pe "cat ${TARGET_PATH}"
+pe "bat ${TARGET_PATH}"
 
 wait
 

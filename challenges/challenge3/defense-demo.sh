@@ -41,14 +41,14 @@ pei "make -C ${SCRIPT_DIR}/../.. setup-challenge3-tekton-secure"
 # p "  - verify-base-image : vérifie registre, digest, SBOM et baseline de la build image AVANT le build"
 # p "  - generate-sbom : génère le SBOM de l'image construite APRÈS le push"
 
-p "2. Générer la baseline SBOM à partir de l'image propre (Docker Hub) via un Job Kubernetes"
+p "2. Générer les baselines SBOM (golang + alpine) depuis Docker Hub via un Job Kubernetes"
 kubectl delete job generate-baseline-from-hub -n ci --ignore-not-found 2>/dev/null
 pe "kubectl create -f ${SCRIPT_DIR}/tekton-patched/jobs/generate-baseline-from-hub-job.yaml"
 kubectl wait --for=condition=ready pod -l job-name=generate-baseline-from-hub -n ci --timeout=120s 2>/dev/null
 BASELINE_POD=$(kubectl get pods -n ci -l job-name=generate-baseline-from-hub -o jsonpath='{.items[0].metadata.name}')
 pe "kubectl logs -f ${BASELINE_POD} -n ci"
 kubectl logs ${BASELINE_POD} -n ci | sed -n '/^===BASELINE_JSON_START===/,/^===BASELINE_JSON_END===/{ //!p; }' > ${WORK_DIR}/baseline-packages.json
-# pe "cat ${WORK_DIR}/baseline-packages.json"
+# pe "bat ${WORK_DIR}/baseline-packages.json"
 pe "kubectl create configmap golang-baseline-sbom \
   --namespace ci \
   --from-file=baseline-packages.json=${WORK_DIR}/baseline-packages.json \
@@ -98,14 +98,14 @@ pe "echo \"golang digest: \${GOLANG_DIGEST}\""
 pe "ALPINE_DIGEST=\$(skopeo inspect  docker://${REGISTRY_HOST}/alpine:3.20 | jq -r .Digest)"
 pe "echo \"alpine digest: \${ALPINE_DIGEST}\""
 
-p "7. Générer les SBOMs, les attacher et créer la baseline via un Job dans le cluster"
+p "7. Générer les SBOMs (golang + alpine), les attacher et créer les baselines via un Job dans le cluster"
 kubectl delete job generate-sbom-baseline -n ci --ignore-not-found 2>/dev/null
 pe "kubectl create -f ${SCRIPT_DIR}/tekton-patched/jobs/generate-sbom-baseline-job.yaml"
 kubectl wait --for=condition=ready pod -l job-name=generate-sbom-baseline -n ci --timeout=300s 2>/dev/null
 BASELINE_POD=$(kubectl get pods -n ci -l job-name=generate-sbom-baseline -o jsonpath='{.items[0].metadata.name}')
 pe "kubectl logs -f ${BASELINE_POD} -n ci"
 
-p "8. Créer la baseline ConfigMap à partir du SBOM généré dans le cluster"
+p "8. Créer la baseline ConfigMap (golang + alpine) à partir des SBOMs générés dans le cluster"
 kubectl logs ${BASELINE_POD} -n ci | sed -n '/^===BASELINE_JSON_START===/,/^===BASELINE_JSON_END===/{ //!p; }' > ${WORK_DIR}/baseline-packages.json
 pe "kubectl create configmap golang-baseline-sbom \
   --namespace ci \
@@ -133,7 +133,7 @@ p "11. Préparer le Dockerfile sécurisé avec les vrais digests"
 PATCHED_DOCKERFILE="${SCRIPT_DIR}/tekton-patched/Dockerfile"
 sed "s|golang@sha256:PLACEHOLDER|golang@${GOLANG_DIGEST}|" "${PATCHED_DOCKERFILE}" | \
   sed "s|alpine@sha256:PLACEHOLDER|alpine@${ALPINE_DIGEST}|" > "${WORK_DIR}/recipe-api/Dockerfile"
-pe "cat ${WORK_DIR}/recipe-api/Dockerfile"
+pe "bat ${WORK_DIR}/recipe-api/Dockerfile"
 
 p "12. Commit et push de la branche"
 pe "git add Dockerfile"
@@ -237,10 +237,10 @@ pe "cosign verify-attestation \
   --registry-cacert=${CA_CERT} \
   ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST}  2>/dev/null \
   | jq -r '.payload' | base64 -d > ${WORK_DIR}/provenance.json"
-pe "cat ${WORK_DIR}/provenance.json | jq"
+pe "bat ${WORK_DIR}/provenance.json | jq"
 
 p "17. Sujets de la provenance — tous les artefacts dont la provenance est attestée"
-pe "cat ${WORK_DIR}/provenance.json | jq '.subject'"
+pe "bat ${WORK_DIR}/provenance.json | jq '.subject'"
 p "Chaque entrée est un artefact couvert par la provenance :"
 p "  - L'image conteneur (IMAGE_URL / IMAGE_DIGEST)"
 p "  - Le SBOM (SBOM-ARTIFACT_URI / SBOM-ARTIFACT_DIGEST)"
@@ -248,7 +248,7 @@ p "  - Les résultats du scan (SCAN_RESULTS-ARTIFACT_URI / SCAN_RESULTS-ARTIFACT
 p "  - Le Source VSA (SOURCE_VSA-ARTIFACT_URI / SOURCE_VSA-ARTIFACT_DIGEST)"
 
 p "18. Builder et matériaux source"
-pe "cat ${WORK_DIR}/provenance.json | jq '{predicateType, builder: .predicate.builder, materials: .predicate.materials}'"
+pe "bat ${WORK_DIR}/provenance.json | jq '{predicateType, builder: .predicate.builder, materials: .predicate.materials}'"
 p "builder.id : identifie Tekton Chains comme builder"
 p "materials : source git (URL + commit) utilisée pour le build"
 

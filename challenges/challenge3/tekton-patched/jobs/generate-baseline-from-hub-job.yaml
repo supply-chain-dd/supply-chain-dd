@@ -1,9 +1,10 @@
 ---
 # Job: generate-baseline-from-hub
 #
-# Generates a baseline SBOM from the clean golang:1.25-alpine image
-# on Docker Hub, normalizes registry references to match the internal
-# registry, and outputs the baseline JSON to stdout.
+# Generates baseline SBOMs from the clean golang:1.25-alpine and
+# alpine:3.20 images on Docker Hub, normalizes registry references
+# to match the internal registry, and outputs the combined baseline
+# JSON to stdout as {"golang": [...], "alpine": [...]}.
 #
 # Used in Phase 0 of the defense demo — before the pipeline runs —
 # so the verify-base-image task has a baseline to compare against.
@@ -36,21 +37,32 @@ spec:
               ARCH=$(uname -m)
               case "$ARCH" in x86_64) ARCH="amd64";; aarch64) ARCH="arm64";; esac
 
-              SYFT_VERSION="v1.44.0"
+              SYFT_VERSION="v1.45.1"
               echo "Downloading Syft ${SYFT_VERSION}..."
               curl -fsSL "https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/syft_${SYFT_VERSION#v}_linux_${ARCH}.tar.gz" | tar xz -C /tmp syft
 
               echo "=== Scanning golang:1.25-alpine from Docker Hub ==="
               /tmp/syft scan golang:1.25-alpine -o spdx-json --file /tmp/golang-sbom.json
 
-              echo "=== Generating baseline ==="
-              jq '[.packages[] | {spdxid: .SPDXID, purl: (.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator)}] | sort_by(.spdxid)' \
-                /tmp/golang-sbom.json > /tmp/baseline-packages.json
+              echo "=== Scanning alpine:3.20 from Docker Hub ==="
+              /tmp/syft scan alpine:3.20 -o spdx-json --file /tmp/alpine-sbom.json
 
+              echo "=== Generating baselines ==="
               INTERNAL_DASH=$(echo "$REGISTRY" | tr ':/' '-')
               INTERNAL_ENCODED=$(echo "$REGISTRY" | sed 's/:/%3A/g')
-              sed -i "s/DocumentRoot-Image-golang/DocumentRoot-Image-${INTERNAL_DASH}-golang/g" /tmp/baseline-packages.json
-              sed -i "s|oci/golang@|oci/${INTERNAL_ENCODED}%2Fgolang@|g" /tmp/baseline-packages.json
+
+              jq '[.packages[] | {spdxid: .SPDXID, purl: (.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator)}] | sort_by(.spdxid)' \
+                /tmp/golang-sbom.json > /tmp/golang-baseline.json
+              sed -i "s/DocumentRoot-Image-golang/DocumentRoot-Image-${INTERNAL_DASH}-golang/g" /tmp/golang-baseline.json
+              sed -i "s|oci/golang@|oci/${INTERNAL_ENCODED}%2Fgolang@|g" /tmp/golang-baseline.json
+
+              jq '[.packages[] | {spdxid: .SPDXID, purl: (.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator)}] | sort_by(.spdxid)' \
+                /tmp/alpine-sbom.json > /tmp/alpine-baseline.json
+              sed -i "s/DocumentRoot-Image-alpine/DocumentRoot-Image-${INTERNAL_DASH}-alpine/g" /tmp/alpine-baseline.json
+              sed -i "s|oci/alpine@|oci/${INTERNAL_ENCODED}%2Falpine@|g" /tmp/alpine-baseline.json
+
+              jq -n --slurpfile golang /tmp/golang-baseline.json --slurpfile alpine /tmp/alpine-baseline.json \
+                '{golang: $golang[0], alpine: $alpine[0]}' > /tmp/baseline-packages.json
 
               echo "===BASELINE_JSON_START==="
               cat /tmp/baseline-packages.json

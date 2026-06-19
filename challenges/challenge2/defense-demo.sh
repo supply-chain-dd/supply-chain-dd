@@ -43,7 +43,7 @@ cd "${WORK_DIR}/recipe-api"
 # PHASE 1 — Corriger le code source
 # ============================================================================
 p "2. Le Dockerfile actuel est vulnérable (COPY . . + rm -rf .git)"
-pe "cat Dockerfile"
+pe "bat Dockerfile"
 
 
 p "3. Trivy image --scanners secret sur l'image vulnérable"
@@ -52,7 +52,7 @@ p "→ 0 secrets détectés — Trivy ne voit pas les secrets enfuits dans un .g
 
 p "4. Politique Rego custom pour détecter le pattern dangereux"
 p "→ Seul un scan de misconfiguration du Dockerfile peut détecter le pattern dangereux"
-pe "cat ${SCRIPT_DIR}/trivy-policies/copy_git_leak.rego"
+pe "bat ${SCRIPT_DIR}/trivy-policies/copy_git_leak.rego"
 
 
 p "5. Exécuter le scan de misconfiguration sur le Dockerfile vulnérable"
@@ -61,13 +61,13 @@ pe "trivy config --config-check ${SCRIPT_DIR}/trivy-policies/ --namespaces user 
 
 p "6. Remplacer par un Dockerfile multi-stage"
 cp "${SCRIPT_DIR}/tekton-patched/Dockerfile" Dockerfile
-pe "cat Dockerfile"
+pe "bat Dockerfile"
 # p "→ Stage builder : compile le binaire. Stage runtime : copie uniquement le binaire."
 
 
 p "7. Ajouter un .dockerignore allowlist"
 cp "${SCRIPT_DIR}/tekton-patched/.dockerignore" .dockerignore
-pe "cat .dockerignore"
+pe "bat .dockerignore"
 
 
 p "8. Résumé des modifications"

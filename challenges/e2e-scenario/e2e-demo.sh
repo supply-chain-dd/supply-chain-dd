@@ -56,7 +56,7 @@ p "  PHASE 1 — Modification du code source"
 # p "3. Cloner le dépôt recipe-api depuis Gitea"
 
 # Git config pour éviter les problèmes d'identité
-cat > ${WORK_DIR}/.gitconfig <<EOF
+bat > ${WORK_DIR}/.gitconfig <<EOF
 [user]
     name = SC Admin
     email = sc-admin@sc.local
