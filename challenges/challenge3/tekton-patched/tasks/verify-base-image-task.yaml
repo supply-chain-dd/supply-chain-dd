@@ -13,7 +13,7 @@
 # Prerequisites:
 #   - ConfigMap: registry-ca-cert      in ci (ca.crt)
 #   - Secret:    registry-docker-config in ci
-#   - ConfigMap: golang-baseline-sbom   in ci (baseline-spdx-packages.json)
+#   - ConfigMap: golang-baseline-sbom   in ci (baseline-packages.json, keyed by image name)
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -32,7 +32,7 @@ spec:
     - name: SYFT_VERSION
       type: string
       description: Syft CLI version (with v prefix)
-      default: "v1.44.0"
+      default: "v1.45.1"
     - name: ORAS_VERSION
       type: string
       description: ORAS CLI version
@@ -200,55 +200,68 @@ spec:
         log "Step 2: SBOM Baseline Comparison (SPDX ID + purl)"
         log "============================================"
 
-        BUILD_IMAGE_REF=$(head -1 /tmp/from_lines.txt | awk '{print $2}')
+        while read -r line; do
+          IMAGE_REF=$(echo "$line" | awk '{print $2}')
 
-        if [ "$BUILD_IMAGE_REF" = "scratch" ] || ! echo "$BUILD_IMAGE_REF" | grep -q "$REGISTRY"; then
-          log "  SKIP: Build image not from internal registry — cannot compare baseline"
-        else
+          if [ "$IMAGE_REF" = "scratch" ] || ! echo "$IMAGE_REF" | grep -q "$REGISTRY"; then
+            log "  SKIP: $IMAGE_REF not from internal registry — cannot compare baseline"
+            continue
+          fi
+
+          IMAGE_BASENAME=$(echo "$IMAGE_REF" | sed 's|.*/||' | sed 's|[@:].*||')
+          BASELINE_KEY="$IMAGE_BASENAME"
+
+          HAS_KEY=$(jq -e --arg k "$BASELINE_KEY" 'has($k)' /baseline/baseline-packages.json 2>/dev/null || echo "false")
+          if [ "$HAS_KEY" != "true" ]; then
+            log "  SKIP: No baseline entry for '$BASELINE_KEY' — cannot compare"
+            continue
+          fi
+
           log ""
-          log "--- SBOM Baseline: $BUILD_IMAGE_REF ---"
+          log "--- SBOM Baseline: $IMAGE_REF ($BASELINE_KEY) ---"
 
           log "  Generating SBOM with Syft..."
-          rm -f /sbom/current-sbom.json
-          if ! /tmp/syft scan "$BUILD_IMAGE_REF" \
+          rm -f /sbom/current-sbom-${BASELINE_KEY}.json
+          if ! /tmp/syft scan "$IMAGE_REF" \
             -o spdx-json \
-            --file /sbom/current-sbom.json; then
+            --file /sbom/current-sbom-${BASELINE_KEY}.json; then
             log "  FAIL: Could not generate SBOM for image"
             SBOM_STATUS="FAIL"
-          else
-            jq -r '.packages[] | "\(.SPDXID)\t\(.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator | split("?") | .[0])"' \
-              /sbom/current-sbom.json | sort > /sbom/current-pairs.txt
-            jq -r '.[] | "\(.spdxid)\t\(.purl | split("?") | .[0])"' \
-              /baseline/baseline-packages.json | sort > /sbom/baseline-pairs.txt
-
-            log "  Current image components: $(wc -l < /sbom/current-pairs.txt)"
-            log "  Baseline components:      $(wc -l < /sbom/baseline-pairs.txt)"
-
-            EXTRA=$(comm -13 /sbom/baseline-pairs.txt /sbom/current-pairs.txt || true)
-
-            if [ -n "$EXTRA" ]; then
-              log ""
-              log "  FAIL: Unexpected SBOM entries found:"
-              echo "$EXTRA" | while IFS="$(printf '\t')" read -r spdxid purl; do
-                log "    + $spdxid ($purl)"
-              done
-              SBOM_STATUS="FAIL"
-              UNEXPECTED="$EXTRA"
-            else
-              log "  PASS: All SBOM entries match baseline"
-            fi
-
-            MISSING=$(comm -23 /sbom/baseline-pairs.txt /sbom/current-pairs.txt || true)
-            if [ -n "$MISSING" ]; then
-              log ""
-              log "  FAIL: Baseline entries missing from image:"
-              echo "$MISSING" | while IFS="$(printf '\t')" read -r spdxid purl; do
-                log "    - $spdxid ($purl)"
-              done
-              SBOM_STATUS="FAIL"
-            fi
+            continue
           fi
-        fi
+
+          jq -r '.packages[] | "\(.SPDXID)\t\(.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator | split("?") | .[0])"' \
+            /sbom/current-sbom-${BASELINE_KEY}.json | sort > /sbom/current-pairs-${BASELINE_KEY}.txt
+          jq -r --arg k "$BASELINE_KEY" '.[$k][] | "\(.spdxid)\t\(.purl | split("?") | .[0])"' \
+            /baseline/baseline-packages.json | sort > /sbom/baseline-pairs-${BASELINE_KEY}.txt
+
+          log "  Current image components: $(wc -l < /sbom/current-pairs-${BASELINE_KEY}.txt)"
+          log "  Baseline components:      $(wc -l < /sbom/baseline-pairs-${BASELINE_KEY}.txt)"
+
+          EXTRA=$(comm -13 /sbom/baseline-pairs-${BASELINE_KEY}.txt /sbom/current-pairs-${BASELINE_KEY}.txt || true)
+
+          if [ -n "$EXTRA" ]; then
+            log ""
+            log "  FAIL: Unexpected SBOM entries found in $BASELINE_KEY:"
+            echo "$EXTRA" | while IFS="$(printf '\t')" read -r spdxid purl; do
+              log "    + $spdxid ($purl)"
+            done
+            SBOM_STATUS="FAIL"
+            UNEXPECTED="${UNEXPECTED:+${UNEXPECTED}\n}$EXTRA"
+          else
+            log "  PASS: All SBOM entries for $BASELINE_KEY match baseline"
+          fi
+
+          MISSING=$(comm -23 /sbom/baseline-pairs-${BASELINE_KEY}.txt /sbom/current-pairs-${BASELINE_KEY}.txt || true)
+          if [ -n "$MISSING" ]; then
+            log ""
+            log "  FAIL: Baseline entries missing from $BASELINE_KEY image:"
+            echo "$MISSING" | while IFS="$(printf '\t')" read -r spdxid purl; do
+              log "    - $spdxid ($purl)"
+            done
+            SBOM_STATUS="FAIL"
+          fi
+        done < /tmp/from_lines.txt
 
         # ============================================
         # Display all results

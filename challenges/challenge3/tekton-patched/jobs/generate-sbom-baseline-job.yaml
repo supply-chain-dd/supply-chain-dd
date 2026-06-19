@@ -2,8 +2,8 @@
 # Job: generate-sbom-baseline
 #
 # Generates SBOMs for golang and alpine base images from the internal
-# registry, attaches them as OCI referrers, and outputs the baseline
-# JSON for the golang image.
+# registry, attaches them as OCI referrers, and outputs the combined
+# baseline JSON as {"golang": [...], "alpine": [...]}.
 #
 # Used in Phase 2 of the defense demo — after pushing clean images
 # to the registry — so the baseline matches exactly what the
@@ -65,7 +65,7 @@ spec:
               ARCH=$(uname -m)
               case "$ARCH" in x86_64) ARCH="amd64";; aarch64) ARCH="arm64";; esac
 
-              SYFT_VERSION="v1.44.0"
+              SYFT_VERSION="v1.45.1"
               echo "Downloading Syft ${SYFT_VERSION}..."
               curl -fsSL "https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/syft_${SYFT_VERSION#v}_linux_${ARCH}.tar.gz" | tar xz -C /tmp syft
 
@@ -109,9 +109,13 @@ spec:
                 ${REGISTRY}/alpine@${ALPINE_DIGEST}
 
               echo ""
-              echo "=== Generating baseline ==="
+              echo "=== Generating baselines ==="
               jq '[.packages[] | {spdxid: .SPDXID, purl: (.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator)}] | sort_by(.spdxid)' \
-                /tmp/golang-sbom.json > /tmp/baseline-packages.json
+                /tmp/golang-sbom.json > /tmp/golang-baseline.json
+              jq '[.packages[] | {spdxid: .SPDXID, purl: (.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator)}] | sort_by(.spdxid)' \
+                /tmp/alpine-sbom.json > /tmp/alpine-baseline.json
+              jq -n --slurpfile golang /tmp/golang-baseline.json --slurpfile alpine /tmp/alpine-baseline.json \
+                '{golang: $golang[0], alpine: $alpine[0]}' > /tmp/baseline-packages.json
 
               echo "===BASELINE_JSON_START==="
               cat /tmp/baseline-packages.json

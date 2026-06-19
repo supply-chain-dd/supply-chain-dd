@@ -335,8 +335,9 @@ kubectl logs "${BASELINE_POD}" -n ci | \
     sed -n '/^===BASELINE_JSON_START===/,/^===BASELINE_JSON_END===/{ //!p; }' \
     > "${WORK_DIR}/baseline-packages.json"
 
-BASELINE_COUNT=$(jq 'length' "${WORK_DIR}/baseline-packages.json" 2>/dev/null || echo "0")
-if [ "$BASELINE_COUNT" = "0" ]; then
+BASELINE_COUNT=$(jq '[.[] | length] | add' "${WORK_DIR}/baseline-packages.json" 2>/dev/null || echo "0")
+BASELINE_IMAGES=$(jq 'keys | length' "${WORK_DIR}/baseline-packages.json" 2>/dev/null || echo "0")
+if [ "$BASELINE_COUNT" = "0" ] || [ "$BASELINE_COUNT" = "null" ]; then
     echo "  ❌ Baseline JSON is empty — check Job logs"
     echo "     kubectl logs ${BASELINE_POD} -n ci"
     rm -rf "$WORK_DIR"
@@ -351,7 +352,7 @@ kubectl create configmap golang-baseline-sbom \
 kubectl delete job generate-sbom-baseline -n ci --ignore-not-found 2>/dev/null
 rm -rf "$WORK_DIR"
 
-echo "  ✓ golang-baseline-sbom ConfigMap created (${BASELINE_COUNT} packages)"
+echo "  ✓ golang-baseline-sbom ConfigMap created (${BASELINE_COUNT} packages across ${BASELINE_IMAGES} images)"
 echo ""
 
 # ──────────────────────────────────────────────

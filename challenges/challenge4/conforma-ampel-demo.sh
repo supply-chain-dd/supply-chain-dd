@@ -54,7 +54,7 @@ p "  PipelineRun : ${LATEST_PR_NAME}"
 
 
 p "1. Explorer la politique Conforma (Rego)"
-pe "cat ${CHALLENGE3_SECURITY}/conforma-policies/sbom-baseline-check.rego"
+pe "bat ${CHALLENGE3_SECURITY}/conforma-policies/sbom-baseline-check.rego"
 
 # p "  Cette politique Rego définit 3 règles :"
 # p "    deny  sbom_attached             — un SBOM doit être attaché à l'image (OCI referrer)"
@@ -69,7 +69,7 @@ cp -r "${CHALLENGE3_SECURITY}/conforma-policies" "${CONFORMA_POLICY_DIR}"
 pe "kubectl --context ${CI_CONTEXT} get configmap golang-baseline-sbom -n ci \
   -o jsonpath='{.data.baseline-packages\.json}' \
   > ${CONFORMA_POLICY_DIR}/baseline_packages.json"
-pe "cat ${CONFORMA_POLICY_DIR}/baseline_packages.json | jq '.[0:5]'"
+pe "bat ${CONFORMA_POLICY_DIR}/baseline_packages.json | jq '.[0:5]'"
 p "  OPA charge les fichiers .json du répertoire de politique dans data.*"
 p "  baseline_packages.json → data.baseline_packages (utilisé par le Rego)"
 
@@ -88,7 +88,7 @@ else
 fi
 
 p "4. Explorer la politique Ampel (HJSON)"
-pe "cat ${CHALLENGE3_SECURITY}/ampel-policies/verify-build-artifacts.hjson"
+pe "bat ${CHALLENGE3_SECURITY}/ampel-policies/verify-build-artifacts.hjson"
 
 # p "  Cette politique Ampel définit 2 blocs de vérification :"
 # p "    sbom-check              — vérifie qu'une attestation SBOM existe pour l'image"
