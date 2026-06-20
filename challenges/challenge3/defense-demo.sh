@@ -31,46 +31,36 @@ p "=== DEMO DÉFENSE : Challenge 3 — Empoisonnement d'image de base ==="
 kubectl scale deployment tekton-chains-controller --replicas=1 -n tekton-chains
 
 # ============================================================================
-# PHASE 0 — Déployer la pipeline sécurisée
+# PHASE 0 — Déployer la pipeline sécurisée + baseline
 # ============================================================================
 
 p "1. Déployer la pipeline sécurisée et ses ressources"
 pei "make -C ${SCRIPT_DIR}/../.. setup-challenge3-tekton-secure"
 
-# p "La pipeline sécurisée ajoute deux étapes :"
-# p "  - verify-base-image : vérifie registre, digest, SBOM et baseline de la build image AVANT le build"
-# p "  - generate-sbom : génère le SBOM de l'image construite APRÈS le push"
-
-p "2. Générer les baselines SBOM (golang + alpine) depuis Docker Hub via un Job Kubernetes"
+p "2. Générer les baselines SBOM (golang + alpine) depuis Docker Hub..."
+echo "  Lancement du Job generate-baseline-from-hub..."
 kubectl delete job generate-baseline-from-hub -n ci --ignore-not-found 2>/dev/null
-pe "kubectl create -f ${SCRIPT_DIR}/tekton-patched/jobs/generate-baseline-from-hub-job.yaml"
-kubectl wait --for=condition=ready pod -l job-name=generate-baseline-from-hub -n ci --timeout=120s 2>/dev/null
+kubectl create -f ${SCRIPT_DIR}/tekton-patched/jobs/generate-baseline-from-hub-job.yaml 2>/dev/null
+kubectl wait --for=condition=complete job/generate-baseline-from-hub -n ci --timeout=180s 2>/dev/null
 BASELINE_POD=$(kubectl get pods -n ci -l job-name=generate-baseline-from-hub -o jsonpath='{.items[0].metadata.name}')
-pe "kubectl logs -f ${BASELINE_POD} -n ci"
 kubectl logs ${BASELINE_POD} -n ci | sed -n '/^===BASELINE_JSON_START===/,/^===BASELINE_JSON_END===/{ //!p; }' > ${WORK_DIR}/baseline-packages.json
-# pe "bat ${WORK_DIR}/baseline-packages.json"
-pe "kubectl create configmap golang-baseline-sbom \
+kubectl create configmap golang-baseline-sbom \
   --namespace ci \
   --from-file=baseline-packages.json=${WORK_DIR}/baseline-packages.json \
-  --dry-run=client -o yaml | kubectl apply -f -"
+  --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null
 kubectl delete job generate-baseline-from-hub -n ci --ignore-not-found 2>/dev/null
+echo "  ✓ Baseline ConfigMap créée"
 
 # ============================================================================
 # PHASE 1 — Exécuter la pipeline (devrait échouer)
 # ============================================================================
 
-# p "  PHASE 1 — Exécuter la pipeline sécurisée (le Dockerfile actuel devrait échouer)"
-
-p "3. Déclencher la pipeline manuellement"
+p "3. Déclencher la pipeline sécurisée (échec attendu — Dockerfile non conforme)"
 pe "kubectl create -f ${SCRIPT_DIR}/tekton-patched/manual-pipelinerun-with-chains-secure.yaml"
 
 sleep 2
 LATEST_PR_NAME=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
-
-p "4. Suivre les logs du pipeline (échec attendu à verify-base-image)"
 pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci"
-
-pe "kubectl get pipelineruns -n ci"
 
 p "La pipeline a échoué : le Dockerfile ne respecte pas les exigences de sécurité"
 
@@ -78,40 +68,34 @@ p "La pipeline a échoué : le Dockerfile ne respecte pas les exigences de sécu
 # PHASE 2 — Corriger : pousser les images propres et créer une PR
 # ============================================================================
 
-# p "  PHASE 2 — Corriger : pousser les images propres et mettre à jour le Dockerfile"
+p "4. Pousser les images propres, générer les SBOMs et les attacher..."
+echo "  Push golang:1.25-alpine..."
+podman pull golang:1.25-alpine 2>/dev/null
+podman tag golang:1.25-alpine ${REGISTRY_HOST}/golang:1.25-alpine
+podman push ${REGISTRY_HOST}/golang:1.25-alpine 2>/dev/null
+echo "  Push alpine:3.20..."
+podman pull alpine:3.20 2>/dev/null
+podman tag alpine:3.20 ${REGISTRY_HOST}/alpine:3.20
+podman push ${REGISTRY_HOST}/alpine:3.20 2>/dev/null
 
-p "5. Pousser les images propres depuis Docker Hub vers le registre local"
-pe "podman pull golang:1.25-alpine"
-pe "podman tag golang:1.25-alpine ${REGISTRY_HOST}/golang:1.25-alpine"
-pe "podman push ${REGISTRY_HOST}/golang:1.25-alpine"
+GOLANG_DIGEST=$(skopeo inspect docker://${REGISTRY_HOST}/golang:1.25-alpine 2>/dev/null | jq -r .Digest)
+ALPINE_DIGEST=$(skopeo inspect docker://${REGISTRY_HOST}/alpine:3.20 2>/dev/null | jq -r .Digest)
 
-pe "podman pull alpine:3.20"
-pe "podman tag alpine:3.20 ${REGISTRY_HOST}/alpine:3.20"
-pe "podman push ${REGISTRY_HOST}/alpine:3.20"
-
-p "Conseil : Activez les tags immuables sur votre registre si disponible"
-
-p "6. Récupérer les digests des images propres"
-pe "GOLANG_DIGEST=\$(skopeo inspect  docker://${REGISTRY_HOST}/golang:1.25-alpine | jq -r .Digest)"
-pe "echo \"golang digest: \${GOLANG_DIGEST}\""
-
-pe "ALPINE_DIGEST=\$(skopeo inspect  docker://${REGISTRY_HOST}/alpine:3.20 | jq -r .Digest)"
-pe "echo \"alpine digest: \${ALPINE_DIGEST}\""
-
-p "7. Générer les SBOMs (golang + alpine), les attacher et créer les baselines via un Job dans le cluster"
+echo "  Génération et attachement des SBOMs via Job..."
 kubectl delete job generate-sbom-baseline -n ci --ignore-not-found 2>/dev/null
-pe "kubectl create -f ${SCRIPT_DIR}/tekton-patched/jobs/generate-sbom-baseline-job.yaml"
-kubectl wait --for=condition=ready pod -l job-name=generate-sbom-baseline -n ci --timeout=300s 2>/dev/null
+kubectl create -f ${SCRIPT_DIR}/tekton-patched/jobs/generate-sbom-baseline-job.yaml 2>/dev/null
+kubectl wait --for=condition=complete job/generate-sbom-baseline -n ci --timeout=300s 2>/dev/null
 BASELINE_POD=$(kubectl get pods -n ci -l job-name=generate-sbom-baseline -o jsonpath='{.items[0].metadata.name}')
-pe "kubectl logs -f ${BASELINE_POD} -n ci"
-
-p "8. Créer la baseline ConfigMap (golang + alpine) à partir des SBOMs générés dans le cluster"
 kubectl logs ${BASELINE_POD} -n ci | sed -n '/^===BASELINE_JSON_START===/,/^===BASELINE_JSON_END===/{ //!p; }' > ${WORK_DIR}/baseline-packages.json
-pe "kubectl create configmap golang-baseline-sbom \
+kubectl create configmap golang-baseline-sbom \
   --namespace ci \
   --from-file=baseline-packages.json=${WORK_DIR}/baseline-packages.json \
-  --dry-run=client -o yaml | kubectl apply -f -"
+  --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null
 kubectl delete job generate-sbom-baseline -n ci --ignore-not-found 2>/dev/null
+
+pe "echo \"golang digest: ${GOLANG_DIGEST}\""
+pe "echo \"alpine digest: ${ALPINE_DIGEST}\""
+p "Conseil : Activez les tags immuables sur votre registre si disponible"
 
 # --- Git setup ---
 echo "[user]" > ${WORK_DIR}/.gitconfig
@@ -122,36 +106,31 @@ echo "	helper = store --file ${WORK_DIR}/.git-credentials" >> ${WORK_DIR}/.gitco
 echo "http://sc-admin:SecurePass123%21@${GITEA_HOST}" > ${WORK_DIR}/.git-credentials
 chmod 600 ${WORK_DIR}/.git-credentials
 
-p "9. Cloner le dépôt depuis Gitea"
-pe "GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git clone ${GITEA_URL}/${GITEA_USER}/recipe-api.git ${WORK_DIR}/recipe-api"
-
-p "10. Créer une branche pour le correctif"
+p "5. Préparer le Dockerfile sécurisé avec les vrais digests"
+GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git clone ${GITEA_URL}/${GITEA_USER}/recipe-api.git ${WORK_DIR}/recipe-api 2>/dev/null
 cd "${WORK_DIR}/recipe-api"
-pe "git checkout -b fix/pin-base-image-digest"
+git checkout -b fix/pin-base-image-digest 2>/dev/null
 
-p "11. Préparer le Dockerfile sécurisé avec les vrais digests"
 PATCHED_DOCKERFILE="${SCRIPT_DIR}/tekton-patched/Dockerfile"
 sed "s|golang@sha256:PLACEHOLDER|golang@${GOLANG_DIGEST}|" "${PATCHED_DOCKERFILE}" | \
   sed "s|alpine@sha256:PLACEHOLDER|alpine@${ALPINE_DIGEST}|" > "${WORK_DIR}/recipe-api/Dockerfile"
-pe "bat ${WORK_DIR}/recipe-api/Dockerfile"
+pe "cat ${WORK_DIR}/recipe-api/Dockerfile"
 
-p "12. Commit et push de la branche"
+p "6. Commit, push et créer une Pull Request"
 pe "git add Dockerfile"
 pe "GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git commit -m 'fix: digest-pinned multi-stage Dockerfile'"
 
-p "git push origin fix/pin-base-image-digest"
 git remote set-url origin "http://${GITEA_USER}:SecurePass123%21@${GITEA_HOST}/${GITEA_USER}/recipe-api.git"
-GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git push origin fix/pin-base-image-digest
+pe "GIT_CONFIG_GLOBAL=${WORK_DIR}/.gitconfig git push origin fix/pin-base-image-digest"
 
 cd "${SCRIPT_DIR}"
 
-p "13. Créer une Pull Request vers la branche main"
 PR_RESPONSE=$(curl -s -X POST \
   "${GITEA_URL}/api/v1/repos/${GITEA_USER}/recipe-api/pulls" \
   -H 'Content-Type: application/json' \
   -u "${GITEA_USER}:${GITEA_PASS}" \
   -d "{\"title\":\"fix: Dockerfile épinglé par digest avec multi-stage\",\"body\":\"Pin des images de base par digest et utilisation du build multi-stage\",\"base\":\"main\",\"head\":\"fix/pin-base-image-digest\"}")
-echo "${PR_RESPONSE}" | jq .
+# pe "echo '${PR_RESPONSE}' | jq ."
 PR_NUMBER=$(echo "${PR_RESPONSE}" | jq -r '.number')
 
 BEFORE_PR_COUNT=$(kubectl get pipelineruns -n ci --no-headers 2>/dev/null | wc -l)
@@ -163,8 +142,6 @@ p "============================================"
 # ============================================================================
 # PHASE 3 — Observer la pipeline sécurisée après fusion
 # ============================================================================
-
-# p "  PHASE 3 — Pipeline sécurisée déclenchée par la fusion de la PR"
 
 p "En attente du déclenchement du webhook..."
 sleep 2
@@ -189,44 +166,25 @@ pe "kubectl get pipelineruns -n ci"
 # PHASE 4 — Vérification post-pipeline
 # ============================================================================
 
-# p "  PHASE 4 — Vérification post-pipeline"
-
-# p "13. Vérifier l'image dans le registre"
-# pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-api/tags/list"
-
-p "14. Vérifier les résultats du pipeline"
+p "7. Vérifier les résultats du pipeline"
 pe "kubectl get pipelinerun ${LATEST_PR_NAME} -n ci -o jsonpath='{.status.results}' | jq ."
-
-# ============================================================================
-# PHASE 5 — Vérification post-pipeline avec Conforma et Ampel
-# ============================================================================
-
-# p "  PHASE 5 — Vérification post-pipeline"
 
 IMAGE_DIGEST=$(kubectl get pipelinerun ${LATEST_PR_NAME} -n ci -o jsonpath='{.status.results[?(@.name=="IMAGE_DIGEST")].value}' 2>/dev/null)
 OIDC_ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
 
-p "Initialiser la racine de confiance TUF locale pour la vérification Sigstore"
 TUF_ROOT_FILE=$(mktemp)
 kubectl get configmap sigstore-tuf-root -n ci -o jsonpath='{.data.root\.json}' > "${TUF_ROOT_FILE}"
-pe "cosign initialize --mirror=http://${TUF_HOST} --root=${TUF_ROOT_FILE}"
+cosign initialize --mirror=http://${TUF_HOST} --root=${TUF_ROOT_FILE} 2>/dev/null
 rm -f "${TUF_ROOT_FILE}"
 
-
-p "15. Vérifier les artefacts attachés (SBOM, signature, scan, provenance)"
-# pe "SSL_CERT_FILE=${CA_CERT} oras discover \
-#   --plain-http=false \
-#   --registry-config ~/.docker/config.json \
-#   ${REGISTRY_HOST}/recipe-api:v3.0"
-
+p "8. Artefacts attachés à l'image (SBOM, signature, scan, provenance)"
 pe "cosign tree --registry-cacert=${CA_CERT} ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null || echo 'cosign tree non disponible'"
 
+# ============================================================================
+# PHASE 5 — Attestations de provenance et SBOM
+# ============================================================================
 
-p "Tekton Chains avec deep-inspection inspecte chaque TaskRun du PipelineRun."
-p "Les résultats typés (*-ARTIFACT_URI / *-ARTIFACT_DIGEST) deviennent des sujets"
-p "dans l'attestation de provenance SLSA — pas seulement l'image finale."
-
-p "16. Vérifier et décoder l'attestation de provenance SLSA"
+p "9. Attestation de provenance SLSA — builder, source et artefacts attestés"
 pe "cosign verify-attestation \
   --certificate-identity=https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \
   --certificate-oidc-issuer=${OIDC_ISSUER} \
@@ -235,24 +193,19 @@ pe "cosign verify-attestation \
   --new-bundle-format=false \
   --type slsaprovenance \
   --registry-cacert=${CA_CERT} \
-  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST}  2>/dev/null \
+  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
   | jq -r '.payload' | base64 -d > ${WORK_DIR}/provenance.json"
-pe "bat ${WORK_DIR}/provenance.json | jq"
 
-p "17. Sujets de la provenance — tous les artefacts dont la provenance est attestée"
-pe "bat ${WORK_DIR}/provenance.json | jq '.subject'"
-p "Chaque entrée est un artefact couvert par la provenance :"
-p "  - L'image conteneur (IMAGE_URL / IMAGE_DIGEST)"
-p "  - Le SBOM (SBOM-ARTIFACT_URI / SBOM-ARTIFACT_DIGEST)"
-p "  - Les résultats du scan (SCAN_RESULTS-ARTIFACT_URI / SCAN_RESULTS-ARTIFACT_DIGEST)"
-p "  - Le Source VSA (SOURCE_VSA-ARTIFACT_URI / SOURCE_VSA-ARTIFACT_DIGEST)"
+pe "bat ${WORK_DIR}/provenance.json"
 
-p "18. Builder et matériaux source"
-pe "bat ${WORK_DIR}/provenance.json | jq '{predicateType, builder: .predicate.builder, materials: .predicate.materials}'"
-p "builder.id : identifie Tekton Chains comme builder"
-p "materials : source git (URL + commit) utilisée pour le build"
+pe "cat ${WORK_DIR}/provenance.json | jq '{
+  predicateType,
+  builder: .predicate.builder.id,
+  materials: [.predicate.materials[] | {uri, digest}],
+  subjects: [.subject[] | {name: .name, sha256: .digest.sha256[:16]}]
+}'"
 
-p "19. Contenu de l'attestation SBOM (signée en pipeline par cosign attest)"
+p "10. Attestation SBOM signée (cosign attest en pipeline)"
 pe "cosign verify-attestation \
   --certificate-identity=https://kubernetes.io/namespaces/ci/serviceaccounts/pipeline-keyless-signer \
   --certificate-oidc-issuer=${OIDC_ISSUER} \
@@ -262,30 +215,5 @@ pe "cosign verify-attestation \
   --registry-cacert=${CA_CERT} \
   ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
   | jq -r '.payload' | base64 -d | jq '{predicateType: .predicateType, packageCount: (.predicate.packages | length), topPackages: [.predicate.packages[:5][] | .name]}'"
-p "L'attestation SBOM est signée par le ServiceAccount pipeline-keyless-signer"
-p "Elle contient la liste complète des paquets (format SPDX JSON)"
-
-p "20. Vérification croisée : le digest du SBOM dans les sujets de la provenance"
-SBOM_DIGEST_FROM_PR=$(kubectl get pipelinerun ${LATEST_PR_NAME} -n ci -o jsonpath='{.status.results[?(@.name=="SBOM-ARTIFACT_DIGEST")].value}' 2>/dev/null)
-SBOM_DIGEST_HEX="${SBOM_DIGEST_FROM_PR#sha256:}"
-SBOM_DIGEST_FROM_PROVENANCE=$(cosign verify-attestation \
-  --certificate-identity=https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \
-  --certificate-oidc-issuer=${OIDC_ISSUER} \
-  --rekor-url=http://${REKOR_HOST} \
-  --insecure-ignore-sct \
-  --new-bundle-format=false \
-  --type slsaprovenance \
-  --registry-cacert=${CA_CERT} \
-  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
-  | jq -s -r --arg d "${SBOM_DIGEST_HEX}" \
-    'map(.payload | @base64d | fromjson) | map(.subject // []) | add | map(select(.digest.sha256 == $d)) | .[0].digest.sha256 // empty')
-pe "echo \"SBOM digest (résultat pipeline) : ${SBOM_DIGEST_FROM_PR}\""
-pe "echo \"SBOM digest (sujet provenance) : sha256:${SBOM_DIGEST_FROM_PROVENANCE}\""
-if [ -n "${SBOM_DIGEST_FROM_PROVENANCE}" ] && echo "${SBOM_DIGEST_FROM_PR}" | grep -q "${SBOM_DIGEST_FROM_PROVENANCE}"; then
-    p "Les digests correspondent — l'intégrité du SBOM est couverte par la provenance"
-else
-    p "Note : les digests ne correspondent pas ou n'ont pas pu être extraits."
-    p "Vérifiez la configuration de deep-inspection dans chains-config."
-fi
 
 p "✅"
