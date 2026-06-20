@@ -10,9 +10,9 @@ Poison the base container image in the local registry to inject malware into pro
 
 ```
 1. Create malicious base image with backdoor
-2. Push poisoned image to registry (registry.sc.local:30443/golang:1.25-alpine)
+2. Push poisoned image to registry (registry.sc.local:30443/alpine:3.20)
 3. Trigger legitimate build pipeline
-4. Pipeline pulls poisoned base image
+4. Pipeline pulls poisoned runtime base image
 5. Malware embedded in recipe-api production image
 6. Deployed container executes malware
 ```
@@ -99,11 +99,11 @@ podman build -t registry.sc.local:30443/alpine:3.20 .
 
 **Expected output:**
 ```
-STEP 1/5: FROM golang:1.25-alpine
+STEP 1/5: FROM alpine:3.20
 STEP 2/5: COPY backdoor.sh /usr/local/bin/backdoor.sh
 STEP 3/5: RUN chmod +x /usr/local/bin/backdoor.sh
 ...
-Successfully tagged registry.sc.local:30443/golang:1.25-alpine:latest
+Successfully tagged registry.sc.local:30443/alpine:3.20
 ```
 
 ## Step 2: Push Poisoned Image to Registry
@@ -129,9 +129,9 @@ Writing manifest to image destination
 ```bash
 # Verify the poisoned image is in the registry (expecting execution from the repo's root directory)
 curl --cacert setup/certs/registry.crt -u sc-admin:RegistryPass123! \
-  https://registry.sc.local:30443/v2/golang/tags/list
+  https://registry.sc.local:30443/v2/alpine/tags/list
 
-# Should show: {"name":"golang","tags":["1.25-alpine"]}
+# Should show: {"name":"alpine","tags":["3.20"]}
 ```
 
 ## Step 3: Trigger Legitimate Build Pipeline
@@ -181,7 +181,7 @@ kubectl logs -n ci $PIPELINE_RUN -c step-build-image -f
 ```
 
 **Look for:**
-- Pipeline pulling `FROM registry.sc.local:30443/golang:1.25-alpine`
+- Pipeline pulling `FROM registry.sc.local:30443/alpine:3.20` (poisoned runtime base)
 - Build completing successfully
 - Image pushed to registry as `registry.sc.local:30443/recipe-api:latest`
 

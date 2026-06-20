@@ -4,7 +4,7 @@
 # Brings the environment to the "Base Image Poisoning" configuration:
 #   - Challenge 2 resources (push-build-pipeline, tasks, triggers) intact
 #   - push-build-pipeline-with-chains deployed (challenge 3 vulnerable pipeline)
-#   - Legitimate golang:1.25-alpine in registry (clean, not poisoned)
+#   - Legitimate golang:1.25-alpine and alpine:3.20 in registry (clean, not poisoned)
 #   - recipe-api:v1.0 in registry (vulnerable single-stage build)
 #   - Gitea recipe-api repo has challenge 2 fixed Dockerfile (multi-stage, tag-based FROM, no digest pinning)
 #   - No branch protection on main
@@ -496,6 +496,16 @@ if echo "$GOLANG_EXISTS" | jq -e 'index("1.25-alpine")' > /dev/null 2>&1; then
     echo "  golang:1.25-alpine in registry... ✓"
 else
     echo "  golang:1.25-alpine in registry... ❌"
+    EXIT_CODE=1
+fi
+
+ALPINE_EXISTS=$(curl -k -s -u "$REGISTRY_USER:$REGISTRY_PASS" \
+    "https://${REGISTRY_HOST}/v2/alpine/tags/list" 2>/dev/null | \
+    jq -r '.tags // []' 2>/dev/null || echo "[]")
+if echo "$ALPINE_EXISTS" | jq -e 'index("3.20")' > /dev/null 2>&1; then
+    echo "  alpine:3.20 in registry... ✓"
+else
+    echo "  alpine:3.20 in registry... ❌"
     EXIT_CODE=1
 fi
 

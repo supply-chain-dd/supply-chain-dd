@@ -1088,7 +1088,7 @@ setup-challenge3: require-registry ## Setup Challenge 3 (base image poisoning)
 	@echo "Prerequisites:"
 	@echo "  • Challenge 1 completed (registry credentials obtained)"
 	@echo "  • Challenge 2 completed (legitimate base image seeded)"
-	@echo "  • Victim repository Dockerfile uses registry.sc.local:30443/golang:1.25-alpine"
+	@echo "  • Victim repository uses multi-stage Dockerfile (golang:1.25-alpine + alpine:3.20)"
 	@echo ""
 	@echo "Attack Scenario:"
 	@echo "  1. Create malicious base image with backdoor"
@@ -1103,7 +1103,7 @@ setup-challenge3: require-registry ## Setup Challenge 3 (base image poisoning)
 	@echo ""
 	@echo "Flag: FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}"
 
-seed-legitimate-base-image: ## Seed legitimate golang base image to local registry
+seed-legitimate-base-image: ## Seed legitimate base images (golang + alpine) to local registry
 	@echo "Seeding legitimate base image to registry..."
 	@if ! $(CONTAINER_RUNTIME) images | grep -q "golang.*1.25-alpine"; then \
 		echo "  Pulling golang:1.25-alpine..."; \
@@ -1139,12 +1139,19 @@ verify-challenge3: ## Verify Challenge 3 setup
 	@echo "Registry Status:"
 	@kubectl get pods,svc -n registry 2>/dev/null || { echo "  ❌ Registry not running (run: make setup-registry)"; exit 1; }
 	@echo ""
-	@echo "Base Image in Registry:"
+	@echo "Base Images in Registry:"
 	@if curl --cacert setup/certs/registry.crt -s -u $(REGISTRY_USER):$(REGISTRY_PASS) \
 		https://registry.sc.local:30443/v2/golang/tags/list 2>/dev/null | grep -q "1.25-alpine"; then \
 		echo "  ✓ golang:1.25-alpine exists in registry"; \
 	else \
-		echo "  ❌ Base image not found (run: make seed-legitimate-base-image)"; \
+		echo "  ❌ golang:1.25-alpine not found (run: make seed-legitimate-base-image)"; \
+		exit 1; \
+	fi
+	@if curl --cacert setup/certs/registry.crt -s -u $(REGISTRY_USER):$(REGISTRY_PASS) \
+		https://registry.sc.local:30443/v2/alpine/tags/list 2>/dev/null | grep -q "3.20"; then \
+		echo "  ✓ alpine:3.20 exists in registry"; \
+	else \
+		echo "  ❌ alpine:3.20 not found (run: make seed-legitimate-base-image)"; \
 		exit 1; \
 	fi
 	@echo ""
