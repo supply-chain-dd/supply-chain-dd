@@ -182,9 +182,9 @@ p "Revoir et merger :  ${PROD_GITEA_URL}/sc-admin/production-manifests/pulls?sta
 #   | jq '.sha // .message'"
 
     p "→ PR mergée — le manifeste de production est mis à jour avec le nouveau digest"
-else
-    p "⚠ Aucune PR ouverte trouvée dans production-manifests"
-fi
+# else
+#     p "⚠ Aucune PR ouverte trouvée dans production-manifests"
+# fi
 
 # ============================================================================
 # PHASE 5 — Déploiement ArgoCD

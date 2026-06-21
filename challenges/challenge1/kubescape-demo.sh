@@ -14,7 +14,7 @@ if ! kubectl kubescape version >/dev/null 2>&1; then
     exit 1
 fi
 
-p "1. Kubescape - Scan ciblé sur la pipeline VULNÉRABLE: Scan du pod quality-check"
+# p "1. Kubescape - Scan ciblé sur la pipeline VULNÉRABLE: Scan du pod quality-check"
 
 VULN_POD=$(kubectl get pods -n ci -l tekton.dev/pipelineTask=run-quality-checks -o name 2>/dev/null | head -1)
 if [ -z "$VULN_POD" ]; then
@@ -24,7 +24,7 @@ else
     pe "kubectl kubescape scan workload ${VULN_POD} --namespace ci"
 fi
 
-pe "kubectl get networkpolicy -n ci"
+# pe "kubectl get networkpolicy -n ci"
 
 pe "kubectl get triggertemplate pr-quality-template -n ci -oyaml | yq .spec.resourcetemplates[0].spec"
 pe "kubectl auth can-i get secrets --as=system:serviceaccount:ci:default -n ci"
@@ -33,23 +33,29 @@ pe "kubectl auth can-i get secrets --as=system:serviceaccount:ci:default -n ci"
 p "  2. Application de la pipeline SÉCURISÉE (RBAC + pipeline patché)"
 pe "make -C ${PROJECT_ROOT} setup-ci-pr-pipeline-secure"
 pe "kubectl get triggertemplate pr-quality-template -n ci  -oyaml | yq .spec.resourcetemplates[0].spec"
-pe "kubectl auth can-i get secrets --as=system:serviceaccount:ci:pr-pipeline-readonly -n ci"
+# pe "kubectl auth can-i get secrets --as=system:serviceaccount:ci:pr-pipeline-readonly -n ci"
 p "Détails du rôle pr-pipeline-minimal (aucun accès aux secrets) :"
 pe "kubectl describe role pr-pipeline-minimal -n ci"
 
 
 p "3. Application des Network Policies"
 pe "kubectl apply -f security/network-policies/tekton-egress-restriction.yaml"
-pe "kubectl get networkpolicy -n ci"
+# pe "kubectl get networkpolicy -n ci"
 pe "kubectl describe networkpolicy ci-egress-restriction -n ci"
 
 
 p "4. Récupération des paramètres du PipelineRun existant avant nettoyage"
 
-PR_SHA=$(kubectl get pipelinerun -n ci -o jsonpath='{.items[0].spec.params[?(@.name=="pr-sha")].value}' 2>/dev/null || echo "main")
-PR_URL=$(kubectl get pipelinerun -n ci -o jsonpath='{.items[0].spec.params[?(@.name=="pr-repo-url")].value}' 2>/dev/null || echo "http://gitea-http.gitea.svc.cluster.local:3000/hacker_challenge1/recipe-api.git")
+LAST_PR=$(kubectl get pipelinerun -n ci -l tekton.dev/pipeline=pr-quality-check-pipeline --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null)
+if [ -n "$LAST_PR" ]; then
+    PR_SHA=$(kubectl get pipelinerun "$LAST_PR" -n ci -o jsonpath='{.spec.params[?(@.name=="pr-sha")].value}')
+    PR_URL=$(kubectl get pipelinerun "$LAST_PR" -n ci -o jsonpath='{.spec.params[?(@.name=="pr-repo-url")].value}')
+else
+    PR_SHA="main"
+    PR_URL="http://gitea-http.gitea.svc.cluster.local:3000/hacker_challenge1/recipe-api.git"
+fi
 
-pe "kubectl delete pipelineruns --all -n ci"
+# pe "kubectl delete pipelineruns --all -n ci"
 
 p "5. Création d'un PipelineRun avec le SA pr-pipeline-readonly"
 
