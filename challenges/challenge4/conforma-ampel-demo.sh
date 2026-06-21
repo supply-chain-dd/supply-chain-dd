@@ -48,8 +48,8 @@ cosign initialize --mirror=http://${TUF_HOST} --root=${TUF_ROOT_FILE}
 rm -f "${TUF_ROOT_FILE}"
 
 p "=== DEMO : Vérification post-pipeline avec Conforma et Ampel ==="
-p "  Image : ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST}"
-p "  PipelineRun : ${LATEST_PR_NAME}"
+# p "  Image : ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST}"
+# p "  PipelineRun : ${LATEST_PR_NAME}"
 
 
 
@@ -66,12 +66,12 @@ pe "bat ${CHALLENGE3_SECURITY}/conforma-policies/sbom-baseline-check.rego"
 p "2. Charger la baseline SBOM depuis le ConfigMap (données fraîches à chaque exécution)"
 CONFORMA_POLICY_DIR="${WORK_DIR}/conforma-policies"
 cp -r "${CHALLENGE3_SECURITY}/conforma-policies" "${CONFORMA_POLICY_DIR}"
-pe "kubectl --context ${CI_CONTEXT} get configmap golang-baseline-sbom -n ci \
+kubectl --context ${CI_CONTEXT} get configmap golang-baseline-sbom -n ci \
   -o jsonpath='{.data.baseline-packages\.json}' \
-  > ${CONFORMA_POLICY_DIR}/baseline_packages.json"
-pe "bat ${CONFORMA_POLICY_DIR}/baseline_packages.json | jq '.[0:5]'"
-p "  OPA charge les fichiers .json du répertoire de politique dans data.*"
-p "  baseline_packages.json → data.baseline_packages (utilisé par le Rego)"
+  > ${CONFORMA_POLICY_DIR}/baseline_packages.json
+# pe "cat ${CONFORMA_POLICY_DIR}/baseline_packages.json | jq '.[0:5]'"
+# p "  OPA charge les fichiers .json du répertoire de politique dans data.*"
+# p "  baseline_packages.json → data.baseline_packages (utilisé par le Rego)"
 
 if command -v ec &>/dev/null; then
     p "3. Exécuter Conforma (ec validate image)"
