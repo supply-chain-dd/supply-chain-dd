@@ -20,8 +20,8 @@ kubectl scale deployment tekton-chains-controller --replicas=0 -n tekton-chains
 # Setup: deploy secure pipeline + patch trigger template to point to it
 p "0. Patch des pipelines avant de commiter"
 
-pei "kubectl apply -f ${SCRIPT_DIR}/tekton-patched/pipelines/push-build-pipeline-secure.yaml"
-pei "kubectl patch triggertemplate push-build-template -n ci --type=json -p='[{\"op\":\"replace\",\"path\":\"/spec/resourcetemplates/0/spec/pipelineRef/name\",\"value\":\"push-build-pipeline-secure\"},{\"op\":\"replace\",\"path\":\"/spec/params/6/default\",\"value\":\"v2.0\"}]' 2>/dev/null || true"
+kubectl apply -f ${SCRIPT_DIR}/tekton-patched/pipelines/push-build-pipeline-secure.yaml
+kubectl patch triggertemplate push-build-template -n ci --type=json -p='[{"op":"replace","path":"/spec/resourcetemplates/0/spec/pipelineRef/name","value":"push-build-pipeline-secure"},{"op":"replace","path":"/spec/params/6/default","value":"v2.0"}]'
 
 WORK_DIR=$(mktemp -d)
 
@@ -42,39 +42,41 @@ cd "${WORK_DIR}/recipe-api"
 # ============================================================================
 # PHASE 1 — Corriger le code source
 # ============================================================================
-p "2. Le Dockerfile actuel est vulnérable (COPY . . + rm -rf .git)"
+# p "2. Le Dockerfile actuel est vulnérable (COPY . . + rm -rf .git)"
 pe "bat Dockerfile"
 
 
-p "3. Trivy image --scanners secret sur l'image vulnérable"
+p "2. Trivy image --scanners secret sur l'image vulnérable"
 pe "trivy image --scanners secret --insecure registry.sc.local:30443/recipe-api:v1.0"
-p "→ 0 secrets détectés — Trivy ne voit pas les secrets enfuits dans un .git"
+# p "→ 0 secrets détectés — Trivy ne voit pas les secrets enfuits dans un .git"
 
-p "4. Politique Rego custom pour détecter le pattern dangereux"
-p "→ Seul un scan de misconfiguration du Dockerfile peut détecter le pattern dangereux"
+p "3. Exécuter un scan de misconfiguration sur le Dockerfile vulnérable"
+
+# p "4. Politique Rego custom pour détecter le pattern dangereux"
+# p "→ Seul un scan de misconfiguration du Dockerfile peut détecter le pattern dangereux"
 pe "bat ${SCRIPT_DIR}/trivy-policies/copy_git_leak.rego"
 
 
-p "5. Exécuter le scan de misconfiguration sur le Dockerfile vulnérable"
+# p "5. Exécuter le scan de misconfiguration sur le Dockerfile vulnérable"
 pe "trivy config --config-check ${SCRIPT_DIR}/trivy-policies/ --namespaces user Dockerfile"
 
 
-p "6. Remplacer par un Dockerfile multi-stage"
+p "4. Remplacer par un Dockerfile multi-stage"
 cp "${SCRIPT_DIR}/tekton-patched/Dockerfile" Dockerfile
 pe "bat Dockerfile"
 # p "→ Stage builder : compile le binaire. Stage runtime : copie uniquement le binaire."
 
 
-p "7. Ajouter un .dockerignore allowlist"
+p "5. Ajouter un .dockerignore allowlist"
 cp "${SCRIPT_DIR}/tekton-patched/.dockerignore" .dockerignore
 pe "bat .dockerignore"
 
 
-p "8. Résumé des modifications"
+# p "8. Résumé des modifications"
 pe "git status"
 
 
-p "9. Commit et push"
+# p "9. Commit et push"
 pe "git add Dockerfile .dockerignore"
 pe "git commit -m 'fix: multi-stage build + .dockerignore'"
 
@@ -85,11 +87,11 @@ p "git push origin main"
 git remote set-url origin "http://${GITEA_USER}:SecurePass123%21@gitea.sc.local:30080/${GITEA_USER}/recipe-api.git"
 git push origin main
 
-p "⚠  Pousser directement sur main est une pratique dangereuse en production."
-p "→ Les changements doivent passer par une Pull Request avec review obligatoire."
+# p "⚠  Pousser directement sur main est une pratique dangereuse en production."
+# p "→ Les changements doivent passer par une Pull Request avec review obligatoire."
 
 
-p "10. Protéger la branche main via l'API Gitea"
+p "6. Protéger la branche main via l'API Gitea"
 pe "curl -s -X POST '${GITEA_URL}/api/v1/repos/${GITEA_USER}/recipe-api/branch_protections' \
   -u '${GITEA_USER}:${GITEA_PASS}' \
   -H 'Content-Type: application/json' \
@@ -101,23 +103,22 @@ cd "${SCRIPT_DIR}"
 # PHASE 2 — Scanner et purger l'ancienne image
 # ============================================================================
 
-p "11. Récupérer le digest et supprimer l'image vulnérable"
+p "7. Récupérer le digest et supprimer l'image vulnérable"
 pe "DIGEST=\$(skopeo inspect docker://registry.sc.local:30443/recipe-api:v1.0 | jq -r .Digest)"
 pe "echo \"Digest: \${DIGEST}\""
 
 pe "curl -k -s -o /dev/null -w 'HTTP %{http_code}\n' -u ${REGISTRY_USER}:${REGISTRY_PASS} \
   -X DELETE ${REGISTRY_URL}/v2/recipe-api/manifests/\${DIGEST}"
 
-pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-api/tags/list"
+# pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-api/tags/list"
 
 # ============================================================================
 # PHASE 3 — Pipeline déclenchée par le webhook
 # ============================================================================
 
 
-p "12. Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
+p "8. Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
 
-sleep 10
 AFTER_PR_COUNT=$(kubectl get pipelineruns -n ci --no-headers 2>/dev/null | wc -l)
 
 if [ "$AFTER_PR_COUNT" -gt "$BEFORE_PR_COUNT" ]; then
@@ -132,18 +133,18 @@ else
     pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci"
 fi
 
-pe "kubectl get pipelineruns -n ci"
+# pe "kubectl get pipelineruns -n ci"
 
 # ============================================================================
 # PHASE 4 — Vérification
 # ============================================================================
 
 
-p "13. Vérification de la nouvelle image v2.0"
+# p "13. Vérification de la nouvelle image v2.0"
 
 
 # p "1. L'image v2.0 est dans le registre"
-pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-api/tags/list"
+# pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-api/tags/list"
 # pe "oras discover registry.sc.local:30443/recipe-api:v2.0 \
 #   --registry-config ~/.docker/config.json \
 #   --ca-file ${SCRIPT_DIR}/../../setup/certs/registry.crt"

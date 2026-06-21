@@ -44,16 +44,20 @@ p "=== Signature Keyless d'images — Cosign + Fulcio/Rekor local ==="
 # SECTION 1 — Stack Sigstore locale
 # ============================================================================
 
-pe "kubectl get pods -n fulcio-system"
-p "Fulcio est l'autorité de certification — émet des certificats de signature éphémères"
+# pe "kubectl get pods -n fulcio-system"
+# p "Fulcio est l'autorité de certification — émet des certificats de signature éphémères"
 
-pe "kubectl get pods -n rekor-system"
-p "Rekor est le transparency log — enregistre chaque événement de signature de façon immuable"
+# pe "kubectl get pods -n rekor-system"
+# p "Rekor est le transparency log — enregistre chaque événement de signature de façon immuable"
 
-pe "kubectl get pods -n tuf-system"
-p "TUF distribue la racine de confiance pour vérifier Fulcio/Rekor"
+# pe "kubectl get pods -n tuf-system"
+# p "TUF distribue la racine de confiance pour vérifier Fulcio/Rekor"
 
 pe "make -C ${REPO_ROOT} setup-challenge2-tekton-keyless"
+
+p "Déclenchement du pipeline de signature keyless..."
+
+pe "kubectl create -f ${SCRIPT_DIR}/tekton/manual-pipelinerun-keyless.yaml"
 # ============================================================================
 # SECTION 2 — Identité OIDC
 # ============================================================================
@@ -83,9 +87,7 @@ p "expirationSeconds: 600 — le token est éphémère (10 minutes)"
 # ============================================================================
 
 p "  SECTION 4 — Exécution du pipeline"
-p "Déclenchement du pipeline de signature keyless..."
 
-pe "kubectl create -f ${SCRIPT_DIR}/tekton/manual-pipelinerun-keyless.yaml"
 
 sleep 3
 LATEST_PR=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
@@ -98,14 +100,14 @@ else
     kubectl wait --for=condition=Succeeded pipelinerun/${LATEST_PR} -n ci --timeout=600s 2>/dev/null || true
 fi
 
-pe "kubectl get pipelinerun ${LATEST_PR} -n ci -o jsonpath='{.status.conditions[0].reason}' && echo"
+# pe "kubectl get pipelinerun ${LATEST_PR} -n ci -o jsonpath='{.status.conditions[0].reason}' && echo"
 
 # ============================================================================
 # SECTION 5 — Vérification de la signature keyless
 # ============================================================================
 
 p "  SECTION 5 — Vérification de la signature keyless"
-p "Contrairement à la vérification par clé, le keyless utilise l'identité certificat + l'émetteur OIDC"
+# p "Contrairement à la vérification par clé, le keyless utilise l'identité certificat + l'émetteur OIDC"
 p "D'abord, initialiser la racine TUF de cosign pour faire confiance au CA Fulcio et à la clé Rekor locaux"
 ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
 TUF_ROOT_FILE=$(mktemp)
@@ -154,5 +156,5 @@ pe "cosign verify \
 # else
 #     p "Chains n'a pas encore signé — vérification de la provenance ignorée"
 # fi
-
+p "TODO: Accepter la PR sur le Gitea de Prod"
 p "✅"
