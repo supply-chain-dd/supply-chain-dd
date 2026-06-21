@@ -37,7 +37,7 @@ extract_packages() {
     jq -r '.packages[] | "\(.SPDXID) | \(.externalRefs[]? | select(.referenceType == "purl") | .referenceLocator)"' "$1" | sort
 }
 
-p "=== DEMO : Comparaison SBOM — Détection de l'empoisonnement d'image de base ==="
+p "=== DEMO :SBOM en détective ==="
 
 # ============================================================================
 # PHASE 1 — Générer les SBOMs des images propres
@@ -45,21 +45,21 @@ p "=== DEMO : Comparaison SBOM — Détection de l'empoisonnement d'image de bas
 
 p "  PHASE 1 — SBOMs des images de base officielles"
 
-p "1. Générer le SBOM de golang:1.25-alpine depuis Docker Hub"
+# p "1. Générer le SBOM de golang:1.25-alpine depuis Docker Hub"
 pe "${SYFT_CMD} scan golang:1.25-alpine -o spdx-json --file ${WORK_DIR}/sbom-golang-clean.json"
 
-p "2. À quoi ressemble un SBOM SPDX ? Voici les métadonnées et les 3 premiers paquets"
+p "1. À quoi ressemble un SBOM SPDX ? Voici les métadonnées et les 3 premiers paquets"
 pe "cat ${WORK_DIR}/sbom-golang-clean.json | jq | head -70"
 
-p "3. Extraire les composants golang (nom + version)"
+p "2. Extraire les composants golang (nom + version)"
 extract_packages "${WORK_DIR}/sbom-golang-clean.json" > "${WORK_DIR}/golang-clean-packages.txt"
 pe "cat ${WORK_DIR}/golang-clean-packages.txt"
-pe "echo \"Nombre de composants dans golang propre : \$(wc -l < ${WORK_DIR}/golang-clean-packages.txt)\""
+# pe "echo \"Nombre de composants dans golang propre : \$(wc -l < ${WORK_DIR}/golang-clean-packages.txt)\""
 
-p "4. Même chose pour alpine:3.20 (image runtime)"
+p "3. Même chose pour alpine:3.20 (image runtime)"
 pe "${SYFT_CMD} scan alpine:3.20 -o spdx-json --file ${WORK_DIR}/sbom-alpine-clean.json"
 extract_packages "${WORK_DIR}/sbom-alpine-clean.json" > "${WORK_DIR}/alpine-clean-packages.txt"
-pe "echo \"Nombre de composants dans alpine propre : \$(wc -l < ${WORK_DIR}/alpine-clean-packages.txt)\""
+# pe "echo \"Nombre de composants dans alpine propre : \$(wc -l < ${WORK_DIR}/alpine-clean-packages.txt)\""
 
 # ============================================================================
 # PHASE 2 — Comparaison des SBOMs (registre local vs Docker Hub)
@@ -67,7 +67,7 @@ pe "echo \"Nombre de composants dans alpine propre : \$(wc -l < ${WORK_DIR}/alpi
 
 p "  PHASE 2 — Comparaison des SBOMs : Docker Hub vs registre local"
 
-p "5. Génération des SBOMs depuis le registre local..."
+p "4. Génération des SBOMs depuis le registre local..."
 echo "  Scan de ${REGISTRY_HOST}/golang:1.25-alpine..."
 SSL_CERT_FILE=${CA_CERT} ${SYFT_CMD} scan ${REGISTRY_HOST}/golang:1.25-alpine -o spdx-json --file ${WORK_DIR}/sbom-golang-poisoned.json 2>/dev/null
 extract_packages "${WORK_DIR}/sbom-golang-poisoned.json" > "${WORK_DIR}/golang-poisoned-packages.txt"
@@ -76,10 +76,10 @@ SSL_CERT_FILE=${CA_CERT} ${SYFT_CMD} scan ${REGISTRY_HOST}/alpine:3.20 -o spdx-j
 extract_packages "${WORK_DIR}/sbom-alpine-poisoned.json" > "${WORK_DIR}/alpine-poisoned-packages.txt"
 echo "  Fait."
 
-p "6. Différence SBOM golang : Docker Hub vs registre local"
+p "5. Différence SBOM golang : Docker Hub vs registre local"
 pe "diff --color=always ${WORK_DIR}/golang-clean-packages.txt ${WORK_DIR}/golang-poisoned-packages.txt || true"
 
-p "7. Différence SBOM alpine : Docker Hub vs registre local"
+p "6. Différence SBOM alpine : Docker Hub vs registre local"
 pe "diff --color=always ${WORK_DIR}/alpine-clean-packages.txt ${WORK_DIR}/alpine-poisoned-packages.txt || true"
 
 # ============================================================================
@@ -88,12 +88,12 @@ pe "diff --color=always ${WORK_DIR}/alpine-clean-packages.txt ${WORK_DIR}/alpine
 
 p "  PHASE 3 — Comparaison des configurations de conteneur"
 
-p "8. Différence de configuration golang"
-skopeo inspect --config docker://golang:1.25-alpine 2>/dev/null | jq --sort-keys '.config' > ${WORK_DIR}/golang-clean-config.json
-skopeo inspect --config --tls-verify=false docker://${REGISTRY_HOST}/golang:1.25-alpine 2>/dev/null | jq --sort-keys '.config' > ${WORK_DIR}/golang-poisoned-config.json
-pe "diff --color=always ${WORK_DIR}/golang-clean-config.json ${WORK_DIR}/golang-poisoned-config.json || true"
+# p "8. Différence de configuration golang"
+# skopeo inspect --config docker://golang:1.25-alpine 2>/dev/null | jq --sort-keys '.config' > ${WORK_DIR}/golang-clean-config.json
+# skopeo inspect --config --tls-verify=false docker://${REGISTRY_HOST}/golang:1.25-alpine 2>/dev/null | jq --sort-keys '.config' > ${WORK_DIR}/golang-poisoned-config.json
+# pe "diff --color=always ${WORK_DIR}/golang-clean-config.json ${WORK_DIR}/golang-poisoned-config.json || true"
 
-p "9. Différence de configuration alpine"
+p "7. Différence de configuration alpine"
 skopeo inspect --config docker://alpine:3.20 2>/dev/null | jq --sort-keys '.config' > ${WORK_DIR}/alpine-clean-config.json
 skopeo inspect --config --tls-verify=false docker://${REGISTRY_HOST}/alpine:3.20 2>/dev/null | jq --sort-keys '.config' > ${WORK_DIR}/alpine-poisoned-config.json
 pe "diff --color=always ${WORK_DIR}/alpine-clean-config.json ${WORK_DIR}/alpine-poisoned-config.json || true"
