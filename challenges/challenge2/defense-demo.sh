@@ -103,12 +103,12 @@ cd "${SCRIPT_DIR}"
 # PHASE 2 — Scanner et purger l'ancienne image
 # ============================================================================
 
-p "7. Récupérer le digest et supprimer l'image vulnérable"
-pe "DIGEST=\$(skopeo inspect docker://registry.sc.local:30443/recipe-api:v1.0 | jq -r .Digest)"
-pe "echo \"Digest: \${DIGEST}\""
+# p "7. Récupérer le digest et supprimer l'image vulnérable"
+# pe "DIGEST=\$(skopeo inspect docker://registry.sc.local:30443/recipe-api:v1.0 | jq -r .Digest)"
+# pe "echo \"Digest: \${DIGEST}\""
 
-pe "curl -k -s -o /dev/null -w 'HTTP %{http_code}\n' -u ${REGISTRY_USER}:${REGISTRY_PASS} \
-  -X DELETE ${REGISTRY_URL}/v2/recipe-api/manifests/\${DIGEST}"
+# pe "curl -k -s -o /dev/null -w 'HTTP %{http_code}\n' -u ${REGISTRY_USER}:${REGISTRY_PASS} \
+#   -X DELETE ${REGISTRY_URL}/v2/recipe-api/manifests/\${DIGEST}"
 
 # pe "curl -k -s -u ${REGISTRY_USER}:${REGISTRY_PASS} ${REGISTRY_URL}/v2/recipe-api/tags/list"
 
@@ -117,7 +117,7 @@ pe "curl -k -s -o /dev/null -w 'HTTP %{http_code}\n' -u ${REGISTRY_USER}:${REGIS
 # ============================================================================
 
 
-p "8. Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
+p "7. Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
 
 AFTER_PR_COUNT=$(kubectl get pipelineruns -n ci --no-headers 2>/dev/null | wc -l)
 
