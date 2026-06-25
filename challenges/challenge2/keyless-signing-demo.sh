@@ -58,38 +58,38 @@ pe "make -C ${REPO_ROOT} setup-challenge2-tekton-keyless"
 p "Déclenchement du pipeline de signature keyless..."
 
 pe "kubectl create -f ${SCRIPT_DIR}/tekton/manual-pipelinerun-keyless.yaml"
-# ============================================================================
-# SECTION 2 — Identité OIDC
-# ============================================================================
+# # ============================================================================
+# # SECTION 2 — Identité OIDC
+# # ============================================================================
 
-p "La pipeline utilise un ServiceAccount dédié : pipeline-keyless-signer"
+# p "La pipeline utilise un ServiceAccount dédié : pipeline-keyless-signer"
 
-pe "kubectl get serviceaccount pipeline-keyless-signer -n ci -o yaml | head -20"
+# pe "kubectl get serviceaccount pipeline-keyless-signer -n ci -o yaml | head -20"
 
-p "L'OIDC issuer du cluster est utilisé par Fulcio pour vérifier le token du SA :"
-pe "kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer'"
+# p "L'OIDC issuer du cluster est utilisé par Fulcio pour vérifier le token du SA :"
+# pe "kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer'"
 
 ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
 
-# ============================================================================
-# SECTION 3 — Token ServiceAccount projeté
-# ============================================================================
+# # ============================================================================
+# # SECTION 3 — Token ServiceAccount projeté
+# # ============================================================================
 
-p "  SECTION 3 — Token ServiceAccount projeté"
-p "La tâche sign-image-keyless monte un token SA projeté comme identité OIDC :"
+# p "  SECTION 3 — Token ServiceAccount projeté"
+# p "La tâche sign-image-keyless monte un token SA projeté comme identité OIDC :"
 
-pe "kubectl get task sign-image-keyless -n ci -oyaml"
-p "audience: sigstore — Fulcio n'accepte que les tokens avec cette audience"
-p "expirationSeconds: 600 — le token est éphémère (10 minutes)"
+# pe "kubectl get task sign-image-keyless -n ci -oyaml"
+# p "audience: sigstore — Fulcio n'accepte que les tokens avec cette audience"
+# p "expirationSeconds: 600 — le token est éphémère (10 minutes)"
 
 # ============================================================================
 # SECTION 4 — Exécution du pipeline
 # ============================================================================
 
-p "  SECTION 4 — Exécution du pipeline"
+# p "  SECTION 4 — Exécution du pipeline"
 
 
-sleep 3
+# sleep 3
 LATEST_PR=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
 
 p "Suivi des logs..."
@@ -106,7 +106,7 @@ fi
 # SECTION 5 — Vérification de la signature keyless
 # ============================================================================
 
-p "  SECTION 5 — Vérification de la signature keyless"
+p "  Vérification de la signature keyless"
 # p "Contrairement à la vérification par clé, le keyless utilise l'identité certificat + l'émetteur OIDC"
 p "D'abord, initialiser la racine TUF de cosign pour faire confiance au CA Fulcio et à la clé Rekor locaux"
 ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')

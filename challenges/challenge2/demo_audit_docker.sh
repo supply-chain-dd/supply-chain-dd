@@ -155,7 +155,7 @@ wait
 
 
 p "# 🐳 Inspection des couches avec dive..."
-pe_ "dive podman://recipe-api:v1.0"
+pe_ "dive podman://registry.sc.local:30443/recipe-api:v1.0"
 
 wait
 

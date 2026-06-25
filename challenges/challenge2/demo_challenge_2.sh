@@ -663,6 +663,19 @@ if [[ ${#repos_array[@]} -eq 0 ]]; then
     p "# ⚠️ Aucun repository trouvé"
 fi
 
+# montrer que ici j'ai 3 images alpine, golang, et recipe-api
+
+# Se concentrer uniquement sur 1 seule, recipe-api
+
+# commencer par trufflehog, il trouve 27 faux positifs
+# et tu te dis, est ce qu'il n'y en a pas d'autres?
+# donc, tu fais dive
+# tu vois qu'il y a un .git, et qu'une layer fait rm .env
+# donc tu cherches plus loin
+# extraction des layers, gitleaks ou leaktk
+# enfin, dire hadolint ne trouve rien, trivy ne trouve rien
+# trivy custom misconfiguration
+
 for repo in "${repos_array[@]}"; do
     [[ -z "${repo}" ]] && continue
     p ""
