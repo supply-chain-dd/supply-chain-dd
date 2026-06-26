@@ -218,9 +218,35 @@ echo "  ✓ Victim repository re-seeded with vulnerable source"
 echo ""
 
 # ──────────────────────────────────────────────
-# [8/10] Rebuild and push vulnerable container image
+# [8/10] Clean stale tags and rebuild vulnerable image
 # ──────────────────────────────────────────────
-echo "[8/10] Rebuilding vulnerable recipe-api:v1.0 image..."
+echo "[8/10] Cleaning stale registry tags and rebuilding vulnerable recipe-api:v1.0..."
+
+STALE_TAGS=$(curl -k -s \
+    -u "$REGISTRY_USER:$REGISTRY_PASS" \
+    "https://${REGISTRY_HOST}/v2/recipe-api/tags/list" 2>/dev/null | \
+    jq -r '.tags // [] | .[] | select(test("^v2$|^sha256-"))' 2>/dev/null || true)
+
+if [ -n "$STALE_TAGS" ]; then
+    for tag in $STALE_TAGS; do
+        DIGEST=$(curl -k -s -I \
+            -u "$REGISTRY_USER:$REGISTRY_PASS" \
+            -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+            "https://${REGISTRY_HOST}/v2/recipe-api/manifests/${tag}" 2>/dev/null | \
+            grep -i 'docker-content-digest' | awk '{print $2}' | tr -d '\r')
+        if [ -n "$DIGEST" ]; then
+            curl -k -s -o /dev/null -w '' \
+                -u "$REGISTRY_USER:$REGISTRY_PASS" \
+                -X DELETE \
+                "https://${REGISTRY_HOST}/v2/recipe-api/manifests/${DIGEST}" 2>/dev/null || true
+            echo "  ✓ Deleted stale tag: ${tag} (${DIGEST})"
+        else
+            echo "  - Could not resolve digest for tag: ${tag} (skipping)"
+        fi
+    done
+else
+    echo "  ✓ No stale v2/sha256-* tags found"
+fi
 
 IMAGE_EXISTS=$(curl -k -s \
     -u "$REGISTRY_USER:$REGISTRY_PASS" \
@@ -419,6 +445,13 @@ if echo "$IMAGE_CHECK" | jq -e 'index("v1.0")' > /dev/null 2>&1; then
     echo "  recipe-api:v1.0 in registry... ✓"
 else
     echo "  recipe-api:v1.0 in registry... ❌"
+    EXIT_CODE=1
+fi
+STALE_REMAINING=$(echo "$IMAGE_CHECK" | jq -r '.[] | select(test("^v2$|^sha256-"))' 2>/dev/null || true)
+if [ -z "$STALE_REMAINING" ]; then
+    echo "  No stale v2/sha256-* tags... ✓"
+else
+    echo "  Stale tags still present: $STALE_REMAINING... ❌"
     EXIT_CODE=1
 fi
 
