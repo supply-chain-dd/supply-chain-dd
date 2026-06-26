@@ -16,12 +16,13 @@ After completing this guide, you will understand how to:
 
 ## Interactive Demos
 
-This challenge includes three demo-magic scripts that walk through remediation and defense interactively. Each can be run standalone after the environment is set up (`make setup && make setup-challenge2-tekton`).
+This challenge includes four demo-magic scripts that walk through detection, remediation and defense interactively. Each can be run standalone after the environment is set up (`make setup && make setup-challenge2-tekton`).
 
 | Script | What It Demonstrates | Guide Sections |
 |--------|---------------------|----------------|
+| `./detection-demo.sh` | Full detection walkthrough: registry discovery, TruffleHog (false positives), dive (layer inspection), manual layer extraction with gitleaks/leaktk, hadolint and Trivy limitations, custom Trivy Rego policy | Phases 2.1–2.6 |
 | `./filter-repo-demo.sh` | Using `git-filter-repo` to permanently remove `.env.production` from git history | Section 1.5 |
-| `./defense-demo.sh` | End-to-end defense: Dockerfile fix (multi-stage + `.dockerignore`), Trivy Rego policy scan, scanner limitations, image purge, webhook-triggered secure pipeline, and verification | Phases 1, 2, 5 |
+| `./defense-demo.sh` | End-to-end defense: Dockerfile fix (multi-stage + `.dockerignore`), webhook-triggered secure pipeline, and verification | Phases 1, 5 |
 | `./tektonchains-demo.sh` | Tekton Chains installation, configuration, signing keys, pipeline execution, cosign verification of signatures and SLSA provenance | Phase 3 |
 
 > **Prerequisites**: `defense-demo.sh` deploys a secure pipeline and triggers it via webhook. `keyless-signing-demo.sh` requires `cosign` installed and the local Sigstore stack deployed (`make setup-sigstore-local`).

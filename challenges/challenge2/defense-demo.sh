@@ -46,28 +46,13 @@ cd "${WORK_DIR}/recipe-api"
 pe "bat Dockerfile"
 
 
-p "2. Trivy image --scanners secret sur l'image vulnérable"
-pe "trivy image --scanners secret --insecure registry.sc.local:30443/recipe-api:v1.0"
-# p "→ 0 secrets détectés — Trivy ne voit pas les secrets enfuits dans un .git"
-
-p "3. Exécuter un scan de misconfiguration sur le Dockerfile vulnérable"
-
-# p "4. Politique Rego custom pour détecter le pattern dangereux"
-# p "→ Seul un scan de misconfiguration du Dockerfile peut détecter le pattern dangereux"
-pe "bat ${SCRIPT_DIR}/trivy-policies/copy_git_leak.rego"
-
-
-# p "5. Exécuter le scan de misconfiguration sur le Dockerfile vulnérable"
-pe "trivy config --config-check ${SCRIPT_DIR}/trivy-policies/ --namespaces user Dockerfile"
-
-
-p "4. Remplacer par un Dockerfile multi-stage"
+p "2. Remplacer par un Dockerfile multi-stage"
 cp "${SCRIPT_DIR}/tekton-patched/Dockerfile" Dockerfile
 pe "bat Dockerfile"
 # p "→ Stage builder : compile le binaire. Stage runtime : copie uniquement le binaire."
 
 
-p "5. Ajouter un .dockerignore allowlist"
+p "3. Ajouter un .dockerignore allowlist"
 cp "${SCRIPT_DIR}/tekton-patched/.dockerignore" .dockerignore
 pe "bat .dockerignore"
 
@@ -91,7 +76,7 @@ git push origin main
 # p "→ Les changements doivent passer par une Pull Request avec review obligatoire."
 
 
-p "6. Protéger la branche main via l'API Gitea"
+p "4. Protéger la branche main via l'API Gitea"
 pe "curl -s -X POST '${GITEA_URL}/api/v1/repos/${GITEA_USER}/recipe-api/branch_protections' \
   -u '${GITEA_USER}:${GITEA_PASS}' \
   -H 'Content-Type: application/json' \
@@ -117,7 +102,7 @@ cd "${SCRIPT_DIR}"
 # ============================================================================
 
 
-p "7. Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
+p "5. Le push sur main déclenche le webhook Gitea → EventListener → PipelineRun"
 
 AFTER_PR_COUNT=$(kubectl get pipelineruns -n ci --no-headers 2>/dev/null | wc -l)
 
