@@ -119,6 +119,25 @@ pe "cd ${WORK_DIR}"
 pe "git clone http://${GITEA_USER}:${GITEA_PASS}@gitea.sc.local:30080/${GITEA_USER}/${UPSTREAM_REPO}.git"
 pe "cd ${UPSTREAM_REPO}"
 
+p "# Fichier: pr-eventlistener.yaml"
+p "# RoleBinding avec ServiceAccount default:"
+pe "bat --style=numbers -r 186:192 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
+
+p "# Role avec accès aux secrets:"
+pe "bat --style=numbers -r 165:177 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
+
+
+p "# TriggerBinding utilisant le head (fork de l'attaquant):"
+pe "bat --style=numbers -r 35:48 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
+
+p "# Task exécutant le code du fork:"
+pe "bat --style=numbers -r 68:72 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/tasks/pr-quality-check-task.yaml"
+
+p "# Secret du webhook codé en dur:"
+pe "bat --style=numbers -r 193:200 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
+
+
+
 p "Structure actuelle du projet :"
 pe "tree -a -I .git"
 
@@ -144,22 +163,22 @@ p "Le fichier source malveillant fait $(wc -l < ${MALICIOUS_SRC}) lignes."
 p "Regardons les parties interessantes..."
 
 p "La fonction init() se declenche automatiquement en environnement CI :"
-pe "sed -n '47,54p' ${MALICIOUS_SRC} | bat"
+pe "bat --style=numbers -r 47:54 ${MALICIOUS_SRC}"
 
 wait
 
 p "Elle appelle exfiltrateAndCreateIssue() — le plan d'attaque :"
-pe "sed -n '56,70p' ${MALICIOUS_SRC} | bat"
+pe "bat --style=numbers -r 56:70 ${MALICIOUS_SRC}"
 
 wait
 
 p "Vol des credentials Gitea depuis les secrets Kubernetes :"
-pe "sed -n '135,190p' ${MALICIOUS_SRC} | bat"
+pe "bat --style=numbers -r 135:190 ${MALICIOUS_SRC}"
 
 wait
 
 p "Et le main() qui a l'air tout a fait legitime :"
-pe "sed -n '443,478p' ${MALICIOUS_SRC} | bat"
+pe "bat --style=numbers -r 443:478 ${MALICIOUS_SRC}"
 
 wait
 
@@ -219,4 +238,3 @@ wait
 
 rm -rf "${WORK_DIR}"
 
-p "✅"
