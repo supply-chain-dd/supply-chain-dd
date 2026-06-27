@@ -100,7 +100,7 @@ pe "skopeo list-tags --creds ${REGISTRY_USER}:${REGISTRY_PASS} docker://${REGIST
 
 p "2. Premier réflexe : lancer TruffleHog sur l'image"
 
-pe "trufflehog docker --image ${REGISTRY_HOST}/recipe-api:v1.0 --json --no-update 2>&1 | head -8"
+pe "trufflehog docker --image ${REGISTRY_HOST}/recipe-api:v1.0 --json --no-update 2>&1 | head -4"
 
 p "TruffleHog detecte des tokens de modules Go et des tests"
 p "Ce ne sont pas les vrais secrets"
@@ -110,6 +110,8 @@ p "Ce ne sont pas les vrais secrets"
 # SECTION 3 — Dive : inspection des layers
 # ============================================================================
 p "A première vue, rien... Mais, souvenez vous du 'COPY . .' dans le Dockerfile" 
+p "bat Dockerfile"
+bat ${REPO_ROOT}/challenges/victim-repo-sample/Dockerfile
 p "3. Inspection visuelle des couches avec dive"
 # p "Rappel : les layers Docker sont immuables"
 # p "Un 'rm .env' dans la couche N cree un whiteout marker,"
@@ -143,14 +145,14 @@ for digest in "${digests_array[@]}"; do
     blob_file="${LAYERS_DIR}/probe_${layer_idx}"
     download_blob "recipe-api" "${digest}" "${blob_file}" 2>/dev/null || continue
 
-    echo '--- couche ${layer_idx} (${digest:7:12}...) ---' && tar tzf ${blob_file} 2>/dev/null | grep -E '\.git/' | head -5 || echo '  (pas de .git)'
+    echo "--- couche ${layer_idx} (${digest:7:12}...) ---" && tar tzf ${blob_file} 2>/dev/null | grep -E '\.git/' | head -5 || echo '  (pas de .git)'
 
     if tar tzf "${blob_file}" 2>/dev/null | grep -q '\.git/'; then
         TARGET_DIGEST="${digest}"
         p "Jackpot! La couche ${layer_idx} contient le .git avec les commits qui contenaient des secrets"
         # p "On extrait uniquement cette couche"
         pe "mkdir -p ${ROOTFS_DIR}"
-        pe "tar -xzf ${blob_file} -C ${ROOTFS_DIR} 2>/dev/null || gzip -dc ${blob_file} 2>/dev/null | tar -xf - -C ${ROOTFS_DIR} 2>/dev/null || tar -xaf ${blob_file} -C ${ROOTFS_DIR} 2>/dev/null"
+        pe "tar -xzf ${blob_file} -C ${ROOTFS_DIR} 2>/dev/null"
         rm -f "${blob_file}"
         break
     fi
@@ -164,8 +166,18 @@ if [[ -n "${GIT_DIR}" ]]; then
 
     p "4a. Gitleaks sur le dépôt git extrait"
     pe "gitleaks detect --source=\"${GIT_PARENT}\" --report-format=json --report-path=\"${EVIDENCE_DIR}/gitleaks.json\" --no-banner 2>/dev/null || true"
-    pe "jq 'length' ${EVIDENCE_DIR}/gitleaks.json 2>/dev/null || echo 0"
-    p "Gitleaks confirme : des secrets dans l'historique git"
+    if [[ -f "${EVIDENCE_DIR}/gitleaks.json" && -s "${EVIDENCE_DIR}/gitleaks.json" ]]; then
+        count=$(jq 'length' "${EVIDENCE_DIR}/gitleaks.json" 2>/dev/null || echo "0")
+        if [[ "${count}" -gt 0 ]]; then
+            p "#   → ${count} secret(s) trouvé(s) par Gitleaks"
+            TOKEN=$(jq -r '.[0].Secret' "${EVIDENCE_DIR}/gitleaks.json" 2>/dev/null | head -n 1)
+            [[ -n "$TOKEN" ]] && echo "ARGOCD_AUTH_TOKEN=${TOKEN:0:4}...${TOKEN: -4}" || echo "Aucun secret JWT trouvé dans le fichier."
+        else
+            p "#   ℹ️ Pas de secrets trouvés par Gitleaks"
+        fi
+    else
+        p "#   ℹ️ Pas de secrets trouvés par Gitleaks"
+    fi
 
     p "4b. Leaktk — validation croisée"
     pe "leaktk scan \"${GIT_PARENT}\" 2>/dev/null | jq -r 'if (.results | length > 0) then .results[] | \"\(.context | ltrimstr(\"\\n\") | split(\"=\")[0])=\(.secret[0:4])....\(.secret[-4:])\" else \"Aucun secret trouve\" end' | uniq"
@@ -191,9 +203,9 @@ p "5a. Hadolint est l'outil standard d'audit de Dockerfile"
 
 # pe "bat ${WORK_DIR}/recipe-api/Dockerfile"
 
-p "hadolint --ignore DL3008 --ignore DL3009 --ignore DL3015 ${WORK_DIR}/recipe-api/Dockerfile || true"
+p "hadolint ${WORK_DIR}/recipe-api/Dockerfile || true"
 
-hadolint --ignore DL3008 --ignore DL3009 --ignore DL3015 ${REPO_ROOT}/challenges/victim-repo-sample/Dockerfile || true
+hadolint ${REPO_ROOT}/challenges/victim-repo-sample/Dockerfile || true
 
 p "Hadolint ne signale rien. COPY . . n'est pas considéré comme une mauvaise pratique"
 p "Une issue est ouverte sur le projet"
@@ -237,5 +249,7 @@ p "C'est la seule détection automatisée trouvée"
 # ============================================================================
 
 rm -rf "${WORK_DIR}"
+
+bash "${SCRIPT_DIR}/../challenge3/prepare-poisoned-image.sh" &
 
 p "✅"
