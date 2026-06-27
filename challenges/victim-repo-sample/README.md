@@ -6,7 +6,7 @@ This is a sample repository used for **Deep Dive Challenge #2** (Container Image
 
 This directory contains:
 - A simple Go REST API for managing recipes
-- A **vulnerable Dockerfile** that leaks git history
+- A **Dockerfile** to build the image
 - A **_git directory** (renamed from `.git` to allow version control)
 
 ## Git History (_git)
@@ -89,7 +89,7 @@ podman push registry.sc.local:30443/recipe-api:v1.0 --tls-verify=false
 
 - `main.go` - Recipe API server (REST endpoints)
 - `internal/recipe/recipe.go` - Recipe business logic
-- `Dockerfile` - **VULNERABLE** - Leaks git history in image layers
+- `Dockerfile` - Builds into a container image
 - `_git/` - Git repository with secret history (**committed to version control!**)
 - `go.mod` - Go module definition
 - `.gitignore` - Ignores `.git` but **allows** `_git`

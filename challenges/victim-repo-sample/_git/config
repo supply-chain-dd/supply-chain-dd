@@ -3,3 +3,6 @@
 	filemode = true
 	bare = false
 	logallrefupdates = true
+[user]
+	name = sherine-k
+	email = skhoury@redhat.com
