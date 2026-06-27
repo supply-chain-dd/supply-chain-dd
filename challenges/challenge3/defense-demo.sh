@@ -169,13 +169,11 @@ pe "cosign verify-attestation \
   ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
   | jq -r '.payload' | base64 -d > ${WORK_DIR}/provenance.json"
 
-pe "cat ${WORK_DIR}/provenance.json| jq | bat"
-
 pe "cat ${WORK_DIR}/provenance.json | jq '{
   predicateType,
   builder: .predicate.builder.id,
   materials: [.predicate.materials[] | {uri, digest}],
-  subjects: [.subject[] | {name: .name, sha256: .digest.sha256[:16]}]
+  subjects: [.subject[] | {name: .name, sha256: .digest.sha256}]
 }'"
 
 # p "8. Attestation SBOM signée (cosign attest en pipeline)"
