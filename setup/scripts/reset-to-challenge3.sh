@@ -315,31 +315,27 @@ $CONTAINER_RUNTIME tag alpine:3.20 "${REGISTRY_HOST}/alpine:3.20"
 $CONTAINER_RUNTIME push "${REGISTRY_HOST}/alpine:3.20"
 echo "  ✓ Clean alpine:3.20 pushed to registry"
 
-# Ensure recipe-api:v1.0 exists
-IMAGE_EXISTS=$(curl -k -s \
-    -u "$REGISTRY_USER:$REGISTRY_PASS" \
-    "https://${REGISTRY_HOST}/v2/recipe-api/tags/list" 2>/dev/null | \
-    jq -r '.tags // [] | index("v1.0")' 2>/dev/null || echo "null")
+# Poison alpine:3.20 with backdoor (simulates end-of-challenge-2 attack)
+echo "  Poisoning alpine:3.20 with backdoor..."
+"${PROJECT_ROOT}/challenges/challenge3/prepare-poisoned-image.sh"
+echo "  ✓ Poisoned alpine:3.20 pushed to registry (flattened)"
 
-if [ "$IMAGE_EXISTS" != "null" ] && [ "$IMAGE_EXISTS" != "" ]; then
-    echo "  ✓ recipe-api:v1.0 already exists in registry"
-else
-    echo "  Building vulnerable recipe-api:v1.0..."
-    rm -rf /tmp/recipe-api-build
-    cp -r "${PROJECT_ROOT}/challenges/victim-repo-sample" /tmp/recipe-api-build
-    if [ -d /tmp/recipe-api-build/_git ]; then
-        mv /tmp/recipe-api-build/_git /tmp/recipe-api-build/.git
-    fi
-    sed -i "s|registry.registry.svc.cluster.local:5000|${REGISTRY_DOMAIN}:${GATEWAY_HTTPS_PORT}|g" /tmp/recipe-api-build/Dockerfile
-
-    cd /tmp/recipe-api-build
-    $CONTAINER_RUNTIME build -t "${REGISTRY_HOST}/recipe-api:v1.0" -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
-    cd "$PROJECT_ROOT"
-
-    $CONTAINER_RUNTIME push "${REGISTRY_HOST}/recipe-api:v1.0"
-    rm -rf /tmp/recipe-api-build
-    echo "  ✓ Vulnerable recipe-api:v1.0 built and pushed"
+# Rebuild recipe-api:v1.0 from the poisoned alpine base
+echo "  Building recipe-api:v1.0 from poisoned base..."
+rm -rf /tmp/recipe-api-build
+cp -r "${PROJECT_ROOT}/challenges/victim-repo-sample" /tmp/recipe-api-build
+if [ -d /tmp/recipe-api-build/_git ]; then
+    mv /tmp/recipe-api-build/_git /tmp/recipe-api-build/.git
 fi
+sed -i "s|registry.registry.svc.cluster.local:5000|${REGISTRY_DOMAIN}:${GATEWAY_HTTPS_PORT}|g" /tmp/recipe-api-build/Dockerfile
+
+cd /tmp/recipe-api-build
+$CONTAINER_RUNTIME build -t "${REGISTRY_HOST}/recipe-api:v1.0" -f Dockerfile . 2>&1 | grep -E "(STEP|Successfully|Error)" || true
+cd "$PROJECT_ROOT"
+
+$CONTAINER_RUNTIME push "${REGISTRY_HOST}/recipe-api:v1.0"
+rm -rf /tmp/recipe-api-build
+echo "  ✓ recipe-api:v1.0 built (with poisoned alpine base) and pushed"
 echo ""
 
 # ──────────────────────────────────────────────
