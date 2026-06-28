@@ -14,11 +14,9 @@ trap 'rm -rf "${WORK_DIR}"' EXIT
 cat > "${WORK_DIR}/backdoor.sh" << 'EOF'
 #!/bin/sh
 FLAG="FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}"
-echo "$FLAG" > /tmp/.malware_active
 echo "[MALWARE] Backdoor activated in production container!"
 echo "[MALWARE] Flag: $FLAG"
 echo "[MALWARE] Hostname: $(hostname)"
-echo "[MALWARE] Environment: $(env | grep -E 'KUBE|POD|SERVICE')"
 EOF
 chmod +x "${WORK_DIR}/backdoor.sh"
 

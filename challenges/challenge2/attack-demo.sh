@@ -102,14 +102,14 @@ p "2. Premier réflexe : lancer TruffleHog sur l'image"
 
 pe "trufflehog docker --image ${REGISTRY_HOST}/recipe-api:v1.0 --json --no-update 2>&1 | head -4"
 
-p "TruffleHog detecte des tokens de modules Go et des tests"
-p "Ce ne sont pas les vrais secrets"
+# p "TruffleHog detecte des tokens de modules Go et des tests"
+# p "Ce ne sont pas les vrais secrets"
 
 
 # ============================================================================
 # SECTION 3 — Dive : inspection des layers
 # ============================================================================
-p "A première vue, rien... Mais, souvenez vous du 'COPY . .' dans le Dockerfile" 
+p "A première vue, rien... Mais, regardons le Dockerfile" 
 p "bat Dockerfile"
 bat ${REPO_ROOT}/challenges/victim-repo-sample/Dockerfile
 p "3. Inspection visuelle des couches avec dive"
@@ -119,23 +119,22 @@ p "3. Inspection visuelle des couches avec dive"
 
 pe "dive podman://${REGISTRY_HOST}/recipe-api:v1.0"
 
-p ".git est present dans une couche, et une autre fait 'rm .env'. 🔨🔨"
+# p ".git est present dans une couche, et une autre fait 'rm .env'. 🔨🔨"
 
 
 # ============================================================================
 # SECTION 4 — Extraction des layers + scan gitleaks/leaktk
 # ============================================================================
 
-p "4. Mode forensique — on cible la couche qui contient le .git"
+p "4. On cible la couche qui contient le .git"
 
-p "D'abord, recuperer les digests de chaque layer"
+# p "D'abord, recuperer les digests de chaque layer"
 pe "skopeo inspect --tls-verify=false --creds ${REGISTRY_USER}:${REGISTRY_PASS} docker://${REGISTRY_HOST}/recipe-api:v1.0 | jq '.Layers'"
 
 mapfile -t digests_array < <(get_layer_digests "recipe-api" "v1.0" 2>/dev/null || true)
 AUTH_B64=$(printf '%s:%s' "${REGISTRY_USER}" "${REGISTRY_PASS}" | base64 | tr -d '\n')
 
 p "${#digests_array[@]} couches. On ne va pas tout extraire"
-p "On sonde chaque layer avec 'tar tvf | grep .git' pour trouver la bonne"
 
 TARGET_DIGEST=""
 layer_idx=0
@@ -184,9 +183,19 @@ if [[ -n "${GIT_DIR}" ]]; then
     p "Leaktk les trouve aussi"
 
     p "4c. Recherche dans l'historique git — les vrais secrets"
-    pe "git -C \"${GIT_PARENT}\" log --all -p -S \"ARGOCD_AUTH_TOKEN\" --format=\"COMMIT:%H|%s\" 2>/dev/null | grep -iE '(ARGOCD_AUTH_TOKEN|COMMIT:)' | head -20 | awk '{if (/ARGOCD_AUTH_TOKEN=/) sub(/=.*/, \"=xxxx...xxxx\")} 1'"
-    pe "git -C \"${GIT_PARENT}\" log --all -p -S \"REGISTRY_PASSWORD\" --format=\"COMMIT:%H|%s\" 2>/dev/null | grep -iE '(REGISTRY_PASSWORD|COMMIT:)' | head -20 | awk '{if (/REGISTRY_PASSWORD=/) sub(/=.*/, \"=xxxx...xxxx\")} 1'"
+    pe "git -C \"${GIT_PARENT}\" log --all -p -S \"ARGOCD_AUTH_TOKEN\" --format=\"COMMIT:%H|%s\" 2>/dev/null | grep -iE '(ARGOCD_AUTH_TOKEN|COMMIT:)' | head -20 | awk '{if (/ARGOCD_AUTH_TOKEN=/) { match(\$0, /=(.+)/, a); val=a[1]; sub(/=.*/, \"=\" substr(val,1,4) \"....\" substr(val,length(val)-3)) }} 1'"
+    pe "git -C \"${GIT_PARENT}\" log --all -p -S \"REGISTRY_PASSWORD\" --format=\"COMMIT:%H|%s\" 2>/dev/null | grep -iE '(REGISTRY_PASSWORD|COMMIT:)' | head -20 | awk '{if (/REGISTRY_PASSWORD=/) { match(\$0, /=(.+)/, a); val=a[1]; sub(/=.*/, \"=\" substr(val,1,4) \"....\" substr(val,length(val)-3)) }} 1'"
 
+    p "4d. Et trufflehog directement sur le filesystem?"
+        # Exécuter la commande - affiche le JSON mais masque les secrets dans la sortie, et affiche les stats
+    th_out="${EVIDENCE_DIR}/trufflehog_fs.json"
+    pe "trufflehog filesystem \"${GIT_PARENT}\" --json --no-update | tee \"${th_out}\" | grep 'finished scanning' || true"
+    # Afficher le résumé basé sur le fichier
+    if grep -q '"finished scanning"' "${th_out}" 2>/dev/null; then
+            p "#   ℹ️ Pas de secrets trouvés par TruffleHog dans le repository git"
+    else
+            p "#   ℹ️ Pas de secrets trouvés par TruffleHog dans le repository git"
+    fi
     p "Game over."
     # p "ARGOCD_AUTH_TOKEN → acces au deploiement en production"
     # p "REGISTRY_PASSWORD → capacite de pousser des images empoisonnees"
@@ -196,7 +205,7 @@ fi
 # SECTION 5 — Hadolint : angle mort des defenseurs
 # ============================================================================
 
-p "5. Est-ce que l'équipe aurait pu le détecter ?"
+p "5. Et les outils spécialisés Dockerfile ?"
 p "5a. Hadolint est l'outil standard d'audit de Dockerfile"
 
 # pe "git clone http://${GITEA_USER}:${GITEA_PASS}@${GITEA_HOST}/${GITEA_USER}/recipe-api ${WORK_DIR}/recipe-api"
@@ -250,6 +259,6 @@ p "C'est la seule détection automatisée trouvée"
 
 rm -rf "${WORK_DIR}"
 
-bash "${SCRIPT_DIR}/../challenge3/prepare-poisoned-image.sh" &
+bash "${SCRIPT_DIR}/../challenge3/prepare-poisoned-image.sh"1>/dev/null &
 
 p "✅"
