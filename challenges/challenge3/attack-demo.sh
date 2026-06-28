@@ -128,7 +128,7 @@ wait
 # ============================================================================
 
 p "5. Vérification que l'image est bien dans le registre"
-pe "skopeo list-tags --creds ${REGISTRY_USER}:${REGISTRY_PASS} docker://${REGISTRY_URL}/recipe-api | jq"
+pe "skopeo list-tags --creds ${REGISTRY_USER}:${REGISTRY_PASS} docker://${REGISTRY_HOST}/recipe-api | jq"
 
 p "→ Le registre contient l'image alpine:3.20 empoisonnée et aplatie."
 p "→ Toute pipeline qui fait FROM alpine:3.20 embarquera notre malware."
