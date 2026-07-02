@@ -124,14 +124,32 @@ if [ "$AFTER_PR_COUNT" -gt "$BEFORE_PR_COUNT" ]; then
     pe "kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp"
     p "Pipeline déclenchée automatiquement par le webhook"
     LATEST_PR_NAME=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
-    pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci"
 else
     p "Le webhook n'a pas déclenché de PipelineRun — déclenchement manuel"
     pe "kubectl create -f ${SCRIPT_DIR}/tekton-patched/manual-pipelinerun-with-chains-secure.yaml"
     sleep 3
     LATEST_PR_NAME=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
-    pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci"
 fi
+
+p "Workflow du pipeline sécurisé (challenge 3) :"
+cat <<'EOF'
+  verify-source
+    └─ git-clone
+         └─ ** verify-base-image
+              └─ build-go-app
+                   └─ run-quality-checks
+                        └─ push-container-image
+                             ├─ sign-image-keyless
+                             ├─ create-source-vsa
+                             ├─ scan-image
+                             └─ ** generate-sbom
+                                  └─ ** attest-sbom
+EOF
+
+
+pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci -t verify-base-image"
+pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci -t generate-sbom"
+pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci -t attest-sbom"
 
 pe "kubectl get pipelineruns -n ci"
 
@@ -151,23 +169,38 @@ cosign initialize --mirror=http://${TUF_HOST} --root=${TUF_ROOT_FILE} 2>/dev/nul
 rm -f "${TUF_ROOT_FILE}"
 
 p "6. Artefacts attachés à l'image (SBOM, signature, scan, provenance)"
-pe "cosign tree --registry-cacert=${CA_CERT} ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null || echo 'cosign tree non disponible'"
+p "cosign tree \\
+  --registry-cacert=\${CA_CERT} \\
+  \${REGISTRY_HOST}/recipe-api@\${IMAGE_DIGEST}"
+cosign tree \
+  --registry-cacert="${CA_CERT}" \
+  "${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST}" 2>/dev/null || echo 'cosign tree non disponible'
 
 # ============================================================================
 # PHASE 4 — Attestations de provenance et SBOM
 # ============================================================================
 
 p "7. Attestation de provenance SLSA — builder, source et artefacts attestés"
-pe "cosign verify-attestation \
+p "cosign verify-attestation \\
+  --certificate-identity=...tekton-chains-controller \\
+  --certificate-oidc-issuer=\${OIDC_ISSUER} \\
+  --rekor-url=http://\${REKOR_HOST} \\
+  --insecure-ignore-sct \\
+  --new-bundle-format=false \\
+  --type slsaprovenance \\
+  --registry-cacert=\${CA_CERT} \\
+  \${REGISTRY_HOST}/recipe-api@\${IMAGE_DIGEST} \\
+  | jq -r '.payload' | base64 -d > provenance.json"
+cosign verify-attestation \
   --certificate-identity=https://kubernetes.io/namespaces/tekton-chains/serviceaccounts/tekton-chains-controller \
-  --certificate-oidc-issuer=${OIDC_ISSUER} \
-  --rekor-url=http://${REKOR_HOST} \
+  --certificate-oidc-issuer="${OIDC_ISSUER}" \
+  --rekor-url="http://${REKOR_HOST}" \
   --insecure-ignore-sct \
   --new-bundle-format=false \
   --type slsaprovenance \
-  --registry-cacert=${CA_CERT} \
-  ${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST} 2>/dev/null \
-  | jq -r '.payload' | base64 -d > ${WORK_DIR}/provenance.json"
+  --registry-cacert="${CA_CERT}" \
+  "${REGISTRY_HOST}/recipe-api@${IMAGE_DIGEST}" 2>/dev/null \
+  | jq -r '.payload' | base64 -d > "${WORK_DIR}/provenance.json"
 
 pe "cat ${WORK_DIR}/provenance.json | jq '{
   predicateType,

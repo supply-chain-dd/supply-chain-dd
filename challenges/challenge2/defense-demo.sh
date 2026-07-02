@@ -109,14 +109,29 @@ AFTER_PR_COUNT=$(kubectl get pipelineruns -n ci --no-headers 2>/dev/null | wc -l
 if [ "$AFTER_PR_COUNT" -gt "$BEFORE_PR_COUNT" ]; then
     pe "kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp"
     LATEST_PR_NAME=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
-    pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci"
 else
     p "⚠  Le webhook n'a pas déclenché de PipelineRun — déclenchement manuel"
     pe "kubectl create -f ${SCRIPT_DIR}/tekton-patched/manual-pipelinerun-secure.yaml"
     sleep 3
     LATEST_PR_NAME=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
-    pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci"
 fi
+
+p "Workflow de la pipeline sécurisée :"
+cat <<'EOF'
+  ** verify-source
+    └─ clone-repo
+        └─ build-go-app
+            └─ run-quality-checks
+                └─ push-container-image
+                    ├─ ** scan-image
+                    ├─ ** create-source-vsa
+                    └─ notify-release
+EOF
+
+
+pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci -t verify-source"
+pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci -t scan-image"
+pe "tkn pr logs -f ${LATEST_PR_NAME} -n ci -t create-source-vsa"
 
 # pe "kubectl get pipelineruns -n ci"
 

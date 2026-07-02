@@ -118,7 +118,23 @@ BUILD_PR_NAME=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ci \
   --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
 
 # p "7. Suivi des logs de la pipeline de build"
-pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT}"
+p "Workflow du pipeline de build :"
+cat <<'EOF'
+  clone-repo
+    └─ build-go-app
+        └─ run-quality-checks
+            └─ push-container-image
+                ├─ post-results
+                └─ notify-release
+EOF
+
+
+pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT} -t clone-repo"
+pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT} -t build-go-app"
+pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT} -t run-quality-checks"
+pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT} -t push-container-image"
+pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT} -t post-results"
+pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT} -t notify-release"
 
 # pe "kubectl --context ${CI_CONTEXT} get pipelinerun ${BUILD_PR_NAME} -n ci \
 #   -o jsonpath='{.status.conditions[0].reason}' && echo"
@@ -149,7 +165,15 @@ if [ "$RELEASE_COUNT" -gt 0 ]; then
       --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
 
     # p "9. Suivi des logs de la pipeline de release"
-    pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT}"
+    p "Workflow du pipeline de release :"
+    cat <<'EOF'
+  copy-image-to-production
+    └─ clone-and-create-pr
+EOF
+    
+
+    pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT} -t copy-image-to-production"
+    pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT} -t clone-and-create-pr"
 else
     p "⚠ La pipeline de release n'a pas été déclenchée automatiquement"
     p "→ Vérifiez que l'EventListener est déployé : kubectl get eventlistener -n release-pipeline"

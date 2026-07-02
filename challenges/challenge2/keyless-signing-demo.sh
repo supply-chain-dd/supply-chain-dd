@@ -92,9 +92,23 @@ ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
 # sleep 3
 LATEST_PR=$(kubectl get pipelineruns -n ci --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
 
-p "Suivi des logs..."
+p "Workflow du pipeline keyless :"
+cat <<'EOF'
+  verify-source
+    └─ git-clone
+        └─ build-go-app
+            └─ run-quality-checks
+                └─ push-container-image
+                    ├─ ** sign-image-keyless
+                    ├─ create-source-vsa
+                    ├─ scan-image
+                    └─ notify-release
+EOF
+
+
+p "Suivi des logs de la tâche sign-image-keyless..."
 if command -v tkn &>/dev/null; then
-    pei "tkn pr logs -f ${LATEST_PR} -n ci"
+    pei "tkn pr logs -f ${LATEST_PR} -n ci -t sign-image-keyless"
 else
     p "tkn non disponible — attente de la fin du pipeline..."
     kubectl wait --for=condition=Succeeded pipelinerun/${LATEST_PR} -n ci --timeout=600s 2>/dev/null || true

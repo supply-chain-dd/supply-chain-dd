@@ -63,6 +63,26 @@ BUILD_PR_NAME=$(kubectl --context ${CI_CONTEXT} get pipelineruns -n ci \
   --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
 
 # p "6. Suivre les logs de la pipeline de build (${BUILD_PR_NAME})"
+p "Workflow du pipeline de build avec release gate :"
+cat <<'EOF'
+  verify-source
+    └─ git-clone
+         └─ verify-base-image
+              └─ build-go-app
+                   └─ run-quality-checks
+                        └─ push-container-image
+                             ├─ sign-image-keyless
+                             ├─ create-source-vsa
+                             ├─ scan-image
+                             └─ generate-sbom
+                                  └─ attest-sbom
+
+  finally:
+    notify-release   (only if sign, attest, scan, vsa all Succeeded
+                      AND Tekton Chains signed the image)
+EOF
+
+
 pe "tkn pr logs -f ${BUILD_PR_NAME} -n ci --context ${CI_CONTEXT}"
 
 # p "7. Vérifier le statut de la pipeline de build"
@@ -100,7 +120,17 @@ if [ -z "${RELEASE_PR_NAME}" ] || [[ ! "${RELEASE_AGE}" > "${BUILD_AGE}" ]]; the
 fi
 
 # p "9. Suivre les logs de la release pipeline (${RELEASE_PR_NAME})"
-pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT}"
+p "Workflow de la release pipeline sécurisée :"
+cat <<'EOF'
+  verify-image-policy    (Conforma: signatures, provenance, policies)
+    └─ copy-image-to-production
+         └─ clone-and-create-pr
+EOF
+
+
+pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT} -t verify-image-policy"
+pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT} -t copy-image-to-production"
+pe "tkn pr logs -f ${RELEASE_PR_NAME} -n release-pipeline --context ${CI_CONTEXT} -t clone-and-create-pr"
 
 # ============================================================================
 # PHASE 4 — Vérifier les résultats

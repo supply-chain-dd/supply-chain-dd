@@ -49,11 +49,11 @@ p "  PHASE 1 — SBOMs des images de base officielles"
 pe "${SYFT_CMD} scan golang:1.25-alpine -o spdx-json --file ${WORK_DIR}/sbom-golang-clean.json"
 
 p "1. À quoi ressemble un SBOM SPDX ? Voici les métadonnées et les 3 premiers paquets"
-pe "cat ${WORK_DIR}/sbom-golang-clean.json | jq | head -70"
+pe "bat ${WORK_DIR}/sbom-golang-clean.json | jq | head -70"
 
 p "2. Extraire les composants golang (nom + version)"
 extract_packages "${WORK_DIR}/sbom-golang-clean.json" > "${WORK_DIR}/golang-clean-packages.txt"
-pe "cat ${WORK_DIR}/golang-clean-packages.txt"
+pe "bat ${WORK_DIR}/golang-clean-packages.txt"
 # pe "echo \"Nombre de composants dans golang propre : \$(wc -l < ${WORK_DIR}/golang-clean-packages.txt)\""
 
 p "3. Même chose pour alpine:3.20 (image runtime)"

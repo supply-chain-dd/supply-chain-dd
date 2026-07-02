@@ -109,7 +109,7 @@ pe "trufflehog docker --image ${REGISTRY_HOST}/recipe-api:v1.0 --json --no-updat
 # ============================================================================
 # SECTION 3 — Dive : inspection des layers
 # ============================================================================
-p "A première vue, rien... Mais, regardons le Dockerfile" 
+p "Que des faux positifs? Mais, regardons le Dockerfile" 
 p "bat Dockerfile"
 bat ${REPO_ROOT}/challenges/victim-repo-sample/Dockerfile
 p "3. Inspection visuelle des couches avec dive"
@@ -259,6 +259,6 @@ p "C'est la seule détection automatisée trouvée"
 
 rm -rf "${WORK_DIR}"
 
-bash "${SCRIPT_DIR}/../challenge3/prepare-poisoned-image.sh"1>/dev/null &
+bash "${SCRIPT_DIR}/../challenge3/prepare-poisoned-image.sh" 1>/dev/null &
 
 p "✅"
